@@ -1,3 +1,0 @@
-# SPA: todas las rutas del navegador sirven index.html (Angular Router se
-# encarga de mostrar la pantalla). Sin esto, recargar en /reventa da 404.
-/*    /index.html   200
