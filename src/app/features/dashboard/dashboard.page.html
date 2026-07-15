@@ -1,0 +1,165 @@
+<div class="page">
+  <app-page-header titulo="Dashboard" subtitulo="Indicadores del negocio">
+    @if (datos(); as d) {
+      <span class="fecha-corte">
+        <mat-icon>event</mat-icon>
+        Corte: {{ d.fecha | date: 'dd/MM/yyyy' }}
+      </span>
+    }
+    <button
+      mat-stroked-button
+      *hasPermission="'reportes:consultar'"
+      (click)="cargar()"
+      [disabled]="cargando()"
+      matTooltip="Vuelve a consultar los indicadores"
+    >
+      <mat-icon>refresh</mat-icon> Actualizar
+    </button>
+  </app-page-header>
+
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" class="barra-carga" />
+  }
+
+  <!-- Accesos rápidos: siempre visibles, no dependen de los indicadores -->
+  <section class="acciones" aria-labelledby="titulo-acciones">
+    <h2 id="titulo-acciones" class="seccion-titulo">¿Qué quieres hacer hoy?</h2>
+    <div class="acciones-grid">
+      @for (a of acciones; track a.titulo) {
+        <a
+          class="accion-card"
+          *hasPermission="a.permiso"
+          [routerLink]="a.link"
+          [style.--acento]="a.color"
+          [matTooltip]="a.tooltip"
+        >
+          <div class="accion-icono">
+            <mat-icon aria-hidden="true">{{ a.icono }}</mat-icon>
+          </div>
+          <div class="accion-texto">
+            <p class="accion-titulo">{{ a.titulo }}</p>
+            <p class="accion-desc">{{ a.descripcion }}</p>
+          </div>
+        </a>
+      }
+    </div>
+  </section>
+
+  @if (datos(); as d) {
+    <div class="kpi-grid">
+      @for (kpi of kpis(); track kpi.titulo) {
+        <a
+          class="kpi-enlace"
+          [routerLink]="kpi.link"
+          matTooltip="Ver detalle"
+          [attr.aria-label]="'Ver detalle de ' + kpi.titulo"
+        >
+          <mat-card class="kpi-card">
+            <div class="kpi-icono" [style.background-color]="kpi.color + '22'">
+              <mat-icon [style.color]="kpi.color">{{ kpi.icono }}</mat-icon>
+            </div>
+            <div class="kpi-texto">
+              <p class="kpi-titulo">{{ kpi.titulo }}</p>
+              @switch (kpi.tipo) {
+                @case ('litros') {
+                  <p class="kpi-valor">{{ kpi.valor | cantidad: 'L' }}</p>
+                }
+                @case ('kg') {
+                  <p class="kpi-valor">{{ kpi.valor | cantidad: 'kg' }}</p>
+                }
+                @case ('money') {
+                  <p class="kpi-valor">{{ kpi.valor | money }}</p>
+                }
+                @default {
+                  <p class="kpi-valor">{{ kpi.valor }}</p>
+                }
+              }
+              @if (kpi.subtituloMoney !== undefined) {
+                <p class="kpi-sub">Valor leche: {{ kpi.subtituloMoney | money }}</p>
+              }
+              @if (kpi.tendencia; as t) {
+                @switch (t.direccion) {
+                  @case ('sube') {
+                    <p class="kpi-tendencia sube">
+                      <mat-icon aria-hidden="true">arrow_upward</mat-icon>
+                      {{ t.porcentaje | cantidad }}% vs. día anterior
+                    </p>
+                  }
+                  @case ('baja') {
+                    <p class="kpi-tendencia baja">
+                      <mat-icon aria-hidden="true">arrow_downward</mat-icon>
+                      {{ t.porcentaje | cantidad }}% vs. día anterior
+                    </p>
+                  }
+                  @default {
+                    <p class="kpi-tendencia igual">— sin variación</p>
+                  }
+                }
+              }
+            </div>
+          </mat-card>
+        </a>
+      }
+    </div>
+
+    <div class="chart-grid">
+      <mat-card class="chart-card">
+        <h3>Litros recibidos por día</h3>
+        <p class="chart-sub">Últimos 30 días</p>
+        @if (d.litros_por_dia.length > 0) {
+          <app-chart type="line" [data]="litrosChart()" [options]="opcionesSinLeyenda" />
+        } @else {
+          <p class="sin-datos">Sin recepciones registradas en el período</p>
+        }
+      </mat-card>
+
+      <mat-card class="chart-card">
+        <h3>Ventas por día</h3>
+        <p class="chart-sub">Últimos 30 días</p>
+        @if (d.ventas_por_dia.length > 0) {
+          <app-chart type="bar" [data]="ventasChart()" [options]="opcionesSinLeyenda" />
+        } @else {
+          <p class="sin-datos">Sin ventas registradas en el período</p>
+        }
+      </mat-card>
+
+      <mat-card class="chart-card">
+        <h3>Gastos del mes por categoría</h3>
+        <p class="chart-sub">Mes en curso</p>
+        @if (d.gastos_por_categoria.length > 0) {
+          <app-chart type="doughnut" [data]="gastosChart()" />
+        } @else {
+          <p class="sin-datos">Sin gastos registrados este mes</p>
+        }
+      </mat-card>
+
+      <mat-card class="chart-card">
+        <h3>Top proveedores de la quincena</h3>
+        <p class="chart-sub">Quincena actual, en litros</p>
+        @if (d.top_proveedores.length > 0) {
+          <app-chart type="bar" [data]="topProveedoresChart()" [options]="opcionesBarraHorizontal" />
+        } @else {
+          <p class="sin-datos">Sin recepciones en la quincena</p>
+        }
+      </mat-card>
+
+      <mat-card class="chart-card">
+        <h3>Producción por tipo de queso</h3>
+        <p class="chart-sub">Mes en curso, en kilogramos</p>
+        @if (d.produccion_por_tipo.length > 0) {
+          <app-chart type="doughnut" [data]="produccionChart()" />
+        } @else {
+          <p class="sin-datos">Sin producción registrada este mes</p>
+        }
+      </mat-card>
+    </div>
+  } @else if (!cargando()) {
+    <div class="empty-state">
+      <mat-icon>insights</mat-icon>
+      <p>No fue posible cargar los indicadores del negocio</p>
+      <button mat-stroked-button *hasPermission="'reportes:consultar'" (click)="cargar()">
+        <mat-icon>refresh</mat-icon> Reintentar
+      </button>
+    </div>
+  }
+</div>

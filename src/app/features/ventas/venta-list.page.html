@@ -1,0 +1,134 @@
+<div class="page">
+  <app-page-header
+    titulo="Ventas"
+    subtitulo="Facturas y remisiones; haga clic en una fila para ver el detalle"
+  >
+    <button mat-stroked-button routerLink="cartera">
+      <mat-icon>account_balance_wallet</mat-icon> Cartera
+    </button>
+    <button
+      mat-stroked-button
+      *hasPermission="'reportes:exportar'"
+      [disabled]="exportando()"
+      (click)="exportarExcel()"
+    >
+      <mat-icon>download</mat-icon> Exportar Excel
+    </button>
+    <button mat-flat-button *hasPermission="'ventas:crear'" (click)="abrirFormulario()">
+      <mat-icon>add</mat-icon> Nueva venta
+    </button>
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Cliente</mat-label>
+      <mat-select [formControl]="clienteId">
+        <mat-option [value]="null">Todos</mat-option>
+        @for (cliente of clientes(); track cliente.id) {
+          <mat-option [value]="cliente.id">{{ cliente.nombre }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Tipo</mat-label>
+      <mat-select [formControl]="tipo">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="factura">Factura</mat-option>
+        <mat-option value="remision">Remisión</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="pendiente">Pendiente</mat-option>
+        <mat-option value="parcial">Parcial</mat-option>
+        <mat-option value="pagada">Pagada</mat-option>
+        <mat-option value="anulada">Anulada</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput type="date" [formControl]="desde" />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput type="date" [formControl]="hasta" />
+    </mat-form-field>
+  </div>
+
+  <mat-card class="table-card">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="numero">
+        <th mat-header-cell *matHeaderCellDef>Nº</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.numero }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="fecha">
+        <th mat-header-cell *matHeaderCellDef>Fecha</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef>Tipo</th>
+        <td mat-cell *matCellDef="let fila">
+          {{ fila.tipo === 'remision' ? 'Remisión' : 'Factura' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="cliente">
+        <th mat-header-cell *matHeaderCellDef>Cliente</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.cliente_nombre ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="total">
+        <th mat-header-cell *matHeaderCellDef class="num">Total</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="pagado">
+        <th mat-header-cell *matHeaderCellDef class="num">Pagado</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.pagado | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="saldo">
+        <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="estado">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr
+        mat-row
+        *matRowDef="let fila; columns: columnas"
+        class="fila-click"
+        matTooltip="Ver detalle"
+        (click)="abrirDetalle(fila)"
+      ></tr>
+    </table>
+
+    @if (!cargando() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>receipt_long</mat-icon>
+        <p>No hay ventas para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>

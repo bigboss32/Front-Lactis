@@ -1,0 +1,125 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Cuenta</mat-label>
+    <mat-select [formControl]="cuentaId">
+      <mat-option [value]="null">Todas</mat-option>
+      @for (cuenta of cuentas(); track cuenta.id) {
+        <mat-option [value]="cuenta.id">{{ cuenta.banco }} — {{ cuenta.numero_cuenta }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Conciliado</mat-label>
+    <mat-select [formControl]="conciliado">
+      <mat-option value="todos">Todos</mat-option>
+      <mat-option value="si">Sí</mat-option>
+      <mat-option value="no">No</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Desde</mat-label>
+    <input matInput type="date" [formControl]="desde" />
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Hasta</mat-label>
+    <input matInput type="date" [formControl]="hasta" />
+  </mat-form-field>
+  <span class="spacer"></span>
+  <button
+    mat-stroked-button
+    *hasPermission="'bancos:administrar'"
+    [disabled]="seleccion().size === 0 || conciliando()"
+    (click)="conciliarSeleccionados()"
+  >
+    <mat-icon>task_alt</mat-icon> Conciliar seleccionados ({{ seleccion().size }})
+  </button>
+  <button mat-flat-button *hasPermission="'bancos:crear'" (click)="nuevoMovimiento()">
+    <mat-icon>add</mat-icon> Nuevo movimiento
+  </button>
+</div>
+
+<mat-card class="table-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <table mat-table [dataSource]="filas()">
+    <ng-container matColumnDef="seleccion">
+      <th mat-header-cell *matHeaderCellDef>
+        <mat-checkbox
+          [checked]="todosSeleccionados()"
+          [indeterminate]="algunoSeleccionado() && !todosSeleccionados()"
+          [disabled]="seleccionables().length === 0"
+          (change)="toggleTodos($event.checked)"
+        />
+      </th>
+      <td mat-cell *matCellDef="let fila">
+        <mat-checkbox
+          [checked]="seleccion().has(fila.id)"
+          [disabled]="fila.conciliado"
+          (change)="toggleSeleccion(fila.id)"
+        />
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="fecha">
+      <th mat-header-cell *matHeaderCellDef>Fecha</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="cuenta">
+      <th mat-header-cell *matHeaderCellDef>Cuenta</th>
+      <td mat-cell *matCellDef="let fila">{{ cuentaNombre(fila.cuenta_id) }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="tipo">
+      <th mat-header-cell *matHeaderCellDef>Tipo</th>
+      <td mat-cell *matCellDef="let fila">
+        {{ fila.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="concepto">
+      <th mat-header-cell *matHeaderCellDef>Concepto</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.concepto }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="referencia">
+      <th mat-header-cell *matHeaderCellDef>Referencia</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.referencia ?? '—' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="valor">
+      <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+      <td mat-cell *matCellDef="let fila" class="num" [class.negativo]="fila.tipo === 'egreso'">
+        {{ fila.valor | money }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="conciliado">
+      <th mat-header-cell *matHeaderCellDef>Conciliado</th>
+      <td mat-cell *matCellDef="let fila">
+        <app-estado-chip [estado]="fila.conciliado ? 'conciliado' : 'pendiente'" />
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+  </table>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>receipt_long</mat-icon>
+      <p>No hay movimientos bancarios para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

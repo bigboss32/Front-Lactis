@@ -1,0 +1,113 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Desde</mat-label>
+    <input matInput type="date" [formControl]="desde" />
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Hasta</mat-label>
+    <input matInput type="date" [formControl]="hasta" />
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Tipo de queso</mat-label>
+    <mat-select [formControl]="tipoQuesoId">
+      <mat-option [value]="null">Todos</mat-option>
+      @for (tipo of tiposQueso(); track tipo.id) {
+        <mat-option [value]="tipo.id">{{ tipo.nombre }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <button
+    mat-flat-button
+    style="margin-left: auto"
+    *hasPermission="'produccion:crear'"
+    (click)="abrirFormulario()"
+  >
+    <mat-icon>add</mat-icon> Nueva producción
+  </button>
+</div>
+
+<mat-card class="table-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <table mat-table [dataSource]="filas()">
+    <ng-container matColumnDef="fecha">
+      <th mat-header-cell *matHeaderCellDef>Fecha</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="tipo_queso">
+      <th mat-header-cell *matHeaderCellDef>Tipo de queso</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.tipo_queso_nombre ?? '—' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="cantidad">
+      <th mat-header-cell *matHeaderCellDef class="num">Cantidad</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.cantidad | cantidad }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="peso_kg">
+      <th mat-header-cell *matHeaderCellDef class="num">Peso</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.peso_kg | cantidad: 'kg' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="litros_usados">
+      <th mat-header-cell *matHeaderCellDef class="num">Litros usados</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.litros_usados | cantidad: 'L' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="rendimiento">
+      <th mat-header-cell *matHeaderCellDef class="num">Rendimiento</th>
+      <td mat-cell *matCellDef="let fila" class="num">
+        {{ fila.rendimiento | number: '1.3-4' }} kg/L
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="merma">
+      <th mat-header-cell *matHeaderCellDef class="num">Merma</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.merma | cantidad }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="acciones">
+      <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+      <td mat-cell *matCellDef="let fila" class="col-acciones">
+        <button
+          mat-icon-button
+          *hasPermission="'produccion:editar'"
+          matTooltip="Editar"
+          (click)="abrirFormulario(fila)"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'produccion:eliminar'"
+          matTooltip="Eliminar"
+          (click)="eliminar(fila)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+  </table>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>inventory_2</mat-icon>
+      <p>No hay registros de producción para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

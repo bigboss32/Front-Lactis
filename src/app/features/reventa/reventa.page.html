@@ -1,0 +1,121 @@
+<div class="page">
+  <app-page-header
+    titulo="Compra y venta de queso"
+    subtitulo="Queso comprado a productores para revender; contabilidad separada del libro de la quesera"
+  >
+    <button
+      mat-stroked-button
+      *hasPermission="'reventa:crear'"
+      (click)="pasarABorona()"
+    >
+      <mat-icon>recycling</mat-icon> Pasar queso a borona
+    </button>
+    <button
+      mat-stroked-button
+      *hasPermission="'reventa:exportar'"
+      [disabled]="exportando()"
+      (click)="exportarExcel()"
+    >
+      <mat-icon>download</mat-icon> Exportar Excel
+    </button>
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput type="date" [formControl]="desde" />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput type="date" [formControl]="hasta" />
+    </mat-form-field>
+  </div>
+
+  @if (resumen(); as r) {
+    <div class="resumen-grid">
+      <div class="tarjeta azul">
+        <span class="icono"><mat-icon aria-hidden="true">inventory_2</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.kilos_disponibles | cantidad: 'kg' }}</span>
+          <span class="titulo">Queso disponible</span>
+        </span>
+      </div>
+
+      <div class="tarjeta ambar">
+        <span class="icono"><mat-icon aria-hidden="true">grain</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.borona_disponible | cantidad: 'kg' }}</span>
+          <span class="titulo">Borona disponible</span>
+          <span class="detalle">
+            vendida en el período: {{ r.kilos_borona_vendidos | cantidad: 'kg' }} ·
+            {{ r.total_ventas_borona | money }}
+          </span>
+        </span>
+      </div>
+
+      <div class="tarjeta" [class.verde]="!esNegativo(r.ganancia_estimada)" [class.rojo]="esNegativo(r.ganancia_estimada)">
+        <span class="icono">
+          <mat-icon aria-hidden="true">{{ esNegativo(r.ganancia_estimada) ? 'trending_down' : 'trending_up' }}</mat-icon>
+        </span>
+        <span class="textos">
+          <span class="cifra">{{ r.ganancia_estimada | money }}</span>
+          <span class="titulo">Ganancia del período</span>
+          <span class="detalle">{{ r.margen_por_kilo | money }}/kg de margen</span>
+        </span>
+      </div>
+
+      <div class="tarjeta ambar">
+        <span class="icono"><mat-icon aria-hidden="true">agriculture</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.por_pagar_productores | money }}</span>
+          <span class="titulo">Por pagar a productores</span>
+        </span>
+      </div>
+
+      <div class="tarjeta azul">
+        <span class="icono"><mat-icon aria-hidden="true">request_quote</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.por_cobrar_clientes | money }}</span>
+          <span class="titulo">Por cobrar a clientes</span>
+        </span>
+      </div>
+    </div>
+
+    <p class="linea-info">
+      En el período: comprados <strong>{{ r.kilos_comprados | cantidad: 'kg' }}</strong>
+      a <strong>{{ r.precio_promedio_compra | money }}</strong>/kg promedio ·
+      queso vendido <strong>{{ r.kilos_vendidos | cantidad: 'kg' }}</strong>
+      a <strong>{{ r.precio_promedio_venta | money }}</strong>/kg promedio
+    </p>
+  }
+
+  <mat-tab-group>
+    <mat-tab label="Compras a productores">
+      <ng-template matTabContent>
+        <div class="tab-panel">
+          <app-compra-list-tab
+            [desde]="desdeValor()"
+            [hasta]="hastaValor()"
+            (cambio)="cargarResumen()"
+          />
+        </div>
+      </ng-template>
+    </mat-tab>
+    <mat-tab label="Ventas de queso">
+      <ng-template matTabContent>
+        <div class="tab-panel">
+          <app-venta-queso-list-tab
+            [desde]="desdeValor()"
+            [hasta]="hastaValor()"
+            (cambio)="cargarResumen()"
+          />
+        </div>
+      </ng-template>
+    </mat-tab>
+  </mat-tab-group>
+
+  <app-conversion-list-panel
+    [recargar]="recargaConversiones()"
+    (cambio)="cargarResumen()"
+  />
+</div>

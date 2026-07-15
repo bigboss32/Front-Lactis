@@ -1,0 +1,92 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Nombre, descripción…" />
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Estado</mat-label>
+    <mat-select [formControl]="estado">
+      <mat-option [value]="null">Todos</mat-option>
+      <mat-option value="activo">Activo</mat-option>
+      <mat-option value="inactivo">Inactivo</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <button
+    mat-flat-button
+    style="margin-left: auto"
+    *hasPermission="'produccion:crear'"
+    (click)="abrirFormulario()"
+  >
+    <mat-icon>add</mat-icon> Nuevo tipo de queso
+  </button>
+</div>
+
+<mat-card class="table-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <table mat-table [dataSource]="filas()">
+    <ng-container matColumnDef="nombre">
+      <th mat-header-cell *matHeaderCellDef>Nombre</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.nombre }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="descripcion">
+      <th mat-header-cell *matHeaderCellDef>Descripción</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.descripcion ?? '—' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="precio_referencia">
+      <th mat-header-cell *matHeaderCellDef class="num">Precio de referencia</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.precio_referencia | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="estado">
+      <th mat-header-cell *matHeaderCellDef>Estado</th>
+      <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+    </ng-container>
+
+    <ng-container matColumnDef="acciones">
+      <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+      <td mat-cell *matCellDef="let fila" class="col-acciones">
+        <button
+          mat-icon-button
+          *hasPermission="'produccion:editar'"
+          matTooltip="Editar"
+          (click)="abrirFormulario(fila)"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'produccion:eliminar'"
+          matTooltip="Eliminar"
+          (click)="eliminar(fila)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+  </table>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>category</mat-icon>
+      <p>No hay tipos de queso para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

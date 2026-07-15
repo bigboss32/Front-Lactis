@@ -1,0 +1,105 @@
+<div class="page">
+  <app-page-header
+    titulo="Clientes"
+    subtitulo="Clientes de ventas de producto terminado"
+  >
+    <button mat-flat-button *hasPermission="'clientes:crear'" (click)="abrirFormulario()">
+      <mat-icon>add</mat-icon> Nuevo cliente
+    </button>
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Buscar</mat-label>
+      <input matInput [formControl]="buscar" placeholder="Nombre, documento, ciudad…" />
+      <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="activo">Activo</mat-option>
+        <mat-option value="inactivo">Inactivo</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  <mat-card class="table-card">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="nombre">
+        <th mat-header-cell *matHeaderCellDef>Nombre</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.nombre }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="documento">
+        <th mat-header-cell *matHeaderCellDef>Documento</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.documento ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="telefono">
+        <th mat-header-cell *matHeaderCellDef>Teléfono</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.telefono ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="correo">
+        <th mat-header-cell *matHeaderCellDef>Correo</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.correo ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="ciudad">
+        <th mat-header-cell *matHeaderCellDef>Ciudad</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.ciudad ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="estado">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let fila" class="col-acciones">
+          <button
+            mat-icon-button
+            *hasPermission="'clientes:editar'"
+            matTooltip="Editar"
+            (click)="abrirFormulario(fila)"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'clientes:eliminar'"
+            matTooltip="Eliminar"
+            (click)="eliminar(fila)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+    </table>
+
+    @if (!cargando() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>groups</mat-icon>
+        <p>No hay clientes para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>

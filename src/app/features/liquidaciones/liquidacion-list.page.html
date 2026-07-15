@@ -1,0 +1,186 @@
+<div class="page">
+  <app-page-header
+    titulo="Liquidaciones"
+    subtitulo="Liquidaciones quincenales de proveedores y transportadores"
+  >
+    <button
+      mat-stroked-button
+      *hasPermission="'liquidaciones:exportar'"
+      [disabled]="exportando()"
+      (click)="exportarExcel()"
+    >
+      <mat-icon>download</mat-icon> Exportar Excel
+    </button>
+    <button mat-flat-button *hasPermission="'liquidaciones:crear'" (click)="abrirGenerar()">
+      <mat-icon>calculate</mat-icon> Generar quincena
+    </button>
+  </app-page-header>
+
+  @if (resumen(); as r) {
+    <div class="resumen-grid">
+      <button
+        type="button"
+        class="tarjeta ambar"
+        [class.activa]="estado.value === 'borrador'"
+        [attr.aria-pressed]="estado.value === 'borrador'"
+        matTooltip="Mostrar solo las liquidaciones en borrador"
+        (click)="filtrarPorEstado('borrador')"
+      >
+        <span class="icono"><mat-icon aria-hidden="true">edit_note</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.borradores }}</span>
+          <span class="titulo">Borradores por revisar</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="tarjeta azul"
+        [class.activa]="estado.value === 'aprobada'"
+        [attr.aria-pressed]="estado.value === 'aprobada'"
+        matTooltip="Mostrar solo las liquidaciones aprobadas pendientes de pago"
+        (click)="filtrarPorEstado('aprobada')"
+      >
+        <span class="icono"><mat-icon aria-hidden="true">task_alt</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.aprobadas }}</span>
+          <span class="titulo">Aprobadas por pagar</span>
+          @if (r.aprobadas > 0) {
+            <span class="detalle">{{ r.saldoAprobadas | money }} en saldos</span>
+          }
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="tarjeta verde"
+        [class.activa]="estado.value === 'pagada'"
+        [attr.aria-pressed]="estado.value === 'pagada'"
+        matTooltip="Mostrar solo las liquidaciones ya pagadas"
+        (click)="filtrarPorEstado('pagada')"
+      >
+        <span class="icono"><mat-icon aria-hidden="true">payments</mat-icon></span>
+        <span class="textos">
+          <span class="cifra">{{ r.pagadas }}</span>
+          <span class="titulo">Pagadas en el período</span>
+        </span>
+      </button>
+    </div>
+  }
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Tipo</mat-label>
+      <mat-select [formControl]="tipo">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="proveedor">Proveedor</mat-option>
+        <mat-option value="transportador">Transportador</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="borrador">Borrador</mat-option>
+        <mat-option value="aprobada">Aprobada</mat-option>
+        <mat-option value="pagada">Pagada</mat-option>
+        <mat-option value="anulada">Anulada</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput type="date" [formControl]="desde" />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput type="date" [formControl]="hasta" />
+    </mat-form-field>
+  </div>
+
+  <mat-card class="table-card">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef>Tipo</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.tipo === 'proveedor' ? 'Proveedor' : 'Transportador' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="tercero">
+        <th mat-header-cell *matHeaderCellDef>Tercero</th>
+        <td mat-cell *matCellDef="let fila">
+          {{ fila.proveedor_nombre ?? fila.transportador_nombre ?? '—' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="periodo">
+        <th mat-header-cell *matHeaderCellDef>Período</th>
+        <td mat-cell *matCellDef="let fila">
+          {{ fila.periodo_inicio | date: 'dd/MM/yyyy' }} – {{ fila.periodo_fin | date: 'dd/MM/yyyy' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="litros">
+        <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_litros | cantidad: 'L' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="valor_total">
+        <th mat-header-cell *matHeaderCellDef class="num">Valor total</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_total | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="anticipos">
+        <th mat-header-cell *matHeaderCellDef class="num">Anticipos</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.anticipos | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="saldo">
+        <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+        <td mat-cell *matCellDef="let fila" class="num">
+          {{ fila.saldo | money }}
+          @if (esPorPagar(fila)) {
+            <span class="badge-por-pagar" matTooltip="Liquidación aprobada con saldo pendiente de pago">
+              por pagar
+            </span>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="estado">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let fila" class="col-acciones">
+          <button mat-icon-button matTooltip="Ver detalle" (click)="verDetalle(fila)">
+            <mat-icon>visibility</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr mat-row *matRowDef="let fila; columns: columnas" [class]="'fila-' + fila.estado"></tr>
+    </table>
+
+    @if (!cargando() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>receipt_long</mat-icon>
+        <p>No hay liquidaciones para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>

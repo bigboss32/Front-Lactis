@@ -1,0 +1,196 @@
+<div class="page">
+  <app-page-header
+    titulo="Recepción de leche"
+    subtitulo="Registro diario de litros recibidos por proveedor"
+  >
+    <button
+      mat-flat-button
+      *hasPermission="'recepcion:crear'"
+      matTooltip="Registrar una recepción con cualquier fecha y proveedor"
+      (click)="abrirFormulario()"
+    >
+      <mat-icon>add</mat-icon> Nueva recepción
+    </button>
+  </app-page-header>
+
+  <mat-tab-group>
+    <!-- ------------------------------------------------ Grilla de quincena -->
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon class="tab-icono">calendar_view_month</mat-icon>
+        Grilla de quincena
+      </ng-template>
+      <div class="tab-panel">
+        <app-recepcion-grilla-tab (cambio)="alCambiarGrilla()" />
+      </div>
+    </mat-tab>
+
+    <!-- ---------------------------------------------------------- Listado -->
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon class="tab-icono">list</mat-icon>
+        Listado
+      </ng-template>
+      <div class="tab-panel">
+        <div class="page-toolbar">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Desde</mat-label>
+            <input matInput type="date" [formControl]="desde" />
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Hasta</mat-label>
+            <input matInput type="date" [formControl]="hasta" />
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Proveedor</mat-label>
+            <mat-select [formControl]="proveedorId">
+              <mat-option [value]="null">Todos</mat-option>
+              @for (proveedor of proveedores(); track proveedor.id) {
+                <mat-option [value]="proveedor.id">{{ proveedor.nombre }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <span class="spacer"></span>
+          <button
+            mat-stroked-button
+            *hasPermission="'reportes:exportar'"
+            matTooltip="Descarga el Excel con el rango de fechas filtrado"
+            [disabled]="exportando()"
+            (click)="exportar()"
+          >
+            <mat-icon>file_download</mat-icon> Exportar Excel
+          </button>
+        </div>
+
+        @if (resumen(); as r) {
+          <mat-card class="resumen-card">
+            <div class="resumen-titulo">
+              Resumen del período
+              <span class="resumen-rango">
+                {{ r.desde | date: 'dd/MM/yyyy' }} — {{ r.hasta | date: 'dd/MM/yyyy' }}
+              </span>
+            </div>
+            <div class="resumen-grid">
+              <div class="stat">
+                <span class="valor">{{ r.total_litros | cantidad: 'L' }}</span>
+                <span class="etiqueta">Total litros</span>
+              </div>
+              <div class="stat">
+                <span class="valor">{{ r.valor_bruto | money }}</span>
+                <span class="etiqueta">Valor bruto</span>
+              </div>
+              <div class="stat">
+                <span class="valor">{{ r.valor_transporte | money }}</span>
+                <span class="etiqueta">Transporte</span>
+              </div>
+              <div class="stat">
+                <span class="valor">{{ r.valor_neto | money }}</span>
+                <span class="etiqueta">Valor neto</span>
+              </div>
+              <div class="stat">
+                <span class="valor">{{ r.precio_promedio | money }}</span>
+                <span class="etiqueta">Precio promedio/L</span>
+              </div>
+            </div>
+          </mat-card>
+        }
+
+        <mat-card class="table-card">
+          @if (cargando()) {
+            <mat-progress-bar mode="indeterminate" />
+          }
+
+          <table mat-table [dataSource]="filas()">
+            <ng-container matColumnDef="fecha">
+              <th mat-header-cell *matHeaderCellDef>Fecha</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="proveedor">
+              <th mat-header-cell *matHeaderCellDef>Proveedor</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.proveedor_nombre ?? '—' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="litros">
+              <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.cantidad_litros | cantidad: 'L' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="precio_litro">
+              <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.precio_litro | money }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="valor_bruto">
+              <th mat-header-cell *matHeaderCellDef class="num">Valor bruto</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_bruto | money }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="descuentos">
+              <th mat-header-cell *matHeaderCellDef class="num">Descuentos</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.descuentos | money }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="valor_neto">
+              <th mat-header-cell *matHeaderCellDef class="num">Valor neto</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_neto | money }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="liquidacion">
+              <th mat-header-cell *matHeaderCellDef>Liquidación</th>
+              <td mat-cell *matCellDef="let fila">
+                @if (fila.liquidacion_id) {
+                  <span class="liq liquidada"><mat-icon>check_circle</mat-icon> Liquidada</span>
+                } @else {
+                  <span class="liq pendiente"><mat-icon>schedule</mat-icon> Pendiente</span>
+                }
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="acciones">
+              <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+              <td mat-cell *matCellDef="let fila" class="col-acciones">
+                <button
+                  mat-icon-button
+                  *hasPermission="'recepcion:editar'"
+                  [matTooltip]="fila.liquidacion_id ? 'Ya liquidada: no editable' : 'Editar'"
+                  [disabled]="!!fila.liquidacion_id"
+                  (click)="abrirFormulario(fila)"
+                >
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  *hasPermission="'recepcion:eliminar'"
+                  matTooltip="Eliminar"
+                  (click)="eliminar(fila)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+            <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+          </table>
+
+          @if (!cargando() && filas().length === 0) {
+            <div class="empty-state">
+              <mat-icon>water_drop</mat-icon>
+              <p>No hay recepciones para los filtros seleccionados</p>
+            </div>
+          }
+
+          <mat-paginator
+            [length]="total()"
+            [pageIndex]="page() - 1"
+            [pageSize]="pageSize()"
+            [pageSizeOptions]="[10, 20, 50, 100]"
+            (page)="cambiarPagina($event)"
+            showFirstLastButtons
+          />
+        </mat-card>
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</div>

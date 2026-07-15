@@ -1,0 +1,107 @@
+<div class="page">
+  <app-page-header
+    titulo="Caja"
+    subtitulo="Cajas diarias con sus ingresos, egresos y arqueo"
+  >
+    <button mat-flat-button *hasPermission="'caja:crear'" (click)="abrirCaja()">
+      <mat-icon>point_of_sale</mat-icon> Abrir caja
+    </button>
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="abierta">Abierta</mat-option>
+        <mat-option value="cerrada">Cerrada</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput type="date" [formControl]="desde" />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput type="date" [formControl]="hasta" />
+    </mat-form-field>
+  </div>
+
+  <mat-card class="table-card">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="fecha">
+        <th mat-header-cell *matHeaderCellDef>Fecha</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="sucursal">
+        <th mat-header-cell *matHeaderCellDef>Sucursal</th>
+        <td mat-cell *matCellDef="let fila">{{ sucursalNombre(fila.sucursal_id) }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="saldo_inicial">
+        <th mat-header-cell *matHeaderCellDef class="num">Saldo inicial</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_inicial | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="total_ingresos">
+        <th mat-header-cell *matHeaderCellDef class="num">Ingresos</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_ingresos | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="total_egresos">
+        <th mat-header-cell *matHeaderCellDef class="num">Egresos</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_egresos | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="saldo_final">
+        <th mat-header-cell *matHeaderCellDef class="num">Saldo final</th>
+        <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_final | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="estado">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      </ng-container>
+
+      <ng-container matColumnDef="diferencia">
+        <th mat-header-cell *matHeaderCellDef class="num">Diferencia</th>
+        <td mat-cell *matCellDef="let fila" class="num">
+          @if (fila.estado === 'cerrada') {
+            <span [class.negativo]="+(fila.diferencia ?? 0) < 0">{{ fila.diferencia | money }}</span>
+          } @else {
+            —
+          }
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr
+        mat-row
+        *matRowDef="let fila; columns: columnas"
+        class="fila-caja"
+        (click)="verDetalle(fila)"
+      ></tr>
+    </table>
+
+    @if (!cargando() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>point_of_sale</mat-icon>
+        <p>No hay cajas para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>

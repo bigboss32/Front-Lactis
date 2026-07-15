@@ -1,0 +1,103 @@
+<h2 mat-dialog-title>Nueva venta</h2>
+<mat-dialog-content>
+  <form [formGroup]="form" id="form-venta" (ngSubmit)="guardar()">
+    <div class="form-grid">
+      <mat-form-field>
+        <mat-label>Tipo</mat-label>
+        <mat-select formControlName="tipo" required>
+          <mat-option value="factura">Factura</mat-option>
+          <mat-option value="remision">Remisión</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>Cliente</mat-label>
+        <mat-select formControlName="cliente_id" required>
+          @for (cliente of clientes(); track cliente.id) {
+            <mat-option [value]="cliente.id">{{ cliente.nombre }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>Fecha</mat-label>
+        <input matInput type="date" formControlName="fecha" required />
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>Descuento</mat-label>
+        <input matInput type="number" min="0" formControlName="descuento" />
+        <span matTextPrefix>$&nbsp;</span>
+      </mat-form-field>
+    </div>
+
+    <h3 class="seccion">Productos</h3>
+    <div formArrayName="lineas">
+      @for (linea of lineas.controls; track linea; let i = $index) {
+        <div class="linea" [formGroupName]="i">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Producto</mat-label>
+            <mat-select formControlName="producto_id" required>
+              @for (producto of productos(); track producto.id) {
+                <mat-option [value]="producto.id">{{ producto.nombre }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Cantidad</mat-label>
+            <input matInput type="number" min="0" formControlName="cantidad" required />
+          </mat-form-field>
+
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Precio unitario</mat-label>
+            <input matInput type="number" min="0" formControlName="precio_unitario" required />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+
+          <span class="subtotal-linea">{{ subtotales()[i] | money }}</span>
+
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Quitar línea"
+            [disabled]="lineas.length === 1"
+            (click)="eliminarLinea(i)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      }
+    </div>
+
+    <button mat-stroked-button type="button" class="agregar" (click)="agregarLinea()">
+      <mat-icon>add</mat-icon> Agregar línea
+    </button>
+
+    <div class="totales">
+      <div><span>Subtotal</span><strong>{{ subtotal() | money }}</strong></div>
+      <div><span>Descuento</span><strong>&minus; {{ descuentoValor() | money }}</strong></div>
+      <div class="total-final"><span>Total</span><strong>{{ total() | money }}</strong></div>
+    </div>
+
+    <mat-checkbox formControlName="descontar_inventario">
+      Descontar del inventario (valida el stock disponible)
+    </mat-checkbox>
+
+    <mat-form-field class="obs">
+      <mat-label>Observaciones</mat-label>
+      <textarea matInput formControlName="observaciones" rows="2"></textarea>
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancelar</button>
+  <button
+    mat-flat-button
+    type="submit"
+    form="form-venta"
+    [disabled]="form.invalid || total() < 0 || guardando()"
+  >
+    Registrar venta
+  </button>
+</mat-dialog-actions>

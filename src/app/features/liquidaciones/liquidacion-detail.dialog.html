@@ -1,0 +1,134 @@
+<h2 mat-dialog-title>
+  Liquidación de {{ liq().tipo === 'proveedor' ? 'proveedor' : 'transportador' }} — {{ tercero() }}
+</h2>
+
+<mat-dialog-content>
+  @if (procesando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <app-liquidacion-estado-stepper [estado]="liq().estado" />
+
+  <div class="info">
+    <div>
+      <span class="etiqueta">Período</span>
+      {{ liq().periodo_inicio | date: 'dd/MM/yyyy' }} – {{ liq().periodo_fin | date: 'dd/MM/yyyy' }}
+    </div>
+    <div>
+      <span class="etiqueta">Estado</span>
+      <app-estado-chip [estado]="liq().estado" />
+    </div>
+    @if (liq().observaciones) {
+      <div>
+        <span class="etiqueta">Observaciones</span>
+        {{ liq().observaciones }}
+      </div>
+    }
+  </div>
+
+  <h3>Detalle diario</h3>
+  <table mat-table [dataSource]="liq().detalles">
+    <ng-container matColumnDef="fecha">
+      <th mat-header-cell *matHeaderCellDef>Fecha</th>
+      <td mat-cell *matCellDef="let detalle">{{ detalle.fecha | date: 'dd/MM/yyyy' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="litros">
+      <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
+      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.litros | cantidad: 'L' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="precio_litro">
+      <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
+      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.precio_litro | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="valor">
+      <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.valor | money }}</td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnasDetalle"></tr>
+    <tr mat-row *matRowDef="let detalle; columns: columnasDetalle"></tr>
+  </table>
+
+  @if (liq().detalles.length === 0) {
+    <p class="sin-datos">Esta liquidación no tiene detalles diarios</p>
+  }
+
+  <h3>Resumen</h3>
+  <div class="resumen">
+    <span>Total litros</span>
+    <span class="num">{{ liq().total_litros | cantidad: 'L' }}</span>
+
+    <span>Precio promedio</span>
+    <span class="num">{{ liq().precio_promedio | money }}</span>
+
+    <span>Valor bruto</span>
+    <span class="num">{{ liq().valor_bruto | money }}</span>
+
+    <span>Bonificaciones</span>
+    <span class="num">{{ liq().bonificaciones | money }}</span>
+
+    <span>Descuentos</span>
+    <span class="num">{{ liq().descuentos | money }}</span>
+
+    <span>Valor transporte</span>
+    <span class="num">{{ liq().valor_transporte | money }}</span>
+
+    <span>Anticipos aplicados</span>
+    <span class="num">{{ liq().anticipos | money }}</span>
+
+    <span class="destacado">Valor total</span>
+    <span class="num destacado">{{ liq().valor_total | money }}</span>
+
+    <span class="destacado">Saldo a pagar</span>
+    <span class="num destacado">{{ liq().saldo | money }}</span>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close>Cerrar</button>
+
+  <button
+    mat-stroked-button
+    *hasPermission="'liquidaciones:imprimir'"
+    [disabled]="descargando()"
+    (click)="descargarPdf()"
+  >
+    <mat-icon>picture_as_pdf</mat-icon> PDF
+  </button>
+
+  @if (liq().estado === 'borrador' || liq().estado === 'aprobada') {
+    <button
+      mat-stroked-button
+      *hasPermission="'liquidaciones:administrar'"
+      [disabled]="procesando()"
+      (click)="anular()"
+    >
+      <mat-icon>block</mat-icon> Anular
+    </button>
+  }
+
+  @if (liq().estado === 'borrador') {
+    <button
+      mat-flat-button
+      *hasPermission="'liquidaciones:administrar'"
+      [disabled]="procesando()"
+      (click)="aprobar()"
+    >
+      <mat-icon>check_circle</mat-icon> Aprobar
+    </button>
+  }
+
+  @if (liq().estado === 'aprobada') {
+    <button
+      mat-flat-button
+      *hasPermission="'liquidaciones:administrar'"
+      [disabled]="procesando()"
+      (click)="pagar()"
+    >
+      <mat-icon>payments</mat-icon> Pagar
+    </button>
+  }
+</mat-dialog-actions>

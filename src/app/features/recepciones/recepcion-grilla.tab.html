@@ -1,0 +1,160 @@
+<!-- Navegación de quincena en quincena (1-15 y 16-fin de mes) -->
+<div class="selector-quincena">
+  <button
+    mat-icon-button
+    matTooltip="Quincena anterior"
+    aria-label="Quincena anterior"
+    (click)="anterior()"
+  >
+    <mat-icon>chevron_left</mat-icon>
+  </button>
+  <span class="etiqueta-quincena">
+    {{ etiqueta() }}
+    <span class="rango-quincena">
+      {{ rango().desde | date: 'dd/MM/yyyy' }} — {{ rango().hasta | date: 'dd/MM/yyyy' }}
+    </span>
+  </span>
+  <button
+    mat-icon-button
+    matTooltip="Quincena siguiente"
+    aria-label="Quincena siguiente"
+    (click)="siguiente()"
+  >
+    <mat-icon>chevron_right</mat-icon>
+  </button>
+</div>
+
+<mat-card class="grilla-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (grilla(); as g) {
+    @if (g.filas.length === 0) {
+      <div class="empty-state">
+        <mat-icon>water_drop</mat-icon>
+        <p>No hay recepciones registradas en esta quincena</p>
+      </div>
+    } @else {
+      <div class="grilla-scroll">
+        <table class="grilla">
+          <thead>
+            <tr>
+              <th class="col-proveedor" scope="col">Proveedor</th>
+              @for (dia of dias(); track dia.iso) {
+                <th class="col-dia" [class.hoy]="dia.iso === hoy" scope="col">
+                  <span class="num-dia">{{ dia.dia }}</span>
+                  <span class="abrev-dia">{{ dia.abrev }}</span>
+                </th>
+              }
+              <th class="col-total" scope="col">Litros</th>
+              <th class="col-total" scope="col">Valor neto</th>
+              <th class="col-total" scope="col">Transporte</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            @for (fila of g.filas; track fila.proveedor_id) {
+              <tr>
+                <td class="col-proveedor">
+                  <div class="prov">
+                    <span class="prov-nombre">{{ fila.proveedor_nombre }}</span>
+                    @if (fila.vereda) {
+                      <span class="prov-detalle">{{ fila.vereda }}</span>
+                    }
+                    <span class="prov-detalle">{{ fila.precio_litro | money }} /L</span>
+                  </div>
+                </td>
+
+                @for (dia of dias(); track dia.iso) {
+                  <td class="celda" [class.hoy]="dia.iso === hoy">
+                    @if (fila.celdas[dia.iso]; as celda) {
+                      @if (celda.liquidada) {
+                        <span
+                          class="celda-contenido liquidada"
+                          matTooltip="Liquidada — no editable"
+                        >
+                          {{ celda.litros | cantidad }}
+                          <mat-icon class="candado">lock</mat-icon>
+                        </span>
+                      } @else if (puedeEditar()) {
+                        <button
+                          type="button"
+                          class="celda-btn"
+                          [matTooltip]="'Editar recepción del ' + (dia.iso | date: 'dd/MM')"
+                          [attr.aria-label]="
+                            'Editar recepción de ' + fila.proveedor_nombre +
+                            ' del ' + (dia.iso | date: 'dd/MM/yyyy')
+                          "
+                          (click)="clickCelda(fila, dia.iso)"
+                        >
+                          {{ celda.litros | cantidad }}
+                        </button>
+                      } @else {
+                        <span class="celda-contenido">{{ celda.litros | cantidad }}</span>
+                      }
+                    } @else {
+                      @if (puedeCrear()) {
+                        <button
+                          type="button"
+                          class="celda-btn vacia"
+                          [matTooltip]="'Registrar litros del ' + (dia.iso | date: 'dd/MM')"
+                          [attr.aria-label]="
+                            'Registrar litros de ' + fila.proveedor_nombre +
+                            ' el ' + (dia.iso | date: 'dd/MM/yyyy')
+                          "
+                          (click)="clickCelda(fila, dia.iso)"
+                        >
+                          <mat-icon class="mas">add</mat-icon>
+                        </button>
+                      } @else {
+                        <span class="celda-contenido"></span>
+                      }
+                    }
+                  </td>
+                }
+
+                <td class="col-total">{{ fila.total_litros | cantidad: 'L' }}</td>
+                <td class="col-total">{{ fila.valor_neto | money }}</td>
+                <td class="col-total">{{ fila.valor_transporte | money }}</td>
+              </tr>
+            }
+          </tbody>
+
+          <tfoot>
+            <tr class="fila-total">
+              <td class="col-proveedor">TOTAL DÍA</td>
+              @for (dia of dias(); track dia.iso) {
+                <td [class.hoy]="dia.iso === hoy">
+                  {{ g.totales_dia[dia.iso] | cantidad }}
+                </td>
+              }
+              <td class="col-total">{{ g.total_litros | cantidad: 'L' }}</td>
+              <td class="col-total">{{ g.total_valor_neto | money }}</td>
+              <td class="col-total">{{ g.total_transporte | money }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    }
+  }
+</mat-card>
+
+<!-- Leyenda + exportación con el rango de la grilla -->
+<div class="leyenda">
+  <span class="leyenda-item"><span class="muestra"></span> Sin registro (clic para anotar)</span>
+  <span class="leyenda-item"><span class="muestra">nº</span> Litros del día (clic para editar)</span>
+  <span class="leyenda-item">
+    <span class="muestra liquidada"><mat-icon>lock</mat-icon></span> Liquidada — no editable
+  </span>
+  <span class="spacer"></span>
+  <button
+    mat-stroked-button
+    *hasPermission="'reportes:exportar'"
+    matTooltip="Descarga el Excel de las recepciones de esta quincena"
+    [disabled]="exportando()"
+    (click)="exportar()"
+  >
+    <mat-icon>file_download</mat-icon> Exportar Excel
+  </button>
+</div>

@@ -1,0 +1,152 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar productor</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Nombre del productor" />
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Estado</mat-label>
+    <mat-select [formControl]="estado">
+      <mat-option [value]="null">Todos</mat-option>
+      <mat-option value="pendiente">Pendiente</mat-option>
+      <mat-option value="parcial">Parcial</mat-option>
+      <mat-option value="pagada">Pagada</mat-option>
+      <mat-option value="anulada">Anulada</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <span class="spacer"></span>
+  <button mat-flat-button *hasPermission="'reventa:crear'" (click)="nueva()">
+    <mat-icon>add</mat-icon> Nueva compra
+  </button>
+</div>
+
+<mat-card class="table-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <table mat-table [dataSource]="filas()">
+    <ng-container matColumnDef="fecha">
+      <th mat-header-cell *matHeaderCellDef>Fecha</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="productor">
+      <th mat-header-cell *matHeaderCellDef>Productor</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.productor }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="kilos_brutos">
+      <th mat-header-cell *matHeaderCellDef class="num">Kilos brutos</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.kilos_brutos | cantidad: 'kg' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="merma">
+      <th mat-header-cell *matHeaderCellDef class="num">Merma</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.merma_kilos | cantidad: 'kg' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="kilos_netos">
+      <th mat-header-cell *matHeaderCellDef class="num">Kilos netos</th>
+      <td mat-cell *matCellDef="let fila" class="num">
+        <strong>{{ fila.kilos_netos | cantidad: 'kg' }}</strong>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="precio_kilo">
+      <th mat-header-cell *matHeaderCellDef class="num">Precio/kg</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.precio_kilo | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="valor_total">
+      <th mat-header-cell *matHeaderCellDef class="num">Total</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_total | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="abonado">
+      <th mat-header-cell *matHeaderCellDef class="num">Abonado</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.abonado | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="saldo">
+      <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+      <td mat-cell *matCellDef="let fila" class="num">
+        {{ fila.saldo | money }}
+        @if (conSaldo(fila)) {
+          <span class="badge-saldo" matTooltip="Saldo pendiente por pagar al productor">
+            por pagar
+          </span>
+        }
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="estado">
+      <th mat-header-cell *matHeaderCellDef>Estado</th>
+      <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+    </ng-container>
+
+    <ng-container matColumnDef="acciones">
+      <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+      <td mat-cell *matCellDef="let fila" class="col-acciones">
+        <button
+          mat-icon-button
+          *hasPermission="'reventa:crear'"
+          matTooltip="Abonar al productor"
+          [disabled]="!puedeAbonar(fila)"
+          (click)="abonar(fila)"
+        >
+          <mat-icon>payments</mat-icon>
+        </button>
+        <button mat-icon-button matTooltip="Ver abonos" (click)="verAbonos(fila)">
+          <mat-icon>receipt_long</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'reventa:editar'"
+          matTooltip="Editar (solo sin abonos)"
+          [disabled]="tieneAbonos(fila) || fila.estado === 'anulada'"
+          (click)="editar(fila)"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'reventa:administrar'"
+          matTooltip="Anular"
+          [disabled]="fila.estado === 'anulada'"
+          (click)="anular(fila)"
+        >
+          <mat-icon>block</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'reventa:eliminar'"
+          matTooltip="Eliminar (solo sin abonos)"
+          [disabled]="tieneAbonos(fila)"
+          (click)="eliminar(fila)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+  </table>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>shopping_basket</mat-icon>
+      <p>No hay compras de queso para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

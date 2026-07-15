@@ -1,0 +1,102 @@
+@use '@angular/material' as mat;
+
+html {
+  // color-scheme controla claro/oscuro: ThemeService lo alterna en <html>
+  color-scheme: light;
+
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$yellow-palette,
+    ),
+    typography: Roboto,
+    density: 0,
+  ));
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: Roboto, 'Helvetica Neue', sans-serif;
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+}
+
+// ---------------------------------------------------------------- utilidades
+.spacer { flex: 1 1 auto; }
+
+.page {
+  padding: 16px 24px 32px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+
+  .mat-mdc-form-field { flex: 0 1 260px; }
+}
+
+.table-card {
+  overflow: auto;
+
+  table { width: 100%; }
+
+  .col-acciones {
+    width: 110px;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 4px 16px;
+  padding-top: 8px;
+
+  .full { grid-column: 1 / -1; }
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--mat-sys-on-surface-variant);
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+  }
+}
+
+@media (max-width: 800px) {
+  .page { padding: 12px; }
+}

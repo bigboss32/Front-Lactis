@@ -1,0 +1,116 @@
+<mat-sidenav-container class="shell">
+  <mat-sidenav
+    #sidenav
+    class="sidenav"
+    [mode]="esMovil() ? 'over' : 'side'"
+    [opened]="!esMovil()"
+  >
+    <div class="brand">
+      <mat-icon>storefront</mat-icon>
+      <span>Lactis</span>
+    </div>
+
+    <mat-nav-list>
+      @for (grupo of grupos(); track grupo.title) {
+        @if (grupo.title) {
+          <div matSubheader>{{ grupo.title }}</div>
+        }
+        @for (item of grupo.items; track item.route) {
+          <a
+            mat-list-item
+            [routerLink]="item.route"
+            routerLinkActive="activo"
+            (click)="esMovil() && sidenav.close()"
+          >
+            <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+            <span matListItemTitle>{{ item.label }}</span>
+          </a>
+        }
+      }
+    </mat-nav-list>
+  </mat-sidenav>
+
+  <mat-sidenav-content>
+    <mat-toolbar class="toolbar">
+      <button mat-icon-button (click)="sidenav.toggle()" aria-label="Menú">
+        <mat-icon>menu</mat-icon>
+      </button>
+
+      @if (auth.esSuperadmin() && empresas().length > 0) {
+        <mat-select
+          class="selector-empresa"
+          [value]="auth.empresaActiva()"
+          (valueChange)="cambiarEmpresa($event)"
+          aria-label="Empresa activa"
+        >
+          @for (empresa of empresas(); track empresa.id) {
+            <mat-option [value]="empresa.id">{{ empresa.nombre }}</mat-option>
+          }
+        </mat-select>
+      }
+
+      <span class="spacer"></span>
+
+      <button
+        mat-icon-button
+        (click)="theme.toggle()"
+        [matTooltip]="theme.dark() ? 'Modo claro' : 'Modo oscuro'"
+      >
+        <mat-icon>{{ theme.dark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
+      </button>
+
+      <button
+        mat-icon-button
+        [matMenuTriggerFor]="menuNotificaciones"
+        matTooltip="Notificaciones"
+      >
+        <mat-icon
+          [matBadge]="notificaciones.noLeidas() || null"
+          matBadgeColor="warn"
+          matBadgeSize="small"
+        >notifications</mat-icon>
+      </button>
+
+      <button mat-icon-button [matMenuTriggerFor]="menuUsuario" matTooltip="Cuenta">
+        <mat-icon>account_circle</mat-icon>
+      </button>
+    </mat-toolbar>
+
+    <mat-menu #menuNotificaciones="matMenu" class="menu-notificaciones">
+      @if (notificaciones.ultimas().length === 0) {
+        <div class="menu-vacio">Sin notificaciones pendientes</div>
+      } @else {
+        @for (notificacion of notificaciones.ultimas(); track notificacion.id) {
+          <button mat-menu-item (click)="notificaciones.marcarLeida(notificacion.id)">
+            <div class="notificacion-item">
+              <strong>{{ notificacion.titulo }}</strong>
+              <small>{{ notificacion.mensaje }}</small>
+            </div>
+          </button>
+        }
+        <mat-divider />
+        <button mat-menu-item (click)="notificaciones.marcarTodas()">
+          <mat-icon>done_all</mat-icon> Marcar todas como leídas
+        </button>
+      }
+    </mat-menu>
+
+    <mat-menu #menuUsuario="matMenu">
+      <div class="menu-perfil">
+        <strong>{{ auth.perfil()?.nombre }} {{ auth.perfil()?.apellido }}</strong>
+        <small>{{ auth.perfil()?.roles?.join(', ') }}</small>
+      </div>
+      <mat-divider />
+      <button mat-menu-item routerLink="/perfil">
+        <mat-icon>lock_reset</mat-icon> Cambiar contraseña
+      </button>
+      <button mat-menu-item (click)="logout()">
+        <mat-icon>logout</mat-icon> Cerrar sesión
+      </button>
+    </mat-menu>
+
+    <main>
+      <router-outlet />
+    </main>
+  </mat-sidenav-content>
+</mat-sidenav-container>

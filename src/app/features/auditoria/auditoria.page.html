@@ -1,0 +1,165 @@
+<div class="page">
+  <app-page-header
+    titulo="Auditoría"
+    subtitulo="Bitácora de operaciones e inicios de sesión del sistema"
+  />
+
+  <mat-tab-group>
+    <!-- -------------------------------------------------------- Operaciones -->
+    <mat-tab label="Operaciones">
+      <div class="contenido-tab">
+        <div class="page-toolbar">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Módulo</mat-label>
+            <input matInput [formControl]="modulo" placeholder="proveedores, ventas…" />
+            <mat-icon matSuffix>filter_alt</mat-icon>
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Acción</mat-label>
+            <input matInput [formControl]="accion" placeholder="crear, actualizar…" />
+            <mat-icon matSuffix>filter_alt</mat-icon>
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Desde</mat-label>
+            <input matInput type="date" [formControl]="desde" />
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Hasta</mat-label>
+            <input matInput type="date" [formControl]="hasta" />
+          </mat-form-field>
+        </div>
+
+        <mat-card class="table-card">
+          @if (cargandoOps()) {
+            <mat-progress-bar mode="indeterminate" />
+          }
+
+          <table mat-table [dataSource]="operaciones()">
+            <ng-container matColumnDef="fecha">
+              <th mat-header-cell *matHeaderCellDef>Fecha</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="modulo">
+              <th mat-header-cell *matHeaderCellDef>Módulo</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.modulo }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="accion">
+              <th mat-header-cell *matHeaderCellDef>Acción</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.accion }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="entidad">
+              <th mat-header-cell *matHeaderCellDef>Entidad</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.entidad }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="ip">
+              <th mat-header-cell *matHeaderCellDef>IP</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.ip ?? '—' }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="columnasOps"></tr>
+            <tr
+              mat-row
+              *matRowDef="let fila; columns: columnasOps"
+              class="fila-clic"
+              (click)="verDetalle(fila)"
+            ></tr>
+          </table>
+
+          @if (!cargandoOps() && operaciones().length === 0) {
+            <div class="empty-state">
+              <mat-icon>history</mat-icon>
+              <p>No hay operaciones para los filtros seleccionados</p>
+            </div>
+          }
+
+          <mat-paginator
+            [length]="totalOps()"
+            [pageIndex]="pageOps() - 1"
+            [pageSize]="pageSizeOps()"
+            [pageSizeOptions]="[10, 20, 50, 100]"
+            (page)="cambiarPaginaOps($event)"
+            showFirstLastButtons
+          />
+        </mat-card>
+      </div>
+    </mat-tab>
+
+    <!-- -------------------------------------------------- Inicios de sesión -->
+    <mat-tab label="Inicios de sesión">
+      <div class="contenido-tab">
+        <div class="page-toolbar">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Resultado</mat-label>
+            <mat-select [formControl]="exito">
+              <mat-option [value]="null">Todos</mat-option>
+              <mat-option [value]="true">Exitosos</mat-option>
+              <mat-option [value]="false">Fallidos</mat-option>
+            </mat-select>
+          </mat-form-field>
+        </div>
+
+        <mat-card class="table-card">
+          @if (cargandoLogins()) {
+            <mat-progress-bar mode="indeterminate" />
+          }
+
+          <table mat-table [dataSource]="logins()">
+            <ng-container matColumnDef="fecha">
+              <th mat-header-cell *matHeaderCellDef>Fecha</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.created_at | date: 'dd/MM/yyyy HH:mm' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="username_intentado">
+              <th mat-header-cell *matHeaderCellDef>Usuario</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.username_intentado ?? '—' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="exito">
+              <th mat-header-cell *matHeaderCellDef>Éxito</th>
+              <td mat-cell *matCellDef="let fila">
+                @if (fila.exito) {
+                  <mat-icon class="ok">check_circle</mat-icon>
+                } @else {
+                  <mat-icon class="fallo">cancel</mat-icon>
+                }
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="motivo">
+              <th mat-header-cell *matHeaderCellDef>Motivo</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.motivo ?? '—' }}</td>
+            </ng-container>
+
+            <ng-container matColumnDef="ip">
+              <th mat-header-cell *matHeaderCellDef>IP</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.ip ?? '—' }}</td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="columnasLogins"></tr>
+            <tr mat-row *matRowDef="let fila; columns: columnasLogins"></tr>
+          </table>
+
+          @if (!cargandoLogins() && logins().length === 0) {
+            <div class="empty-state">
+              <mat-icon>login</mat-icon>
+              <p>No hay inicios de sesión para el filtro seleccionado</p>
+            </div>
+          }
+
+          <mat-paginator
+            [length]="totalLogins()"
+            [pageIndex]="pageLogins() - 1"
+            [pageSize]="pageSizeLogins()"
+            [pageSizeOptions]="[10, 20, 50, 100]"
+            (page)="cambiarPaginaLogins($event)"
+            showFirstLastButtons
+          />
+        </mat-card>
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</div>

@@ -1,0 +1,198 @@
+<div class="page">
+  <app-page-header
+    titulo="Contabilidad"
+    subtitulo="Estado de resultados, libro diario y balance del período"
+  />
+
+  <div class="rango">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput type="date" [formControl]="desde" />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput type="date" [formControl]="hasta" />
+    </mat-form-field>
+  </div>
+
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <mat-tab-group>
+    <!-- ------------------------------------------------ Estado de resultados -->
+    <mat-tab label="Estado de resultados">
+      <div class="contenido-tab">
+        @if (resultados(); as er) {
+          <div class="estado-financiero">
+            <mat-card>
+              <mat-card-content>
+                <div class="linea">
+                  <span>Ingresos por ventas</span>
+                  <span>{{ er.ingresos_ventas | money }}</span>
+                </div>
+                <div class="linea">
+                  <span>(−) Costo de leche</span>
+                  <span>{{ er.costo_leche | money }}</span>
+                </div>
+                <div class="linea">
+                  <span>(−) Costo de transporte</span>
+                  <span>{{ er.costo_transporte | money }}</span>
+                </div>
+                <div class="linea total">
+                  <span>= Utilidad bruta</span>
+                  <span [class]="esPositiva(er.utilidad_bruta) ? 'positivo' : 'negativo'">
+                    {{ er.utilidad_bruta | money }}
+                  </span>
+                </div>
+
+                @for (gasto of er.gastos_por_categoria; track gasto.categoria) {
+                  <div class="linea sub">
+                    <span>(−) {{ gasto.categoria }}</span>
+                    <span>{{ gasto.total | money }}</span>
+                  </div>
+                } @empty {
+                  <div class="linea sub">
+                    <span>Sin gastos registrados en el período</span>
+                    <span>—</span>
+                  </div>
+                }
+                <div class="linea">
+                  <span>(−) Total gastos</span>
+                  <span>{{ er.total_gastos | money }}</span>
+                </div>
+
+                <div class="linea total">
+                  <span>= Utilidad neta (margen {{ er.margen_neto | cantidad }}%)</span>
+                  <span [class]="esPositiva(er.utilidad_neta) ? 'positivo' : 'negativo'">
+                    {{ er.utilidad_neta | money }}
+                  </span>
+                </div>
+              </mat-card-content>
+            </mat-card>
+
+            @if (donutGastos(); as datos) {
+              <mat-card>
+                <mat-card-header>
+                  <mat-card-title>Gastos por categoría</mat-card-title>
+                </mat-card-header>
+                <mat-card-content>
+                  <app-chart type="doughnut" [data]="datos" />
+                </mat-card-content>
+              </mat-card>
+            }
+          </div>
+        } @else if (!cargando()) {
+          <div class="empty-state">
+            <mat-icon>account_balance</mat-icon>
+            <p>Sin información para el período seleccionado</p>
+          </div>
+        }
+      </div>
+    </mat-tab>
+
+    <!-- ------------------------------------------------------- Libro diario -->
+    <mat-tab label="Libro diario">
+      <div class="contenido-tab">
+        <mat-card class="table-card">
+          <table mat-table [dataSource]="libro()?.asientos ?? []">
+            <ng-container matColumnDef="fecha">
+              <th mat-header-cell *matHeaderCellDef>Fecha</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+              <td mat-footer-cell *matFooterCellDef>Totales</td>
+            </ng-container>
+
+            <ng-container matColumnDef="origen">
+              <th mat-header-cell *matHeaderCellDef>Origen</th>
+              <td mat-cell *matCellDef="let fila">
+                <span class="chip-origen">{{ etiquetaOrigen(fila.origen) }}</span>
+              </td>
+              <td mat-footer-cell *matFooterCellDef></td>
+            </ng-container>
+
+            <ng-container matColumnDef="concepto">
+              <th mat-header-cell *matHeaderCellDef>Concepto</th>
+              <td mat-cell *matCellDef="let fila">{{ fila.concepto }}</td>
+              <td mat-footer-cell *matFooterCellDef></td>
+            </ng-container>
+
+            <ng-container matColumnDef="ingreso">
+              <th mat-header-cell *matHeaderCellDef class="num">Ingreso</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.ingreso | money }}</td>
+              <td mat-footer-cell *matFooterCellDef class="num">
+                {{ libro()?.total_ingresos | money }}
+              </td>
+            </ng-container>
+
+            <ng-container matColumnDef="egreso">
+              <th mat-header-cell *matHeaderCellDef class="num">Egreso</th>
+              <td mat-cell *matCellDef="let fila" class="num">{{ fila.egreso | money }}</td>
+              <td mat-footer-cell *matFooterCellDef class="num">
+                {{ libro()?.total_egresos | money }}
+              </td>
+            </ng-container>
+
+            <tr mat-header-row *matHeaderRowDef="columnasLibro"></tr>
+            <tr mat-row *matRowDef="let fila; columns: columnasLibro"></tr>
+            <tr mat-footer-row *matFooterRowDef="columnasLibro"></tr>
+          </table>
+
+          @if (!cargando() && (libro()?.asientos ?? []).length === 0) {
+            <div class="empty-state">
+              <mat-icon>menu_book</mat-icon>
+              <p>No hay movimientos en el período seleccionado</p>
+            </div>
+          }
+        </mat-card>
+      </div>
+    </mat-tab>
+
+    <!-- ------------------------------------------------------------ Balance -->
+    <mat-tab label="Balance">
+      <div class="contenido-tab">
+        @if (balance(); as bal) {
+          <p class="fecha-corte">Corte al {{ bal.fecha_corte | date: 'dd/MM/yyyy' }}</p>
+          <div class="tarjetas-balance">
+            <mat-card class="tarjeta-saldo">
+              <mat-card-content>
+                <p class="etiqueta">Saldo en cajas</p>
+                <p class="valor">{{ bal.saldo_cajas | money }}</p>
+              </mat-card-content>
+            </mat-card>
+            <mat-card class="tarjeta-saldo">
+              <mat-card-content>
+                <p class="etiqueta">Saldo en bancos</p>
+                <p class="valor">{{ bal.saldo_bancos | money }}</p>
+              </mat-card-content>
+            </mat-card>
+            <mat-card class="tarjeta-saldo">
+              <mat-card-content>
+                <p class="etiqueta">Cartera por cobrar</p>
+                <p class="valor">{{ bal.cartera_por_cobrar | money }}</p>
+              </mat-card-content>
+            </mat-card>
+            <mat-card class="tarjeta-saldo">
+              <mat-card-content>
+                <p class="etiqueta">Liquidaciones por pagar</p>
+                <p class="valor negativo">{{ bal.liquidaciones_por_pagar | money }}</p>
+              </mat-card-content>
+            </mat-card>
+            <mat-card class="tarjeta-saldo">
+              <mat-card-content>
+                <p class="etiqueta">Total disponible</p>
+                <p class="valor" [class]="esPositiva(bal.total_disponible) ? 'positivo' : 'negativo'">
+                  {{ bal.total_disponible | money }}
+                </p>
+              </mat-card-content>
+            </mat-card>
+          </div>
+        } @else if (!cargando()) {
+          <div class="empty-state">
+            <mat-icon>account_balance_wallet</mat-icon>
+            <p>Sin información de balance</p>
+          </div>
+        }
+      </div>
+    </mat-tab>
+  </mat-tab-group>
+</div>

@@ -1,0 +1,147 @@
+import { DatePipe } from '@angular/common';
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatDialog } from '@angular/material/dialog';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatSelectModule } from '@angular/material/select';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTableModule } from '@angular/material/table';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
+
+import { ApiService } from '../../core/api.service';
+import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
+import { Cliente, Page, Venta } from '../../core/models';
+import { EstadoChip } from '../../shared/estado-chip';
+import { PageHeader } from '../../shared/page-header';
+import { MoneyPipe } from '../../shared/pipes';
+import { VentaDetailDialog } from './venta-detail.dialog';
+import { VentaFormDialog } from './venta-form.dialog';
+import { VentasService } from './ventas.service';
+
+@Component({
+  selector: 'app-venta-list',
+  imports: [
+    ReactiveFormsModule, DatePipe, RouterLink,
+    MatCardModule, MatTableModule, MatPaginatorModule, MatFormFieldModule,
+    MatInputModule, MatSelectModule, MatButtonModule, MatIconModule,
+    MatProgressBarModule, MatTooltipModule,
+    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
+  ],
+  templateUrl: './venta-list.page.html',
+  styles: `
+    .fila-click { cursor: pointer; }
+    .fila-click:hover td { background: color-mix(in srgb, currentColor 5%, transparent); }
+  `,
+})
+export class VentaListPage implements OnInit {
+  private readonly servicio = inject(VentasService);
+  private readonly api = inject(ApiService);
+  private readonly dialog = inject(MatDialog);
+  private readonly snackbar = inject(MatSnackBar);
+
+  readonly columnas = ['numero', 'fecha', 'tipo', 'cliente', 'total', 'pagado', 'saldo', 'estado'];
+  readonly filas = signal<Venta[]>([]);
+  readonly total = signal(0);
+  readonly cargando = signal(false);
+  readonly exportando = signal(false);
+  readonly clientes = signal<Cliente[]>([]);
+  readonly page = signal(1);
+  readonly pageSize = signal(20);
+
+  readonly clienteId = new FormControl<string | null>(null);
+  readonly tipo = new FormControl<string | null>(null);
+  readonly estado = new FormControl<string | null>(null);
+  readonly desde = new FormControl('', { nonNullable: true });
+  readonly hasta = new FormControl('', { nonNullable: true });
+
+  constructor() {
+    for (const control of [this.clienteId, this.tipo, this.estado, this.desde, this.hasta]) {
+      control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    }
+    firstValueFrom(
+      this.api.get<Page<Cliente>>('/clientes', { page_size: 100, estado: 'activo' }),
+    ).then((pagina) => this.clientes.set(pagina.items));
+  }
+
+  ngOnInit(): void {
+    this.cargar();
+  }
+
+  recargar(): void {
+    this.page.set(1);
+    this.cargar();
+  }
+
+  async cargar(): Promise<void> {
+    this.cargando.set(true);
+    try {
+      const respuesta = await firstValueFrom(
+        this.servicio.list({
+          page: this.page(),
+          page_size: this.pageSize(),
+          cliente_id: this.clienteId.value,
+          tipo: this.tipo.value,
+          estado: this.estado.value,
+          desde: this.desde.value || null,
+          hasta: this.hasta.value || null,
+        }),
+      );
+      this.filas.set(respuesta.items);
+      this.total.set(respuesta.total);
+    } finally {
+      this.cargando.set(false);
+    }
+  }
+
+  cambiarPagina(evento: PageEvent): void {
+    this.page.set(evento.pageIndex + 1);
+    this.pageSize.set(evento.pageSize);
+    this.cargar();
+  }
+
+  abrirFormulario(): void {
+    this.dialog
+      .open(VentaFormDialog, { width: '800px' })
+      .afterClosed()
+      .subscribe((guardado) => {
+        if (guardado) {
+          this.snackbar.open('Venta registrada', 'OK', { duration: 3000 });
+          this.cargar();
+        }
+      });
+  }
+
+  abrirDetalle(venta: Venta): void {
+    this.dialog
+      .open(VentaDetailDialog, { data: { venta }, width: '760px' })
+      .afterClosed()
+      .subscribe((huboCambios) => {
+        if (huboCambios) this.cargar();
+      });
+  }
+
+  async exportarExcel(): Promise<void> {
+    this.exportando.set(true);
+    try {
+      await firstValueFrom(
+        this.api.download('/reportes/export/ventas', 'ventas.xlsx', {
+          desde: this.desde.value || null,
+          hasta: this.hasta.value || null,
+        }),
+      );
+    } catch {
+      this.snackbar.open('No fue posible exportar el archivo', 'OK', { duration: 5000 });
+    } finally {
+      this.exportando.set(false);
+    }
+  }
+}

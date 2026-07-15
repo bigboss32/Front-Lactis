@@ -1,0 +1,54 @@
+.fondo {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--mat-sys-primary) 14%, transparent), transparent 45%),
+    radial-gradient(circle at 80% 80%, color-mix(in srgb, var(--mat-sys-tertiary) 14%, transparent), transparent 45%),
+    var(--mat-sys-surface);
+}
+
+.tarjeta {
+  width: min(400px, 100%);
+  padding: 28px;
+}
+
+.logo {
+  text-align: center;
+  margin-bottom: 20px;
+
+  mat-icon {
+    font-size: 44px;
+    width: 44px;
+    height: 44px;
+    color: var(--mat-sys-primary);
+  }
+
+  h1 { margin: 8px 0 0; font-size: 1.5rem; }
+  p { margin: 4px 0 0; color: var(--mat-sys-on-surface-variant); font-size: 0.9rem; }
+}
+
+.full { width: 100%; }
+
+.boton {
+  height: 44px;
+  margin: 8px 0 4px;
+}
+
+.alerta {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 0.9rem;
+
+  &.error {
+    background: color-mix(in srgb, #c62828 12%, transparent);
+    color: var(--mat-sys-error);
+  }
+
+  &.info {
+    background: color-mix(in srgb, #1565c0 12%, transparent);
+    word-break: break-all;
+  }
+}

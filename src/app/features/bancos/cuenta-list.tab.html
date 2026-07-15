@@ -1,0 +1,107 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Banco, número, titular…" />
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Estado</mat-label>
+    <mat-select [formControl]="estado">
+      <mat-option [value]="null">Todos</mat-option>
+      <mat-option value="activo">Activo</mat-option>
+      <mat-option value="inactivo">Inactivo</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <span class="spacer"></span>
+  <button mat-flat-button *hasPermission="'bancos:crear'" (click)="abrirFormulario()">
+    <mat-icon>add</mat-icon> Nueva cuenta
+  </button>
+</div>
+
+<mat-card class="table-card">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <table mat-table [dataSource]="filas()">
+    <ng-container matColumnDef="banco">
+      <th mat-header-cell *matHeaderCellDef>Banco</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.banco }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="numero_cuenta">
+      <th mat-header-cell *matHeaderCellDef>Número de cuenta</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.numero_cuenta }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="tipo">
+      <th mat-header-cell *matHeaderCellDef>Tipo</th>
+      <td mat-cell *matCellDef="let fila">
+        {{ fila.tipo === 'ahorros' ? 'Ahorros' : 'Corriente' }}
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="titular">
+      <th mat-header-cell *matHeaderCellDef>Titular</th>
+      <td mat-cell *matCellDef="let fila">{{ fila.titular ?? '—' }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="saldo_inicial">
+      <th mat-header-cell *matHeaderCellDef class="num">Saldo inicial</th>
+      <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_inicial | money }}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="estado">
+      <th mat-header-cell *matHeaderCellDef>Estado</th>
+      <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+    </ng-container>
+
+    <ng-container matColumnDef="acciones">
+      <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+      <td mat-cell *matCellDef="let fila" class="col-acciones">
+        <button
+          mat-icon-button
+          matTooltip="Ver saldo actual"
+          (click)="verSaldo(fila)"
+        >
+          <mat-icon>account_balance_wallet</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'bancos:editar'"
+          matTooltip="Editar"
+          (click)="abrirFormulario(fila)"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          *hasPermission="'bancos:eliminar'"
+          matTooltip="Eliminar"
+          (click)="eliminar(fila)"
+        >
+          <mat-icon>delete</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+  </table>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>account_balance</mat-icon>
+      <p>No hay cuentas bancarias para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

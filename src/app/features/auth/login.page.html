@@ -1,0 +1,107 @@
+<div class="fondo">
+  <mat-card class="tarjeta">
+    <div class="logo">
+      <mat-icon>storefront</mat-icon>
+      <h1>Lactis</h1>
+      <p>Administración integral de queseras</p>
+    </div>
+
+    @if (error()) {
+      <div class="alerta error">{{ error() }}</div>
+    }
+    @if (mensaje()) {
+      <div class="alerta info">{{ mensaje() }}</div>
+    }
+
+    @switch (modo()) {
+      @case ('login') {
+        <form [formGroup]="formLogin" (ngSubmit)="login()">
+          <mat-form-field class="full">
+            <mat-label>Usuario o correo</mat-label>
+            <input matInput formControlName="username" autocomplete="username" />
+            <mat-icon matSuffix>person</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field class="full">
+            <mat-label>Contraseña</mat-label>
+            <input
+              matInput
+              [type]="verPassword() ? 'text' : 'password'"
+              formControlName="password"
+              autocomplete="current-password"
+            />
+            <button
+              mat-icon-button
+              matSuffix
+              type="button"
+              (click)="verPassword.set(!verPassword())"
+              [attr.aria-label]="'Mostrar contraseña'"
+            >
+              <mat-icon>{{ verPassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+          </mat-form-field>
+
+          <button
+            mat-flat-button
+            class="full boton"
+            type="submit"
+            [disabled]="cargando() || formLogin.invalid"
+          >
+            @if (cargando()) {
+              <mat-spinner diameter="20" />
+            } @else {
+              Iniciar sesión
+            }
+          </button>
+        </form>
+        <button mat-button class="full" type="button" (click)="cambiarModo('recuperar')">
+          ¿Olvidó su contraseña?
+        </button>
+      }
+      @case ('recuperar') {
+        <form [formGroup]="formRecuperar" (ngSubmit)="recuperar()">
+          <mat-form-field class="full">
+            <mat-label>Correo registrado</mat-label>
+            <input matInput formControlName="correo" type="email" />
+            <mat-icon matSuffix>mail</mat-icon>
+          </mat-form-field>
+          <button
+            mat-flat-button
+            class="full boton"
+            type="submit"
+            [disabled]="cargando() || formRecuperar.invalid"
+          >
+            Enviar instrucciones
+          </button>
+        </form>
+        <button mat-button class="full" type="button" (click)="cambiarModo('login')">
+          Volver al inicio de sesión
+        </button>
+      }
+      @case ('reset') {
+        <form [formGroup]="formReset" (ngSubmit)="reset()">
+          <mat-form-field class="full">
+            <mat-label>Token de recuperación</mat-label>
+            <input matInput formControlName="token" />
+          </mat-form-field>
+          <mat-form-field class="full">
+            <mat-label>Nueva contraseña</mat-label>
+            <input matInput type="password" formControlName="password" autocomplete="new-password" />
+            <mat-hint>Mínimo 8 caracteres, con letras y números</mat-hint>
+          </mat-form-field>
+          <button
+            mat-flat-button
+            class="full boton"
+            type="submit"
+            [disabled]="cargando() || formReset.invalid"
+          >
+            Restablecer contraseña
+          </button>
+        </form>
+        <button mat-button class="full" type="button" (click)="cambiarModo('login')">
+          Volver al inicio de sesión
+        </button>
+      }
+    }
+  </mat-card>
+</div>

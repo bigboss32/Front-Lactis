@@ -1,0 +1,105 @@
+<h2 mat-dialog-title>
+  @if (caja(); as c) {
+    Caja del {{ c.fecha | date: 'dd/MM/yyyy' }}
+  } @else {
+    Detalle de caja
+  }
+</h2>
+
+<mat-dialog-content>
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (caja(); as c) {
+    <div class="resumen">
+      <div class="dato">
+        <span>Estado</span>
+        <app-estado-chip [estado]="c.estado" />
+      </div>
+      <div class="dato">
+        <span>Saldo inicial</span>
+        <strong>{{ c.saldo_inicial | money }}</strong>
+      </div>
+      <div class="dato">
+        <span>Ingresos</span>
+        <strong>{{ c.total_ingresos | money }}</strong>
+      </div>
+      <div class="dato">
+        <span>Egresos</span>
+        <strong>{{ c.total_egresos | money }}</strong>
+      </div>
+      <div class="dato">
+        <span>Saldo final</span>
+        <strong>{{ c.saldo_final | money }}</strong>
+      </div>
+      @if (c.estado === 'cerrada') {
+        <div class="dato">
+          <span>Efectivo contado</span>
+          <strong>{{ c.efectivo_contado | money }}</strong>
+        </div>
+        <div class="dato">
+          <span>Diferencia</span>
+          <strong [class.negativo]="+(c.diferencia ?? 0) < 0">{{ c.diferencia | money }}</strong>
+        </div>
+      }
+    </div>
+
+    @if (c.observaciones) {
+      <p class="dato"><span>Observaciones</span> {{ c.observaciones }}</p>
+    }
+
+    <table mat-table [dataSource]="c.movimientos">
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef>Tipo</th>
+        <td mat-cell *matCellDef="let mov">{{ mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="concepto">
+        <th mat-header-cell *matHeaderCellDef>Concepto</th>
+        <td mat-cell *matCellDef="let mov">{{ mov.concepto }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="referencia">
+        <th mat-header-cell *matHeaderCellDef>Referencia</th>
+        <td mat-cell *matCellDef="let mov">{{ mov.referencia ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="valor">
+        <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+        <td mat-cell *matCellDef="let mov" class="num" [class.negativo]="mov.tipo === 'egreso'">
+          {{ mov.valor | money }}
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr mat-row *matRowDef="let mov; columns: columnas"></tr>
+    </table>
+
+    @if (c.movimientos.length === 0) {
+      <div class="sin-movimientos">Esta caja no tiene movimientos registrados</div>
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cerrar()">Cerrar</button>
+  @if (caja()?.estado === 'abierta') {
+    <button
+      mat-stroked-button
+      type="button"
+      *hasPermission="'caja:crear'"
+      (click)="registrarMovimiento()"
+    >
+      <mat-icon>add</mat-icon> Registrar movimiento
+    </button>
+    <button
+      mat-flat-button
+      type="button"
+      *hasPermission="'caja:administrar'"
+      (click)="cerrarCaja()"
+    >
+      <mat-icon>point_of_sale</mat-icon> Cerrar caja (arqueo)
+    </button>
+  }
+</mat-dialog-actions>

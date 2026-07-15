@@ -1,0 +1,160 @@
+<div class="page">
+  <app-page-header
+    titulo="Usuarios"
+    subtitulo="Cuentas de acceso al sistema, roles y estado de bloqueo"
+  >
+    <button mat-flat-button *hasPermission="'usuarios:crear'" (click)="abrirFormulario()">
+      <mat-icon>add</mat-icon> Nuevo usuario
+    </button>
+  </app-page-header>
+
+  @if (auth.esSuperadmin()) {
+    <div class="banner-empresa">
+      <mat-icon>business</mat-icon>
+      <div>
+        @if (empresaNombre()) {
+          <p class="titulo">
+            Estás administrando los usuarios de: <b>{{ empresaNombre() }}</b>
+          </p>
+        }
+        <p class="detalle">
+          Cambia de empresa con el selector de la barra superior; cada quesera tiene sus propios
+          usuarios y sus datos están completamente separados.
+        </p>
+      </div>
+    </div>
+  }
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Buscar</mat-label>
+      <input matInput [formControl]="buscar" placeholder="Nombre, usuario, correo…" />
+      <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="activo">Activo</mat-option>
+        <mat-option value="inactivo">Inactivo</mat-option>
+      </mat-select>
+    </mat-form-field>
+  </div>
+
+  <mat-card class="table-card">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="nombre">
+        <th mat-header-cell *matHeaderCellDef>Nombre</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.nombre }} {{ fila.apellido }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="username">
+        <th mat-header-cell *matHeaderCellDef>Usuario</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.username }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="correo">
+        <th mat-header-cell *matHeaderCellDef>Correo</th>
+        <td mat-cell *matCellDef="let fila">{{ fila.correo }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="roles">
+        <th mat-header-cell *matHeaderCellDef>Roles</th>
+        <td mat-cell *matCellDef="let fila">
+          <div class="roles">
+            @for (rol of fila.roles; track rol.id) {
+              <span class="rol-chip">{{ rol.nombre }}</span>
+            } @empty {
+              <span>—</span>
+            }
+          </div>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="bloqueado">
+        <th mat-header-cell *matHeaderCellDef class="centro">Bloqueado</th>
+        <td mat-cell *matCellDef="let fila" class="centro">
+          @if (fila.bloqueado) {
+            <mat-icon class="icono-bloqueado" matTooltip="Usuario bloqueado">lock</mat-icon>
+          } @else {
+            <mat-icon class="icono-ok" matTooltip="Acceso habilitado">lock_open</mat-icon>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="estado">
+        <th mat-header-cell *matHeaderCellDef>Estado</th>
+        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let fila" class="col-acciones">
+          <button
+            mat-icon-button
+            *hasPermission="'usuarios:editar'"
+            matTooltip="Editar"
+            (click)="abrirFormulario(fila)"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'usuarios:administrar'"
+            matTooltip="Asignar roles"
+            (click)="asignarRoles(fila)"
+          >
+            <mat-icon>badge</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'usuarios:administrar'"
+            [matTooltip]="fila.bloqueado ? 'Desbloquear' : 'Bloquear'"
+            (click)="alternarBloqueo(fila)"
+          >
+            <mat-icon>{{ fila.bloqueado ? 'lock_open' : 'lock' }}</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'usuarios:administrar'"
+            matTooltip="Restablecer contraseña"
+            (click)="restablecerPassword(fila)"
+          >
+            <mat-icon>key</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'usuarios:eliminar'"
+            matTooltip="Eliminar"
+            (click)="eliminar(fila)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+      <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+    </table>
+
+    @if (!cargando() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>group</mat-icon>
+        <p>No hay usuarios para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>
