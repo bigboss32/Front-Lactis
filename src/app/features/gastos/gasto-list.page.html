@@ -77,7 +77,7 @@
         @if (fila.adjunto_url) {
           <a
             mat-icon-button
-            [href]="'/uploads/' + fila.adjunto_url"
+            [href]="uploadsBase + '/' + fila.adjunto_url"
             target="_blank"
             matTooltip="Ver adjunto"
           >

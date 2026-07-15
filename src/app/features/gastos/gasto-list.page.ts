@@ -16,7 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { ApiService } from '../../core/api.service';
+import { ApiService, UPLOADS_BASE } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
@@ -41,6 +41,7 @@ export class GastoListPage implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
 
+  readonly uploadsBase = UPLOADS_BASE;
   readonly columnas = [
     'fecha', 'categoria', 'concepto', 'proveedor', 'numero_factura',
     'valor', 'adjunto', 'estado', 'acciones',

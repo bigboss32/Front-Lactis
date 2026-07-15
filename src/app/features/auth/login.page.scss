@@ -25,6 +25,13 @@
     color: var(--mat-sys-primary);
   }
 
+  img {
+    width: 56px;
+    height: 56px;
+    display: inline-block;
+    filter: drop-shadow(0 2px 6px color-mix(in srgb, var(--mat-sys-primary) 30%, transparent));
+  }
+
   h1 { margin: 8px 0 0; font-size: 1.5rem; }
   p { margin: 4px 0 0; color: var(--mat-sys-on-surface-variant); font-size: 0.9rem; }
 }

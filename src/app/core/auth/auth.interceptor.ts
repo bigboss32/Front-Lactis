@@ -7,6 +7,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
 
+import { API_BASE } from '../api.service';
 import { AuthService } from './auth.service';
 
 const SIN_TOKEN = ['/auth/login', '/auth/refresh', '/auth/recuperar-password', '/auth/reset-password'];
@@ -15,7 +16,11 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
 
-  if (!req.url.startsWith('/api') || SIN_TOKEN.some((p) => req.url.includes(p))) {
+  // Solo adjuntamos credenciales a peticiones a nuestra propia API.
+  // En producción API_BASE es absoluta (https://back-lactis.onrender.com/api/v1);
+  // en desarrollo es relativa ('/api/v1') servida por el proxy local.
+  const esApiPropia = req.url.startsWith(API_BASE) || req.url.startsWith('/api');
+  if (!esApiPropia || SIN_TOKEN.some((p) => req.url.includes(p))) {
     return next(req);
   }
 

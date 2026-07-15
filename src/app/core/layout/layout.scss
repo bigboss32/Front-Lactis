@@ -13,6 +13,12 @@
     font-size: 1.15rem;
     font-weight: 600;
     color: var(--mat-sys-primary);
+
+    img {
+      width: 26px;
+      height: 26px;
+      display: block;
+    }
   }
 
   [matSubheader] {

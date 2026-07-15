@@ -6,6 +6,8 @@ import { environment } from '../../environments/environment';
 import { Page } from './models';
 
 export const API_BASE = environment.apiBase;
+/** Base para archivos subidos (adjuntos, fotos). Cuelga de la raíz del backend, no de /api/v1. */
+export const UPLOADS_BASE = environment.uploadsBase;
 
 export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
