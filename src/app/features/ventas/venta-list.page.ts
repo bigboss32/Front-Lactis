@@ -133,6 +133,12 @@ export class VentaListPage implements OnInit {
   }
 
   async exportarExcel(): Promise<void> {
+    if (!this.desde.value || !this.hasta.value) {
+      this.snackbar.open('Elige un rango de fechas (Desde y Hasta) para exportar', 'OK', {
+        duration: 4000,
+      });
+      return;
+    }
     this.exportando.set(true);
     try {
       await firstValueFrom(

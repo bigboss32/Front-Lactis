@@ -81,6 +81,11 @@
       <div><span>Descuento</span><strong>&minus; {{ descuentoValor() | money }}</strong></div>
       <div class="total-final"><span>Total</span><strong>{{ total() | money }}</strong></div>
     </div>
+    @if (total() < 0) {
+      <p style="color: var(--mat-sys-error); margin: 4px 0 0; font-size: 0.85rem">
+        El descuento no puede superar el subtotal.
+      </p>
+    }
 
     <mat-checkbox formControlName="descontar_inventario">
       Descontar del inventario (valida el stock disponible)
