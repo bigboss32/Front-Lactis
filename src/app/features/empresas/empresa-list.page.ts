@@ -15,6 +15,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
+import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Empresa } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
@@ -23,6 +24,7 @@ import { PageHeader } from '../../shared/page-header';
 import { AdminEmpresaDialog } from './admin-empresa.dialog';
 import { EmpresaFormDialog } from './empresa-form.dialog';
 import { EmpresasService } from './empresas.service';
+import { ReiniciarEmpresaDialog } from './reiniciar-empresa.dialog';
 
 @Component({
   selector: 'app-empresa-list',
@@ -38,6 +40,7 @@ export class EmpresaListPage implements OnInit {
   private readonly servicio = inject(EmpresasService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  readonly auth = inject(AuthService);
 
   readonly columnas = ['nombre', 'nit', 'ciudad', 'telefono', 'correo', 'estado', 'acciones'];
   readonly filas = signal<Empresa[]>([]);
@@ -123,6 +126,16 @@ export class EmpresaListPage implements OnInit {
 
   crearAdministrador(empresa: Empresa): void {
     this.dialog.open(AdminEmpresaDialog, { data: { empresa }, width: '560px' });
+  }
+
+  /** Reinicia los datos transaccionales de la empresa (solo superadmin). */
+  reiniciar(item: Empresa): void {
+    this.dialog
+      .open(ReiniciarEmpresaDialog, { data: { empresa: item }, width: '520px' })
+      .afterClosed()
+      .subscribe((reiniciada) => {
+        if (reiniciada) this.cargar();
+      });
   }
 
   eliminar(item: Empresa): void {

@@ -87,6 +87,15 @@
           >
             <mat-icon>delete</mat-icon>
           </button>
+          @if (auth.esSuperadmin()) {
+            <button
+              mat-icon-button
+              matTooltip="Reiniciar datos"
+              (click)="reiniciar(fila)"
+            >
+              <mat-icon>restart_alt</mat-icon>
+            </button>
+          }
         </td>
       </ng-container>
 
