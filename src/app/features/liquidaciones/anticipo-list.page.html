@@ -61,6 +61,14 @@
             >
               <mat-icon>delete</mat-icon>
             </button>
+          } @else {
+            <mat-icon
+              class="bloqueado"
+              style="color: var(--mat-sys-on-surface-variant); cursor: help; vertical-align: middle"
+              matTooltip="Aplicado en una liquidación. Anula esa liquidación para poder editar o eliminar este anticipo."
+              matTooltipPosition="left"
+              >lock</mat-icon
+            >
           }
         </td>
       </ng-container>
