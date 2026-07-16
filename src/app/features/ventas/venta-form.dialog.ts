@@ -109,13 +109,12 @@ export class VentaFormDialog {
       this.api.get<Page<Cliente>>('/clientes', { page_size: 100, estado: 'activo' }),
     ).then((pagina) => this.clientes.set(pagina.items));
 
-    // El backend no filtra productos por categoría: se filtra en el cliente
-    // a producto_terminado y, si no hay ninguno, se muestran todos.
+    // Solo se venden productos terminados (queso), no materias primas ni insumos.
+    // Si la empresa no tiene ninguno, el selector queda vacío a propósito.
     firstValueFrom(
-      this.api.get<Page<Producto>>('/inventario/productos', { page_size: 100, estado: 'activo' }),
+      this.api.get<Page<Producto>>('/inventario/productos', { page_size: 200, estado: 'activo' }),
     ).then((pagina) => {
-      const terminados = pagina.items.filter((p) => p.categoria === 'producto_terminado');
-      this.productos.set(terminados.length > 0 ? terminados : pagina.items);
+      this.productos.set(pagina.items.filter((p) => p.categoria === 'producto_terminado'));
     });
   }
 
