@@ -36,21 +36,25 @@ import { EmpresasService } from './empresas.service';
           NO se puede deshacer.
         </p>
       </div>
-      <form id="form-reiniciar-empresa" (ngSubmit)="confirmar()">
-        <mat-form-field class="campo-nombre">
-          <mat-label>Escribe el nombre de la empresa para confirmar</mat-label>
-          <input matInput [formControl]="confirmacion" autocomplete="off" />
-        </mat-form-field>
-      </form>
+      <mat-form-field class="campo-nombre">
+        <mat-label>Escribe el nombre de la empresa para confirmar</mat-label>
+        <input
+          matInput
+          [formControl]="confirmacion"
+          autocomplete="off"
+          (keyup.enter)="confirmar()"
+        />
+        <mat-hint>Escribe exactamente: <strong>{{ data.empresa.nombre }}</strong></mat-hint>
+      </mat-form-field>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close type="button">Cancelar</button>
       <button
         mat-flat-button
         color="warn"
-        type="submit"
-        form="form-reiniciar-empresa"
+        type="button"
         [disabled]="!coincide() || guardando()"
+        (click)="confirmar()"
       >
         Reiniciar
       </button>
