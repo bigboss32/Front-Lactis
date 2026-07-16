@@ -35,13 +35,13 @@
         <div class="page-toolbar">
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Desde</mat-label>
-            <input matInput [matDatepicker]="pDesde" [formControl]="desde" />
+            <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
             <mat-datepicker-toggle matSuffix [for]="pDesde" />
             <mat-datepicker #pDesde />
           </mat-form-field>
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Hasta</mat-label>
-            <input matInput [matDatepicker]="pHasta" [formControl]="hasta" />
+            <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
             <mat-datepicker-toggle matSuffix [for]="pHasta" />
             <mat-datepicker #pHasta />
           </mat-form-field>

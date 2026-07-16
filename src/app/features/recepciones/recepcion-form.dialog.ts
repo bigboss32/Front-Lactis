@@ -44,7 +44,7 @@ export interface RecepcionDialogData {
       <form [formGroup]="form" class="form-grid" id="form-recepcion" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
           <mat-datepicker-toggle matSuffix [for]="pFecha" />
           <mat-datepicker #pFecha />
         </mat-form-field>

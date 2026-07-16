@@ -95,13 +95,13 @@ interface PresetQuincena {
       <form [formGroup]="form" class="form-grid" id="form-generar" (ngSubmit)="generar()">
         <mat-form-field>
           <mat-label>Inicio del período</mat-label>
-          <input matInput [matDatepicker]="pInicio" formControlName="periodo_inicio" required />
+          <input matInput [matDatepicker]="pInicio" (click)="pInicio.open()" formControlName="periodo_inicio" required />
           <mat-datepicker-toggle matSuffix [for]="pInicio" />
           <mat-datepicker #pInicio />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Fin del período</mat-label>
-          <input matInput [matDatepicker]="pFin" formControlName="periodo_fin" required />
+          <input matInput [matDatepicker]="pFin" (click)="pFin.open()" formControlName="periodo_fin" required />
           <mat-datepicker-toggle matSuffix [for]="pFin" />
           <mat-datepicker #pFin />
         </mat-form-field>

@@ -27,7 +27,7 @@ import { VentasService } from './ventas.service';
       <form [formGroup]="form" class="form-grid" id="form-pago" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
           <mat-datepicker-toggle matSuffix [for]="pFecha" />
           <mat-datepicker #pFecha />
         </mat-form-field>
