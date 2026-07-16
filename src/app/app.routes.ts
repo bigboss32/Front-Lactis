@@ -91,6 +91,10 @@ export const routes: Routes = [
       },
       // ----------------------------------------------------- administración
       {
+        path: 'empleados',
+        loadChildren: () => import('./features/empleados/empleados.routes').then((m) => m.EMPLEADOS_ROUTES),
+      },
+      {
         path: 'empresas',
         loadChildren: () => import('./features/empresas/empresas.routes').then((m) => m.EMPRESAS_ROUTES),
       },

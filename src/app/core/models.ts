@@ -101,6 +101,18 @@ export interface Usuario extends AuditFields {
   roles: RolResumen[];
 }
 
+// --------------------------------------------------------------- empleados
+export interface Empleado extends TenantFields {
+  nombre: string;
+  apellido: string;
+  documento: string | null;
+  cargo: string | null;
+  telefono: string | null;
+  direccion: string | null;
+  fecha_ingreso: string | null;
+  salario: number | null;
+}
+
 // ------------------------------------------------------------------- leche
 export interface Ruta extends TenantFields {
   nombre: string;

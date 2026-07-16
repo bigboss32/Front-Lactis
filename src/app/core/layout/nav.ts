@@ -54,6 +54,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: 'Administración',
     items: [
+      { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
       { label: 'Empresas', icon: 'business', route: '/empresas', modulo: 'empresas' },
       { label: 'Sucursales', icon: 'store', route: '/sucursales', modulo: 'sucursales' },
       { label: 'Usuarios', icon: 'manage_accounts', route: '/usuarios', modulo: 'usuarios' },
