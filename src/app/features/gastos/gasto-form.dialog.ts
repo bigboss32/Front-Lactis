@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,13 +13,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
+import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { GastosService } from './gastos.service';
 
 @Component({
   selector: 'app-gasto-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatIconModule,
+    MatSelectModule, MatButtonModule, MatIconModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar gasto' : 'Nuevo gasto' }}</h2>
@@ -27,7 +29,9 @@ import { GastosService } from './gastos.service';
         <form [formGroup]="form" class="form-grid" id="form-gasto" (ngSubmit)="guardar()">
           <mat-form-field>
             <mat-label>Fecha</mat-label>
-            <input matInput type="date" formControlName="fecha" required />
+            <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+            <mat-datepicker-toggle matSuffix [for]="pFecha" />
+            <mat-datepicker #pFecha />
           </mat-form-field>
           <mat-form-field>
             <mat-label>Categoría</mat-label>
@@ -109,7 +113,7 @@ export class GastoFormDialog {
 
   readonly form = this.fb.group({
     fecha: [
-      this.data?.item?.fecha ?? new Date().toISOString().slice(0, 10),
+      this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(),
       Validators.required,
     ],
     categoria_id: [this.data?.item?.categoria_id ?? '', Validators.required],
@@ -130,7 +134,8 @@ export class GastoFormDialog {
     if (this.form.invalid) return;
     this.guardando.set(true);
     try {
-      const payload = this.form.getRawValue();
+      const valores = this.form.getRawValue();
+      const payload = { ...valores, fecha: dateToIso(valores.fecha)! };
       let guardado: Gasto;
       if (this.data?.item) {
         guardado = await firstValueFrom(this.servicio.update(this.data.item.id, payload));

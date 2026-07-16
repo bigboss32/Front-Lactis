@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,19 +12,15 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Producto } from '../../core/models';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.service';
-
-/** Fecha local de hoy en formato ISO 'YYYY-MM-DD' (en-CA produce ese formato). */
-function hoyIso(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
 
 /** Diálogo para registrar un movimiento de inventario (los movimientos no se editan). */
 @Component({
   selector: 'app-movimiento-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento</h2>
@@ -39,7 +36,9 @@ function hoyIso(): string {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Tipo</mat-label>
@@ -96,7 +95,7 @@ export class MovimientoFormDialog {
 
   readonly form = this.fb.group({
     producto_id: ['', Validators.required],
-    fecha: [hoyIso(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     tipo: ['entrada', Validators.required],
     cantidad: [0, Validators.required],
     costo_unitario: [0, Validators.min(0)],
@@ -114,7 +113,8 @@ export class MovimientoFormDialog {
     if (this.form.invalid) return;
     this.guardando.set(true);
     try {
-      await firstValueFrom(this.servicio.create(this.form.getRawValue()));
+      const valores = this.form.getRawValue();
+      await firstValueFrom(this.servicio.create({ ...valores, fecha: dateToIso(valores.fecha)! }));
       this.dialogRef.close(true);
     } catch (err) {
       const detalle =

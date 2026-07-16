@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -9,18 +10,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
-
-function hoyISO(): string {
-  const d = new Date();
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 
 @Component({
   selector: 'app-abrir-caja-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
+    MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>Abrir caja</h2>
@@ -28,7 +24,9 @@ function hoyISO(): string {
       <form [formGroup]="form" class="form-grid" id="form-abrir-caja" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Saldo inicial</mat-label>
@@ -59,7 +57,7 @@ export class AbrirCajaDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [hoyISO(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     saldo_inicial: [0, [Validators.required, Validators.min(0)]],
   });
 
@@ -67,7 +65,10 @@ export class AbrirCajaDialog {
     if (this.form.invalid) return;
     this.guardando.set(true);
     try {
-      await firstValueFrom(this.servicio.abrir(this.form.getRawValue()));
+      const valores = this.form.getRawValue();
+      await firstValueFrom(
+        this.servicio.abrir({ ...valores, fecha: dateToIso(valores.fecha) ?? '' }),
+      );
       this.dialogRef.close(true);
     } catch (err) {
       const detalle =

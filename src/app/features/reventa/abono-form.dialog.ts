@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -10,7 +11,8 @@ import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
 import { MoneyPipe } from '../../shared/pipes';
-import { ReventaService, hoyIso } from './reventa.service';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { ReventaService } from './reventa.service';
 
 export interface AbonoDialogData {
   /** A qué registro se abona: compra a productor o venta a cliente. */
@@ -25,7 +27,7 @@ export interface AbonoDialogData {
   selector: 'app-abono-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MoneyPipe,
+    MatDatepickerModule, MatButtonModule, MoneyPipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.titulo }}</h2>
@@ -33,7 +35,9 @@ export interface AbonoDialogData {
       <form [formGroup]="form" class="form-grid" id="form-abono" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
@@ -70,7 +74,7 @@ export class AbonoFormDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [hoyIso(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     valor: [
       Number(this.data.saldo),
       [Validators.required, Validators.min(0.01), Validators.max(Number(this.data.saldo))],
@@ -84,7 +88,7 @@ export class AbonoFormDialog {
     try {
       const valores = this.form.getRawValue();
       const payload = {
-        fecha: valores.fecha,
+        fecha: dateToIso(valores.fecha),
         valor: Number(valores.valor),
         observaciones: valores.observaciones || null,
       };

@@ -1,9 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -23,6 +24,7 @@ import { Cliente, Page, Venta } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { dateToIso } from '../../shared/date-utils';
 import { VentaDetailDialog } from './venta-detail.dialog';
 import { VentaFormDialog } from './venta-form.dialog';
 import { VentasService } from './ventas.service';
@@ -33,7 +35,7 @@ import { VentasService } from './ventas.service';
     ReactiveFormsModule, DatePipe, RouterLink,
     MatCardModule, MatTableModule, MatPaginatorModule, MatFormFieldModule,
     MatInputModule, MatSelectModule, MatButtonModule, MatIconModule,
-    MatProgressBarModule, MatTooltipModule,
+    MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './venta-list.page.html',
@@ -60,11 +62,12 @@ export class VentaListPage implements OnInit {
   readonly clienteId = new FormControl<string | null>(null);
   readonly tipo = new FormControl<string | null>(null);
   readonly estado = new FormControl<string | null>(null);
-  readonly desde = new FormControl('', { nonNullable: true });
-  readonly hasta = new FormControl('', { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   constructor() {
-    for (const control of [this.clienteId, this.tipo, this.estado, this.desde, this.hasta]) {
+    const filtros: AbstractControl[] = [this.clienteId, this.tipo, this.estado, this.desde, this.hasta];
+    for (const control of filtros) {
       control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
     }
     firstValueFrom(
@@ -91,8 +94,8 @@ export class VentaListPage implements OnInit {
           cliente_id: this.clienteId.value,
           tipo: this.tipo.value,
           estado: this.estado.value,
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);
@@ -134,8 +137,8 @@ export class VentaListPage implements OnInit {
     try {
       await firstValueFrom(
         this.api.download('/reportes/export/ventas', 'ventas.xlsx', {
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
     } catch {

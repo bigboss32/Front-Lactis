@@ -5,6 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -23,22 +24,17 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Page, Proveedor, Recepcion, ResumenPeriodo } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { PageHeader } from '../../shared/page-header';
+import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { RecepcionFormDialog } from './recepcion-form.dialog';
 import { RecepcionGrillaTab } from './recepcion-grilla.tab';
 import { RecepcionesService } from './recepciones.service';
 
-function toIso(fecha: Date): string {
-  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-  const dia = String(fecha.getDate()).padStart(2, '0');
-  return `${fecha.getFullYear()}-${mes}-${dia}`;
-}
-
 /** Quincena actual: del 1 (o del 16) hasta hoy, según el día del mes. */
-function quincenaActual(): { desde: string; hasta: string } {
+function quincenaActual(): { desde: Date; hasta: Date } {
   const hoy = new Date();
   const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() <= 15 ? 1 : 16);
-  return { desde: toIso(inicio), hasta: toIso(hoy) };
+  return { desde: inicio, hasta: hoy };
 }
 
 @Component({
@@ -46,7 +42,7 @@ function quincenaActual(): { desde: string; hasta: string } {
   imports: [
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
+    MatDatepickerModule, MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
     PageHeader, MoneyPipe, CantidadPipe, DatePipe, HasPermissionDirective,
     RecepcionGrillaTab,
   ],
@@ -115,8 +111,8 @@ export class RecepcionListPage implements OnInit {
   readonly proveedores = signal<Proveedor[]>([]);
   readonly exportando = signal(false);
 
-  readonly desde = new FormControl(quincenaActual().desde, { nonNullable: true });
-  readonly hasta = new FormControl(quincenaActual().hasta, { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(quincenaActual().desde);
+  readonly hasta = new FormControl<Date | null>(quincenaActual().hasta);
   readonly proveedorId = new FormControl<string | null>(null);
 
   constructor() {
@@ -151,8 +147,8 @@ export class RecepcionListPage implements OnInit {
           page: this.page(),
           page_size: this.pageSize(),
           proveedor_id: this.proveedorId.value,
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);
@@ -163,8 +159,8 @@ export class RecepcionListPage implements OnInit {
   }
 
   async cargarResumen(): Promise<void> {
-    const desde = this.desde.value;
-    const hasta = this.hasta.value;
+    const desde = dateToIso(this.desde.value);
+    const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) {
       this.resumen.set(null);
       return;
@@ -234,8 +230,8 @@ export class RecepcionListPage implements OnInit {
     try {
       await firstValueFrom(
         this.api.download('/reportes/export/recepciones', 'recepciones.xlsx', {
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
     } catch {

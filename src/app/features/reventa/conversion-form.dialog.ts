@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -9,8 +10,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { CantidadPipe } from '../../shared/pipes';
-import { ReventaService, hoyIso } from './reventa.service';
+import { ReventaService } from './reventa.service';
 
 export interface ConversionDialogData {
   /** Kilos de queso disponibles para pasar a borona (kilos_disponibles). */
@@ -25,7 +27,7 @@ export interface ConversionDialogData {
   selector: 'app-conversion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, CantidadPipe,
+    MatDatepickerModule, MatButtonModule, CantidadPipe,
   ],
   template: `
     <h2 mat-dialog-title>Pasar queso a borona</h2>
@@ -33,7 +35,9 @@ export interface ConversionDialogData {
       <form [formGroup]="form" class="form-grid" id="form-conversion" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Kilos</mat-label>
@@ -79,7 +83,7 @@ export class ConversionFormDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [hoyIso(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     kilos: [0, [Validators.required, Validators.min(0.01)]],
     observaciones: [''],
   });
@@ -91,7 +95,7 @@ export class ConversionFormDialog {
       const valores = this.form.getRawValue();
       await firstValueFrom(
         this.servicio.crearConversion({
-          fecha: valores.fecha,
+          fecha: dateToIso(valores.fecha),
           kilos: Number(valores.kilos),
           observaciones: valores.observaciones || null,
         }),

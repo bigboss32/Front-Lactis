@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,20 +12,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Anticipo, Page, Proveedor } from '../../core/models';
+import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { AnticiposService } from './anticipos.service';
-
-function hoyIso(): string {
-  const hoy = new Date();
-  const mes = `${hoy.getMonth() + 1}`.padStart(2, '0');
-  const dia = `${hoy.getDate()}`.padStart(2, '0');
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
-}
 
 @Component({
   selector: 'app-anticipo-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar anticipo' : 'Nuevo anticipo' }}</h2>
@@ -40,7 +35,9 @@ function hoyIso(): string {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
@@ -79,7 +76,7 @@ export class AnticipoFormDialog {
 
   readonly form = this.fb.group({
     proveedor_id: [this.data?.item?.proveedor_id ?? '', Validators.required],
-    fecha: [this.data?.item?.fecha ?? hoyIso(), Validators.required],
+    fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     valor: [Number(this.data?.item?.valor ?? 0), [Validators.required, Validators.min(0.01)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
@@ -100,7 +97,7 @@ export class AnticipoFormDialog {
       if (this.data?.item) {
         await firstValueFrom(
           this.servicio.update(this.data.item.id, {
-            fecha: valores.fecha,
+            fecha: dateToIso(valores.fecha),
             valor: valores.valor,
             observaciones: valores.observaciones || null,
           }),
@@ -109,7 +106,7 @@ export class AnticipoFormDialog {
         await firstValueFrom(
           this.servicio.create({
             proveedor_id: valores.proveedor_id,
-            fecha: valores.fecha,
+            fecha: dateToIso(valores.fecha),
             valor: valores.valor,
             observaciones: valores.observaciones || null,
           }),

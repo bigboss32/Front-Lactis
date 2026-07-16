@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,18 +12,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Produccion, TipoQueso } from '../../core/models';
+import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { ProduccionService } from './produccion.service';
-
-/** Fecha local de hoy en formato ISO 'YYYY-MM-DD' (en-CA produce ese formato). */
-function hoyIso(): string {
-  return new Date().toLocaleDateString('en-CA');
-}
 
 @Component({
   selector: 'app-produccion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar producción' : 'Nueva producción' }}</h2>
@@ -30,7 +27,9 @@ function hoyIso(): string {
       <form [formGroup]="form" class="form-grid" id="form-produccion" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Tipo de queso</mat-label>
@@ -97,7 +96,10 @@ export class ProduccionFormDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [this.data?.item?.fecha ?? hoyIso(), Validators.required],
+    fecha: [
+      this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(),
+      Validators.required,
+    ],
     tipo_queso_id: [this.data?.item?.tipo_queso_id ?? '', Validators.required],
     cantidad: [Number(this.data?.item?.cantidad ?? 0), [Validators.required, Validators.min(0)]],
     peso_kg: [
@@ -122,7 +124,8 @@ export class ProduccionFormDialog {
     if (this.form.invalid) return;
     this.guardando.set(true);
     try {
-      const payload = this.form.getRawValue();
+      const valores = this.form.getRawValue();
+      const payload = { ...valores, fecha: dateToIso(valores.fecha)! };
       if (this.data?.item) {
         await firstValueFrom(this.servicio.update(this.data.item.id, payload));
       } else {

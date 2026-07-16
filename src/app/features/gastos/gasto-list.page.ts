@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -22,6 +23,7 @@ import { CategoriaGasto, Gasto, Page } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { MoneyPipe } from '../../shared/pipes';
+import { dateToIso } from '../../shared/date-utils';
 import { GastoFormDialog } from './gasto-form.dialog';
 import { GastosService } from './gastos.service';
 
@@ -30,7 +32,7 @@ import { GastosService } from './gastos.service';
   imports: [
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     EstadoChip, MoneyPipe, DatePipe, HasPermissionDirective,
   ],
   templateUrl: './gasto-list.page.html',
@@ -56,8 +58,8 @@ export class GastoListPage implements OnInit {
 
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly categoria = new FormControl<string | null>(null);
-  readonly desde = new FormControl<string | null>(null);
-  readonly hasta = new FormControl<string | null>(null);
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   constructor() {
     this.buscar.valueChanges
@@ -90,8 +92,8 @@ export class GastoListPage implements OnInit {
           page_size: this.pageSize(),
           search: this.buscar.value || null,
           categoria_id: this.categoria.value,
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);
@@ -141,8 +143,8 @@ export class GastoListPage implements OnInit {
     try {
       await firstValueFrom(
         this.api.download('/reportes/export/gastos', 'gastos.xlsx', {
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
     } catch {

@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,14 +12,8 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
+import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
-
-function hoyIso(): string {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
-}
 
 /** Datos de apertura del diálogo: edición (`item`) o celda de la grilla (`prefill`). */
 export interface RecepcionDialogData {
@@ -31,7 +26,7 @@ export interface RecepcionDialogData {
   selector: 'app-recepcion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
@@ -49,7 +44,9 @@ export interface RecepcionDialogData {
       <form [formGroup]="form" class="form-grid" id="form-recepcion" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Proveedor</mat-label>
@@ -144,7 +141,10 @@ export class RecepcionFormDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [this.data?.item?.fecha ?? this.data?.prefill?.fecha ?? hoyIso(), Validators.required],
+    fecha: [
+      isoToDate(this.data?.item?.fecha ?? this.data?.prefill?.fecha ?? null) ?? hoyDate(),
+      Validators.required,
+    ],
     proveedor_id: [
       this.data?.item?.proveedor_id ?? this.data?.prefill?.proveedor_id ?? '',
       Validators.required,
@@ -190,7 +190,7 @@ export class RecepcionFormDialog {
     try {
       const valores = this.form.getRawValue();
       const payload: RecepcionPayload = {
-        fecha: valores.fecha,
+        fecha: dateToIso(valores.fecha)!,
         transportador_id: valores.transportador_id,
         cantidad_litros: valores.cantidad_litros!,
         bonificaciones: valores.bonificaciones,

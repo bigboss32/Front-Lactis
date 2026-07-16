@@ -2,16 +2,18 @@ import { Component, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, map } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Monto } from '../../core/models';
+import { dateToIso } from '../../shared/date-utils';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { CompraListTab } from './compra-list.tab';
@@ -20,21 +22,16 @@ import { ConversionListPanel } from './conversion-list.panel';
 import { ResumenReventa, ReventaService } from './reventa.service';
 import { VentaQuesoListTab } from './venta-list.tab';
 
-/** Fecha local en formato ISO YYYY-MM-DD. */
-function fechaIso(fecha: Date): string {
-  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-  const dia = String(fecha.getDate()).padStart(2, '0');
-  return `${fecha.getFullYear()}-${mes}-${dia}`;
+/** Primer día del mes actual como `Date` local. */
+function primerDiaMesDate(): Date {
+  const hoy = new Date();
+  return new Date(hoy.getFullYear(), hoy.getMonth(), 1);
 }
 
-function primerDiaMesIso(): string {
+/** Último día del mes actual como `Date` local. */
+function ultimoDiaMesDate(): Date {
   const hoy = new Date();
-  return fechaIso(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
-}
-
-function ultimoDiaMesIso(): string {
-  const hoy = new Date();
-  return fechaIso(new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0));
+  return new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
 }
 
 /**
@@ -46,8 +43,9 @@ function ultimoDiaMesIso(): string {
   selector: 'app-reventa-page',
   imports: [
     ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule,
-    MatIconModule, MatTabsModule, PageHeader, MoneyPipe, CantidadPipe,
-    HasPermissionDirective, CompraListTab, VentaQuesoListTab, ConversionListPanel,
+    MatDatepickerModule, MatIconModule, MatTabsModule, PageHeader, MoneyPipe,
+    CantidadPipe, HasPermissionDirective, CompraListTab, VentaQuesoListTab,
+    ConversionListPanel,
   ],
   templateUrl: './reventa.page.html',
   styles: `
@@ -127,10 +125,15 @@ export class ReventaPage {
   private readonly dialog = inject(MatDialog);
 
   // Rango del período: por defecto el mes actual.
-  readonly desde = new FormControl<string>(primerDiaMesIso(), { nonNullable: true });
-  readonly hasta = new FormControl<string>(ultimoDiaMesIso(), { nonNullable: true });
-  readonly desdeValor = toSignal(this.desde.valueChanges, { initialValue: this.desde.value });
-  readonly hastaValor = toSignal(this.hasta.valueChanges, { initialValue: this.hasta.value });
+  readonly desde = new FormControl<Date | null>(primerDiaMesDate());
+  readonly hasta = new FormControl<Date | null>(ultimoDiaMesDate());
+  // Los hijos consumen las fechas como texto ISO 'yyyy-MM-dd'.
+  readonly desdeValor = toSignal(this.desde.valueChanges.pipe(map(dateToIso)), {
+    initialValue: dateToIso(this.desde.value),
+  });
+  readonly hastaValor = toSignal(this.hasta.valueChanges.pipe(map(dateToIso)), {
+    initialValue: dateToIso(this.hasta.value),
+  });
 
   readonly resumen = signal<ResumenReventa | null>(null);
   readonly exportando = signal(false);
@@ -145,8 +148,8 @@ export class ReventaPage {
   }
 
   async cargarResumen(): Promise<void> {
-    const desde = this.desde.value;
-    const hasta = this.hasta.value;
+    const desde = dateToIso(this.desde.value);
+    const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) {
       this.resumen.set(null);
       return;
@@ -179,8 +182,8 @@ export class ReventaPage {
   }
 
   async exportarExcel(): Promise<void> {
-    const desde = this.desde.value;
-    const hasta = this.hasta.value;
+    const desde = dateToIso(this.desde.value);
+    const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) {
       this.snackbar.open('Selecciona el rango de fechas (desde y hasta) para exportar', 'OK', {
         duration: 4000,

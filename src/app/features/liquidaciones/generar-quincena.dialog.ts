@@ -3,6 +3,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,6 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
+import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { LiquidacionesService } from './liquidaciones.service';
 
 const MESES = [
@@ -67,6 +69,7 @@ interface PresetQuincena {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatTooltipModule,
+    MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>Generar liquidaciones de la quincena</h2>
@@ -92,11 +95,15 @@ interface PresetQuincena {
       <form [formGroup]="form" class="form-grid" id="form-generar" (ngSubmit)="generar()">
         <mat-form-field>
           <mat-label>Inicio del período</mat-label>
-          <input matInput type="date" formControlName="periodo_inicio" required />
+          <input matInput [matDatepicker]="pInicio" formControlName="periodo_inicio" required />
+          <mat-datepicker-toggle matSuffix [for]="pInicio" />
+          <mat-datepicker #pInicio />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Fin del período</mat-label>
-          <input matInput type="date" formControlName="periodo_fin" required />
+          <input matInput [matDatepicker]="pFin" formControlName="periodo_fin" required />
+          <mat-datepicker-toggle matSuffix [for]="pFin" />
+          <mat-datepicker #pFin />
         </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Tipo</mat-label>
@@ -167,8 +174,8 @@ export class GenerarQuincenaDialog {
   private readonly quincena = quincenaAnterior();
 
   readonly form = this.fb.group({
-    periodo_inicio: [this.quincena.inicio, Validators.required],
-    periodo_fin: [this.quincena.fin, Validators.required],
+    periodo_inicio: [isoToDate(this.quincena.inicio) ?? hoyDate(), Validators.required],
+    periodo_fin: [isoToDate(this.quincena.fin) ?? hoyDate(), Validators.required],
     tipo: ['ambos' as 'ambos' | 'proveedor' | 'transportador', Validators.required],
   });
 
@@ -182,8 +189,8 @@ export class GenerarQuincenaDialog {
   /** Resumen legible del período elegido, ej. "Del 1 al 15 de julio de 2026". */
   readonly resumenPeriodo = computed(() => {
     const valores = this.valores();
-    const inicio = partesFecha(valores.periodo_inicio);
-    const fin = partesFecha(valores.periodo_fin);
+    const inicio = partesFecha(dateToIso(valores.periodo_inicio));
+    const fin = partesFecha(dateToIso(valores.periodo_fin));
     if (!inicio || !fin) return '';
     if (inicio.anio === fin.anio && inicio.mes === fin.mes) {
       return `Del ${inicio.dia} al ${fin.dia} de ${inicio.mes} de ${inicio.anio}`;
@@ -196,8 +203,8 @@ export class GenerarQuincenaDialog {
 
   aplicarPreset(preset: PresetQuincena): void {
     this.form.patchValue({
-      periodo_inicio: preset.rango.inicio,
-      periodo_fin: preset.rango.fin,
+      periodo_inicio: isoToDate(preset.rango.inicio)!,
+      periodo_fin: isoToDate(preset.rango.fin)!,
     });
   }
 
@@ -216,7 +223,14 @@ export class GenerarQuincenaDialog {
     if (this.form.invalid) return;
     this.generando.set(true);
     try {
-      const generadas = await firstValueFrom(this.servicio.generar(this.form.getRawValue()));
+      const { periodo_inicio, periodo_fin, tipo } = this.form.getRawValue();
+      const generadas = await firstValueFrom(
+        this.servicio.generar({
+          periodo_inicio: dateToIso(periodo_inicio)!,
+          periodo_fin: dateToIso(periodo_fin)!,
+          tipo,
+        }),
+      );
       this.dialogRef.close(generadas.length);
     } catch (err) {
       const detalle =

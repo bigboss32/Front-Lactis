@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -10,20 +11,14 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { CuentaBancaria } from '../../core/models';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
-
-function hoyISO(): string {
-  const d = new Date();
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  const dia = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mes}-${dia}`;
-}
 
 @Component({
   selector: 'app-movimiento-bancario-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento bancario</h2>
@@ -41,7 +36,9 @@ function hoyISO(): string {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Tipo</mat-label>
@@ -90,7 +87,7 @@ export class MovimientoBancarioFormDialog {
 
   readonly form = this.fb.group({
     cuenta_id: ['', Validators.required],
-    fecha: [hoyISO(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     tipo: ['ingreso' as 'ingreso' | 'egreso', Validators.required],
     valor: [0, [Validators.required, Validators.min(0.01)]],
     concepto: ['', [Validators.required, Validators.minLength(2)]],
@@ -111,7 +108,7 @@ export class MovimientoBancarioFormDialog {
       await firstValueFrom(
         this.servicio.crear({
           cuenta_id: valores.cuenta_id,
-          fecha: valores.fecha,
+          fecha: dateToIso(valores.fecha)!,
           tipo: valores.tipo,
           valor: valores.valor,
           concepto: valores.concepto,

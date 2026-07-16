@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -21,6 +22,7 @@ import { CajaDiaria, Page, Sucursal } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { dateToIso } from '../../shared/date-utils';
 import { AbrirCajaDialog } from './abrir-caja.dialog';
 import { CajaDetalleDialog } from './caja-detalle.dialog';
 import { CajaService } from './caja.service';
@@ -30,7 +32,7 @@ import { CajaService } from './caja.service';
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule,
+    MatIconModule, MatProgressBarModule, MatDatepickerModule,
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './caja-list.page.html',
@@ -57,8 +59,8 @@ export class CajaListPage implements OnInit {
   readonly sucursales = signal<Map<string, string>>(new Map());
 
   readonly estado = new FormControl<string | null>(null);
-  readonly desde = new FormControl('', { nonNullable: true });
-  readonly hasta = new FormControl('', { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   constructor() {
     this.estado.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
@@ -94,8 +96,8 @@ export class CajaListPage implements OnInit {
           page: this.page(),
           page_size: this.pageSize(),
           estado: this.estado.value,
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);

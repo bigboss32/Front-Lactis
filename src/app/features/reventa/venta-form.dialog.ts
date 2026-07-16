@@ -4,6 +4,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -12,7 +13,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { MoneyPipe } from '../../shared/pipes';
-import { ReventaService, TipoVenta, VentaQueso, hoyIso } from './reventa.service';
+import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
 
 /** Precio de venta de queso sugerido por kilo (del cuaderno del dueño). */
 const PRECIO_VENTA_SUGERIDO = 19500;
@@ -25,7 +27,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
   selector: 'app-venta-queso-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatCheckboxModule, MoneyPipe,
+    MatSelectModule, MatButtonModule, MatCheckboxModule, MatDatepickerModule, MoneyPipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar venta' : 'Nueva venta de queso' }}</h2>
@@ -47,7 +49,9 @@ const PRECIO_VENTA_SUGERIDO = 19500;
         }
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Cliente</mat-label>
@@ -113,7 +117,7 @@ export class VentaQuesoFormDialog {
 
   readonly form = this.fb.group({
     tipo: [this.data?.item?.tipo ?? ('queso' as TipoVenta), Validators.required],
-    fecha: [this.data?.item?.fecha ?? hoyIso(), Validators.required],
+    fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     cliente: [this.data?.item?.cliente ?? '', [Validators.required, Validators.minLength(2)]],
     kilos: [Number(this.data?.item?.kilos ?? 0), [Validators.required, Validators.min(0.01)]],
     precio_kilo: [
@@ -154,7 +158,7 @@ export class VentaQuesoFormDialog {
     try {
       const valores = this.form.getRawValue();
       const payload = {
-        fecha: valores.fecha,
+        fecha: dateToIso(valores.fecha),
         cliente: valores.cliente.trim(),
         kilos: Number(valores.kilos),
         precio_kilo: Number(valores.precio_kilo),

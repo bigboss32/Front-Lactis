@@ -21,7 +21,9 @@
 
       <mat-form-field>
         <mat-label>Fecha</mat-label>
-        <input matInput type="date" formControlName="fecha" required />
+        <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+        <mat-datepicker-toggle matSuffix [for]="pFecha" />
+        <mat-datepicker #pFecha />
       </mat-form-field>
 
       <mat-form-field>

@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,6 +21,7 @@ import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Page, Produccion, TipoQueso } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe } from '../../shared/pipes';
 import { ProduccionFormDialog } from './produccion-form.dialog';
 import { ProduccionService } from './produccion.service';
@@ -29,7 +31,7 @@ import { ProduccionService } from './produccion.service';
   imports: [
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     DatePipe, DecimalPipe, CantidadPipe, HasPermissionDirective,
   ],
   templateUrl: './produccion-diaria.tab.html',
@@ -51,8 +53,8 @@ export class ProduccionDiariaTab implements OnInit {
   readonly page = signal(1);
   readonly pageSize = signal(20);
 
-  readonly desde = new FormControl('', { nonNullable: true });
-  readonly hasta = new FormControl('', { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
   readonly tipoQuesoId = new FormControl<string | null>(null);
 
   constructor() {
@@ -86,8 +88,8 @@ export class ProduccionDiariaTab implements OnInit {
           page: this.page(),
           page_size: this.pageSize(),
           tipo_queso_id: this.tipoQuesoId.value,
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);

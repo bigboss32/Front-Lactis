@@ -6,6 +6,7 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -19,6 +20,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CuentaBancaria, MovimientoBancario } from '../../core/models';
+import { dateToIso } from '../../shared/date-utils';
 import { EstadoChip } from '../../shared/estado-chip';
 import { MoneyPipe } from '../../shared/pipes';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
@@ -29,7 +31,7 @@ import { MovimientoBancarioFormDialog } from './movimiento-bancario-form.dialog'
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatCheckboxModule,
+    MatIconModule, MatProgressBarModule, MatCheckboxModule, MatDatepickerModule,
     EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './movimiento-list.tab.html',
@@ -66,8 +68,8 @@ export class MovimientoBancarioListTab implements OnInit {
 
   readonly cuentaId = new FormControl<string | null>(null);
   readonly conciliado = new FormControl<'todos' | 'si' | 'no'>('todos', { nonNullable: true });
-  readonly desde = new FormControl('', { nonNullable: true });
-  readonly hasta = new FormControl('', { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   constructor() {
     this.cuentaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
@@ -104,8 +106,8 @@ export class MovimientoBancarioListTab implements OnInit {
           page_size: this.pageSize(),
           cuenta_id: this.cuentaId.value,
           conciliado: conciliadoFiltro === 'todos' ? null : conciliadoFiltro === 'si',
-          desde: this.desde.value || null,
-          hasta: this.hasta.value || null,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);

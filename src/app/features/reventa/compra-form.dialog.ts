@@ -3,14 +3,16 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
+import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
-import { CompraQueso, ReventaService, hoyIso } from './reventa.service';
+import { CompraQueso, ReventaService } from './reventa.service';
 
 /**
  * Registra o edita una compra de queso a un productor. Muestra en vivo los
@@ -20,7 +22,7 @@ import { CompraQueso, ReventaService, hoyIso } from './reventa.service';
   selector: 'app-compra-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MoneyPipe, CantidadPipe,
+    MatDatepickerModule, MatButtonModule, MoneyPipe, CantidadPipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar compra' : 'Nueva compra de queso' }}</h2>
@@ -28,7 +30,9 @@ import { CompraQueso, ReventaService, hoyIso } from './reventa.service';
       <form [formGroup]="form" class="form-grid" id="form-compra" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
-          <input matInput type="date" formControlName="fecha" required />
+          <input matInput [matDatepicker]="pFecha" formControlName="fecha" required />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker #pFecha />
         </mat-form-field>
         <mat-form-field>
           <mat-label>Productor</mat-label>
@@ -113,7 +117,7 @@ export class CompraFormDialog {
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    fecha: [this.data?.item?.fecha ?? hoyIso(), Validators.required],
+    fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     productor: [this.data?.item?.productor ?? '', [Validators.required, Validators.minLength(2)]],
     kilos_brutos: [Number(this.data?.item?.kilos_brutos ?? 0), [Validators.required, Validators.min(0.01)]],
     merma_kilos: [Number(this.data?.item?.merma_kilos ?? 0), [Validators.min(0)]],
@@ -149,7 +153,7 @@ export class CompraFormDialog {
     try {
       const valores = this.form.getRawValue();
       const payload = {
-        fecha: valores.fecha,
+        fecha: dateToIso(valores.fecha),
         productor: valores.productor.trim(),
         kilos_brutos: Number(valores.kilos_brutos),
         merma_kilos: Number(valores.merma_kilos || 0),

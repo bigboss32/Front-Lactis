@@ -7,11 +7,15 @@
   <div class="rango">
     <mat-form-field subscriptSizing="dynamic">
       <mat-label>Desde</mat-label>
-      <input matInput type="date" [formControl]="desde" />
+      <input matInput [matDatepicker]="pDesde" [formControl]="desde" />
+      <mat-datepicker-toggle matSuffix [for]="pDesde" />
+      <mat-datepicker #pDesde />
     </mat-form-field>
     <mat-form-field subscriptSizing="dynamic">
       <mat-label>Hasta</mat-label>
-      <input matInput type="date" [formControl]="hasta" />
+      <input matInput [matDatepicker]="pHasta" [formControl]="hasta" />
+      <mat-datepicker-toggle matSuffix [for]="pHasta" />
+      <mat-datepicker #pHasta />
     </mat-form-field>
   </div>
 

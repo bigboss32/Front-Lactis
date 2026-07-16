@@ -3,6 +3,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -15,6 +16,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { debounceTime, firstValueFrom, merge } from 'rxjs';
 
 import { Auditoria, LoginAudit } from '../../core/models';
+import { dateToIso } from '../../shared/date-utils';
 import { PageHeader } from '../../shared/page-header';
 import { AuditoriaDetalleDialog } from './auditoria-detalle.dialog';
 import { AuditoriaService } from './auditoria.service';
@@ -24,7 +26,7 @@ import { AuditoriaService } from './auditoria.service';
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTabsModule, MatTableModule,
     MatPaginatorModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    MatIconModule, MatProgressBarModule,
+    MatIconModule, MatProgressBarModule, MatDatepickerModule,
     PageHeader,
   ],
   templateUrl: './auditoria.page.html',
@@ -58,8 +60,8 @@ export class AuditoriaPage implements OnInit {
 
   readonly modulo = new FormControl('', { nonNullable: true });
   readonly accion = new FormControl('', { nonNullable: true });
-  readonly desde = new FormControl<string | null>(null);
-  readonly hasta = new FormControl<string | null>(null);
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   // ------------------------------------------------------------------- logins
   readonly columnasLogins = ['fecha', 'username_intentado', 'exito', 'motivo', 'ip'];
@@ -100,8 +102,8 @@ export class AuditoriaPage implements OnInit {
           page_size: this.pageSizeOps(),
           modulo: this.modulo.value || null,
           accion: this.accion.value || null,
-          desde: this.desde.value,
-          hasta: this.hasta.value,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.operaciones.set(respuesta.items);

@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -16,22 +17,15 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Cliente, Page, Producto } from '../../core/models';
 import { MoneyPipe } from '../../shared/pipes';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { VentaPayload, VentasService } from './ventas.service';
-
-/** Fecha local de hoy en formato ISO YYYY-MM-DD (el backend espera date). */
-function hoyIso(): string {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
-}
 
 @Component({
   selector: 'app-venta-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatCheckboxModule,
-    MatTooltipModule, MoneyPipe,
+    MatTooltipModule, MatDatepickerModule, MoneyPipe,
   ],
   templateUrl: './venta-form.dialog.html',
   styles: `
@@ -86,7 +80,7 @@ export class VentaFormDialog {
   readonly form = this.fb.group({
     tipo: ['factura' as 'factura' | 'remision', Validators.required],
     cliente_id: ['', Validators.required],
-    fecha: [hoyIso(), Validators.required],
+    fecha: [hoyDate(), Validators.required],
     descuento: [0, [Validators.min(0)]],
     observaciones: [''],
     descontar_inventario: [true],
@@ -153,7 +147,7 @@ export class VentaFormDialog {
       const payload: VentaPayload = {
         tipo: valor.tipo,
         cliente_id: valor.cliente_id,
-        fecha: valor.fecha,
+        fecha: dateToIso(valor.fecha)!,
         descuento: Number(valor.descuento || 0),
         observaciones: valor.observaciones || null,
         descontar_inventario: valor.descontar_inventario,

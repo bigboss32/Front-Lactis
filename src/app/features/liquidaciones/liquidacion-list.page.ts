@@ -1,8 +1,9 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -20,6 +21,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Liquidacion } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
+import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { GenerarQuincenaDialog } from './generar-quincena.dialog';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
@@ -38,7 +40,7 @@ interface ResumenEstados {
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     PageHeader, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
   ],
   templateUrl: './liquidacion-list.page.html',
@@ -161,11 +163,12 @@ export class LiquidacionListPage implements OnInit {
 
   readonly tipo = new FormControl<string | null>(null);
   readonly estado = new FormControl<string | null>(null);
-  readonly desde = new FormControl<string | null>(null);
-  readonly hasta = new FormControl<string | null>(null);
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   constructor() {
-    for (const control of [this.tipo, this.estado, this.desde, this.hasta]) {
+    const filtros: AbstractControl[] = [this.tipo, this.estado, this.desde, this.hasta];
+    for (const control of filtros) {
       control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
     }
   }
@@ -190,8 +193,8 @@ export class LiquidacionListPage implements OnInit {
           page_size: this.pageSize(),
           tipo: this.tipo.value,
           estado: this.estado.value,
-          desde: this.desde.value,
-          hasta: this.hasta.value,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
         }),
       );
       this.filas.set(respuesta.items);
@@ -210,8 +213,8 @@ export class LiquidacionListPage implements OnInit {
   async cargarResumen(): Promise<void> {
     const filtros = {
       tipo: this.tipo.value,
-      desde: this.desde.value,
-      hasta: this.hasta.value,
+      desde: dateToIso(this.desde.value),
+      hasta: dateToIso(this.hasta.value),
     };
     try {
       const [borradores, aprobadas, pagadas] = await Promise.all([
@@ -272,8 +275,8 @@ export class LiquidacionListPage implements OnInit {
   }
 
   async exportarExcel(): Promise<void> {
-    const desde = this.desde.value;
-    const hasta = this.hasta.value;
+    const desde = dateToIso(this.desde.value);
+    const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) {
       this.snackbar.open('Selecciona el rango de fechas (desde y hasta) para exportar', 'OK', {
         duration: 4000,

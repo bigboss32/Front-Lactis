@@ -3,6 +3,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -16,14 +17,8 @@ import { Balance, EstadoResultados, LibroDiario } from '../../core/models';
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { ContabilidadService } from './contabilidad.service';
-
-/** Fecha local en formato ISO 'YYYY-MM-DD' (lo que espera el backend). */
-function fechaIso(fecha: Date): string {
-  const mes = `${fecha.getMonth() + 1}`.padStart(2, '0');
-  const dia = `${fecha.getDate()}`.padStart(2, '0');
-  return `${fecha.getFullYear()}-${mes}-${dia}`;
-}
 
 const ETIQUETAS_ORIGEN: Record<string, string> = {
   venta: 'Venta',
@@ -39,7 +34,7 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTabsModule, MatTableModule,
     MatFormFieldModule, MatInputModule, MatIconModule, MatProgressBarModule,
-    PageHeader, AppChart, MoneyPipe, CantidadPipe,
+    MatDatepickerModule, PageHeader, AppChart, MoneyPipe, CantidadPipe,
   ],
   templateUrl: './contabilidad.page.html',
   styles: `
@@ -103,10 +98,10 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
 export class ContabilidadPage implements OnInit {
   private readonly servicio = inject(ContabilidadService);
 
-  readonly desde = new FormControl(fechaIso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)), {
-    nonNullable: true,
-  });
-  readonly hasta = new FormControl(fechaIso(new Date()), { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+  );
+  readonly hasta = new FormControl<Date | null>(hoyDate());
 
   readonly cargando = signal(false);
   readonly resultados = signal<EstadoResultados | null>(null);
@@ -149,8 +144,8 @@ export class ContabilidadPage implements OnInit {
   }
 
   async cargar(): Promise<void> {
-    const desde = this.desde.value;
-    const hasta = this.hasta.value;
+    const desde = dateToIso(this.desde.value);
+    const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) return;
     this.cargando.set(true);
     try {
