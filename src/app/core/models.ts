@@ -111,6 +111,19 @@ export interface Empleado extends TenantFields {
   direccion: string | null;
   fecha_ingreso: string | null;
   salario: number | null;
+  valor_dia: number | null;
+}
+
+/** Pago de nómina a un empleado (pago por jornal). */
+export interface PagoEmpleado extends TenantFields {
+  empleado_id: string;
+  empleado_nombre: string;
+  fecha: string;
+  periodo: string | null;
+  dias_trabajados: number;
+  valor_dia: number;
+  total: number;
+  observaciones: string | null;
 }
 
 // ------------------------------------------------------------------- leche

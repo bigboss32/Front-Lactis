@@ -24,6 +24,7 @@ import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
 import { EmpleadoFormDialog } from './empleado-form.dialog';
 import { EmpleadosService } from './empleados.service';
+import { PagosEmpleadoDialog } from './pagos-empleado.dialog';
 
 @Component({
   selector: 'app-empleado-list',
@@ -40,7 +41,7 @@ export class EmpleadoListPage implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
 
-  readonly columnas = ['nombre', 'documento', 'cargo', 'telefono', 'fecha_ingreso', 'salario', 'estado', 'acciones'];
+  readonly columnas = ['nombre', 'documento', 'cargo', 'telefono', 'fecha_ingreso', 'salario', 'valor_dia', 'estado', 'acciones'];
   readonly filas = signal<Empleado[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -100,6 +101,10 @@ export class EmpleadoListPage implements OnInit {
           this.cargar();
         }
       });
+  }
+
+  abrirPagos(item: Empleado): void {
+    this.dialog.open(PagosEmpleadoDialog, { data: { empleado: item }, width: '640px' });
   }
 
   eliminar(item: Empleado): void {

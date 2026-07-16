@@ -12,6 +12,7 @@ export interface EmpleadoPayload {
   direccion?: string | null;
   fecha_ingreso?: string | null;
   salario?: number | null;
+  valor_dia?: number | null;
   estado?: string;
 }
 

@@ -53,6 +53,10 @@ import { EmpleadosService } from './empleados.service';
           <mat-label>Salario</mat-label>
           <input matInput type="number" min="0" formControlName="salario" />
         </mat-form-field>
+        <mat-form-field>
+          <mat-label>Valor por día (jornal)</mat-label>
+          <input matInput type="number" min="0" formControlName="valor_dia" />
+        </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Dirección</mat-label>
           <input matInput formControlName="direccion" />
@@ -91,6 +95,10 @@ export class EmpleadoFormDialog {
     fecha_ingreso: [this.data?.item ? isoToDate(this.data.item.fecha_ingreso) : null],
     salario: [
       this.data?.item?.salario != null ? Number(this.data.item.salario) : null,
+      [Validators.min(0)],
+    ],
+    valor_dia: [
+      this.data?.item?.valor_dia != null ? Number(this.data.item.valor_dia) : null,
       [Validators.min(0)],
     ],
   });
