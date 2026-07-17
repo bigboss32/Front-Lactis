@@ -97,6 +97,42 @@ body {
   }
 }
 
-@media (max-width: 800px) {
+// ------------------------------------------------------------- responsive
+// Los diálogos nunca exceden el ancho de la pantalla (clave en celular).
+.cdk-overlay-pane:has(.mat-mdc-dialog-container) { max-width: 96vw; }
+
+@media (max-width: 900px) {
   .page { padding: 12px; }
+
+  // Barras de filtros: se apilan y ocupan todo el ancho
+  .page-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+
+    .mat-mdc-form-field { flex: 1 1 auto; width: 100%; }
+    .spacer { display: none; }
+    > button { width: 100%; }
+  }
+
+  // Encabezado de página: título arriba, acción a lo ancho abajo
+  app-page-header .encabezado {
+    flex-direction: column;
+    align-items: stretch;
+
+    .spacer { display: none; }
+    button,
+    a[mat-flat-button],
+    a[mat-button] { width: 100%; }
+  }
+
+  // Tablas: ancho natural de columnas + scroll horizontal (no rompen el layout)
+  .table-card { overflow-x: auto; }
+  .table-card table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  // Cuadrículas de KPIs y gráficos a una sola columna
+  .kpi-grid,
+  .chart-grid { grid-template-columns: 1fr; }
 }
