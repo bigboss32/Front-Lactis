@@ -14,6 +14,7 @@ import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 /** Datos de apertura del diálogo: edición (`item`) o celda de la grilla (`prefill`). */
 export interface RecepcionDialogData {
@@ -26,7 +27,7 @@ export interface RecepcionDialogData {
   selector: 'app-recepcion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
@@ -72,18 +73,18 @@ export interface RecepcionDialogData {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Precio por litro</mat-label>
-          <input matInput type="number" min="0" formControlName="precio_litro" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_litro" />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Vacío = precio del proveedor</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Bonificaciones</mat-label>
-          <input matInput type="number" min="0" formControlName="bonificaciones" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="bonificaciones" />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Descuentos</mat-label>
-          <input matInput type="number" min="0" formControlName="descuentos" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="descuentos" />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">

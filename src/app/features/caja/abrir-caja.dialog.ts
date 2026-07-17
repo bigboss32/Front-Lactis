@@ -11,12 +11,13 @@ import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 @Component({
   selector: 'app-abrir-caja-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
-    MatDatepickerModule,
+    MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Abrir caja</h2>
@@ -30,7 +31,7 @@ import { dateToIso, hoyDate } from '../../shared/date-utils';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Saldo inicial</mat-label>
-          <input matInput type="number" min="0" formControlName="saldo_inicial" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="saldo_inicial" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
       </form>

@@ -10,6 +10,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { ReventaService } from './reventa.service';
@@ -27,7 +28,7 @@ export interface AbonoDialogData {
   selector: 'app-abono-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatButtonModule, MoneyPipe,
+    MatDatepickerModule, MatButtonModule, MoneyPipe, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.titulo }}</h2>
@@ -41,7 +42,7 @@ export interface AbonoDialogData {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="number" min="0" formControlName="valor" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Saldo pendiente: {{ data.saldo | money }}</mat-hint>
         </mat-form-field>

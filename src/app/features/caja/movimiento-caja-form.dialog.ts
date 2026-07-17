@@ -10,12 +10,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 @Component({
   selector: 'app-movimiento-caja-form-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento de caja</h2>
@@ -30,7 +31,7 @@ import { CajaService } from './caja.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="number" min="0" formControlName="valor" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">

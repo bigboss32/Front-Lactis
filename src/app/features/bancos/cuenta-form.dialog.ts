@@ -11,12 +11,13 @@ import { firstValueFrom } from 'rxjs';
 
 import { CuentaBancaria } from '../../core/models';
 import { CuentaPayload, CuentasBancariasService } from './bancos.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 @Component({
   selector: 'app-cuenta-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar cuenta bancaria' : 'Nueva cuenta bancaria' }}</h2>
@@ -44,7 +45,7 @@ import { CuentaPayload, CuentasBancariasService } from './bancos.service';
         @if (!data?.item) {
           <mat-form-field>
             <mat-label>Saldo inicial</mat-label>
-            <input matInput type="number" formControlName="saldo_inicial" />
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="saldo_inicial" />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
         }

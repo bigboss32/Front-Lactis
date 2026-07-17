@@ -12,13 +12,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { CuentaBancaria } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
 
 @Component({
   selector: 'app-movimiento-bancario-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento bancario</h2>
@@ -49,7 +50,7 @@ import { CuentasBancariasService, MovimientosBancariosService } from './bancos.s
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="number" min="0" formControlName="valor" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">

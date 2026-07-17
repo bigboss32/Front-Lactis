@@ -13,6 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { Venta } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MoneyPipe } from '../../shared/pipes';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { VentasService } from './ventas.service';
 
 @Component({
@@ -20,6 +21,7 @@ import { VentasService } from './ventas.service';
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MoneyPipe,
+    MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Registrar pago — venta Nº {{ data.venta.numero }}</h2>
@@ -33,7 +35,7 @@ import { VentasService } from './ventas.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="number" min="0" [max]="saldo" formControlName="valor" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Saldo pendiente: {{ saldo | money }}</mat-hint>
         </mat-form-field>

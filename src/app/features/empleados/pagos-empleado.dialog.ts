@@ -18,6 +18,7 @@ import { firstValueFrom } from 'rxjs';
 import { Empleado, PagoEmpleado } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
 import { NominaService } from './nomina.service';
 
@@ -26,7 +27,7 @@ import { NominaService } from './nomina.service';
   imports: [
     ReactiveFormsModule, DatePipe, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTooltipModule, MatDatepickerModule, MatTableModule,
-    MatProgressBarModule, MatSnackBarModule, MoneyPipe,
+    MatProgressBarModule, MatSnackBarModule, MoneyPipe, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Pagos de {{ data.empleado.nombre }} {{ data.empleado.apellido }}</h2>
@@ -44,7 +45,8 @@ import { NominaService } from './nomina.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor por día</mat-label>
-          <input matInput type="number" min="0" formControlName="valor_dia" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_dia" />
+          <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Período</mat-label>

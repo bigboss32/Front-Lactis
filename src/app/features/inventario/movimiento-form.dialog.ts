@@ -13,6 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Page, Producto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.service';
 
 /** Diálogo para registrar un movimiento de inventario (los movimientos no se editan). */
@@ -20,7 +21,7 @@ import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.ser
   selector: 'app-movimiento-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento</h2>
@@ -55,7 +56,7 @@ import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.ser
         </mat-form-field>
         <mat-form-field>
           <mat-label>Costo unitario</mat-label>
-          <input matInput type="number" min="0" formControlName="costo_unitario" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="costo_unitario" />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Si se deja en 0 se usa el costo del producto</mat-hint>
         </mat-form-field>

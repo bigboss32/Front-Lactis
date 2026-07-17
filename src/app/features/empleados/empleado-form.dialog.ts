@@ -11,13 +11,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { Empleado } from '../../core/models';
 import { dateToIso, isoToDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { EmpleadosService } from './empleados.service';
 
 @Component({
   selector: 'app-empleado-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatDatepickerModule,
+    MatButtonModule, MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar empleado' : 'Nuevo empleado' }}</h2>
@@ -51,11 +52,13 @@ import { EmpleadosService } from './empleados.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Salario</mat-label>
-          <input matInput type="number" min="0" formControlName="salario" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="salario" />
+          <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor por día (jornal)</mat-label>
-          <input matInput type="number" min="0" formControlName="valor_dia" />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_dia" />
+          <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Dirección</mat-label>

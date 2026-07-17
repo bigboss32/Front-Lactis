@@ -11,13 +11,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { Producto } from '../../core/models';
 import { CATEGORIAS_PRODUCTO, ProductosService } from './inventario.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 /** Diálogo de creación/edición de productos del catálogo de inventario. */
 @Component({
   selector: 'app-producto-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar producto' : 'Nuevo producto' }}</h2>
@@ -46,7 +47,7 @@ import { CATEGORIAS_PRODUCTO, ProductosService } from './inventario.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Costo unitario</mat-label>
-          <input matInput type="number" min="0" formControlName="costo_unitario" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="costo_unitario" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
       </form>

@@ -15,12 +15,14 @@ import { ApiService } from '../../core/api.service';
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { GastosService } from './gastos.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 @Component({
   selector: 'app-gasto-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatDatepickerModule,
+    MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar gasto' : 'Nuevo gasto' }}</h2>
@@ -51,7 +53,7 @@ import { GastosService } from './gastos.service';
           </mat-form-field>
           <mat-form-field>
             <mat-label>Valor</mat-label>
-            <input matInput type="number" min="0" formControlName="valor" required />
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
           <mat-form-field>

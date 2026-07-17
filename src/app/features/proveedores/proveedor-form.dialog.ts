@@ -11,13 +11,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Ruta } from '../../core/models';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { ProveedoresService } from './proveedores.service';
 
 @Component({
   selector: 'app-proveedor-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar proveedor' : 'Nuevo proveedor' }}</h2>
@@ -45,7 +46,7 @@ import { ProveedoresService } from './proveedores.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Precio por litro</mat-label>
-          <input matInput type="number" min="0" formControlName="precio_litro" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_litro" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field>

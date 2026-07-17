@@ -8,6 +8,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { CajaService } from './caja.service';
 
 /** Arqueo de caja: registra el efectivo contado y cierra la caja del día. */
@@ -15,6 +16,7 @@ import { CajaService } from './caja.service';
   selector: 'app-cerrar-caja-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
+    MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>Cerrar caja (arqueo)</h2>
@@ -22,7 +24,7 @@ import { CajaService } from './caja.service';
       <form [formGroup]="form" class="form-grid" id="form-cerrar-caja" (ngSubmit)="guardar()">
         <mat-form-field class="full">
           <mat-label>Efectivo contado</mat-label>
-          <input matInput type="number" min="0" formControlName="efectivo_contado" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="efectivo_contado" required />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Dinero físico contado al hacer el arqueo</mat-hint>
         </mat-form-field>

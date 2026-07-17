@@ -11,13 +11,14 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Ruta, Transportador } from '../../core/models';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { TransportadoresService } from './transportadores.service';
 
 @Component({
   selector: 'app-transportador-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule,
+    MatSelectModule, MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar transportador' : 'Nuevo transportador' }}</h2>
@@ -46,7 +47,7 @@ import { TransportadoresService } from './transportadores.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor de transporte por litro</mat-label>
-          <input matInput type="number" min="0" formControlName="valor_transporte" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_transporte" required />
           <span matTextPrefix>$&nbsp;</span>
           <span matTextSuffix>/L</span>
         </mat-form-field>

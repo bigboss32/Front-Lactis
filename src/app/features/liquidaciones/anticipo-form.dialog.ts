@@ -13,13 +13,14 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Anticipo, Page, Proveedor } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { AnticiposService } from './anticipos.service';
 
 @Component({
   selector: 'app-anticipo-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule,
+    MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar anticipo' : 'Nuevo anticipo' }}</h2>
@@ -41,7 +42,7 @@ import { AnticiposService } from './anticipos.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="number" min="0" formControlName="valor" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">

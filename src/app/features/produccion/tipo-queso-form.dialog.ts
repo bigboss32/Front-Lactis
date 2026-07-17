@@ -10,12 +10,13 @@ import { firstValueFrom } from 'rxjs';
 
 import { TipoQueso } from '../../core/models';
 import { TiposQuesoService } from './produccion.service';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 
 @Component({
   selector: 'app-tipo-queso-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule,
+    MatButtonModule, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar tipo de queso' : 'Nuevo tipo de queso' }}</h2>
@@ -31,7 +32,7 @@ import { TiposQuesoService } from './produccion.service';
         </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Precio de referencia</mat-label>
-          <input matInput type="number" min="0" formControlName="precio_referencia" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_referencia" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
       </form>

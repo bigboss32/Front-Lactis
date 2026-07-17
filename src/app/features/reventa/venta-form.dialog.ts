@@ -13,6 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { MoneyPipe } from '../../shared/pipes';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
 
@@ -28,6 +29,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatCheckboxModule, MatDatepickerModule, MoneyPipe,
+    MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar venta' : 'Nueva venta de queso' }}</h2>
@@ -64,7 +66,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
         </mat-form-field>
         <mat-form-field>
           <mat-label>Precio por kilo</mat-label>
-          <input matInput type="number" min="0" formControlName="precio_kilo" required />
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
         <mat-form-field class="full">
