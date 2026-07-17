@@ -136,3 +136,19 @@ body {
   .kpi-grid,
   .chart-grid { grid-template-columns: 1fr; }
 }
+
+// ------------------------------------------- tablas dentro de diálogos y paneles
+// Las tablas de detalle que viven dentro de un diálogo (historial de pagos,
+// kardex, detalle de liquidación/venta) o de un panel expandible (historial de
+// borona) NO están envueltas en .table-card, así que no heredan el scroll
+// horizontal global. En celular y tablet conservan el ancho natural de sus
+// columnas y se desplazan dentro del propio diálogo/panel, sin comprimir los
+// valores ni desbordar la pantalla. 900px = mismo breakpoint que el resto.
+@media (max-width: 900px) {
+  .mat-mdc-dialog-content table.mat-mdc-table,
+  .mat-expansion-panel-body table.mat-mdc-table {
+    width: max-content;
+    min-width: 100%;
+  }
+  .mat-expansion-panel-body { overflow-x: auto; }
+}

@@ -47,6 +47,35 @@ import { VentaPayload, VentasService } from './ventas.service';
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
+    // En celular y tablet la fila de 5 columnas no cabe en el diálogo: se reacomoda
+    // como tarjeta apilada (Producto a lo ancho, Cantidad+Precio en dos columnas,
+    // Subtotal+eliminar abajo). 900px = mismo breakpoint que el resto del sistema.
+    @media (max-width: 900px) {
+      .linea {
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          'producto producto'
+          'cantidad precio'
+          'subtotal borrar';
+        gap: 8px 12px;
+        padding: 12px;
+        border: 1px solid var(--mat-sys-outline-variant);
+        border-radius: 10px;
+      }
+      .linea > *:nth-child(1) { grid-area: producto; }
+      .linea > *:nth-child(2) { grid-area: cantidad; }
+      .linea > *:nth-child(3) { grid-area: precio; }
+      .linea .subtotal-linea {
+        grid-area: subtotal;
+        text-align: left;
+        align-self: center;
+      }
+      .linea .subtotal-linea::before {
+        content: 'Subtotal: ';
+        color: var(--mat-sys-on-surface-variant);
+      }
+      .linea > button { grid-area: borrar; justify-self: end; }
+    }
     .agregar { margin: 4px 0 16px; }
     .totales {
       display: flex;

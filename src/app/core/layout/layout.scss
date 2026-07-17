@@ -48,6 +48,13 @@
     max-width: 280px;
     margin-left: 8px;
     font-size: 0.95rem;
+
+    // En celular el selector no puede robarse todo el ancho: el nombre se recorta
+    // con elipsis para dejar sitio a los iconos de la barra.
+    @media (max-width: 600px) {
+      max-width: 42vw;
+      margin-left: 0;
+    }
   }
 }
 
