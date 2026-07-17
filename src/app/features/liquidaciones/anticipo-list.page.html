@@ -14,9 +14,12 @@
     }
 
     <table mat-table [dataSource]="filas()">
-      <ng-container matColumnDef="proveedor">
-        <th mat-header-cell *matHeaderCellDef>Proveedor</th>
-        <td mat-cell *matCellDef="let fila">{{ nombreProveedor(fila) }}</td>
+      <ng-container matColumnDef="beneficiario">
+        <th mat-header-cell *matHeaderCellDef>Beneficiario</th>
+        <td mat-cell *matCellDef="let fila">
+          {{ nombreBeneficiario(fila) }}
+          <small class="tipo-beneficiario">{{ tipoBeneficiario(fila) }}</small>
+        </td>
       </ng-container>
 
       <ng-container matColumnDef="fecha">
@@ -37,14 +40,14 @@
       <ng-container matColumnDef="aplicado">
         <th mat-header-cell *matHeaderCellDef>Aplicado</th>
         <td mat-cell *matCellDef="let fila">
-          <app-estado-chip [estado]="fila.liquidacion_id ? 'aplicado' : 'pendiente'" />
+          <app-estado-chip [estado]="fila.aplicado ? 'aplicado' : 'pendiente'" />
         </td>
       </ng-container>
 
       <ng-container matColumnDef="acciones">
         <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
         <td mat-cell *matCellDef="let fila" class="col-acciones">
-          @if (!fila.liquidacion_id) {
+          @if (!fila.aplicado) {
             <button
               mat-icon-button
               *hasPermission="'liquidaciones:editar'"

@@ -11,9 +11,8 @@ import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
-import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Anticipo, Page, Proveedor } from '../../core/models';
+import { Anticipo } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
@@ -29,39 +28,42 @@ import { AnticiposService } from './anticipos.service';
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './anticipo-list.page.html',
+  styles: `
+    .tipo-beneficiario {
+      display: block;
+      color: var(--mat-sys-on-surface-variant);
+      font-size: 0.75rem;
+    }
+  `,
 })
 export class AnticipoListPage implements OnInit {
   private readonly servicio = inject(AnticiposService);
-  private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
 
-  readonly columnas = ['proveedor', 'fecha', 'valor', 'observaciones', 'aplicado', 'acciones'];
+  readonly columnas = ['beneficiario', 'fecha', 'valor', 'observaciones', 'aplicado', 'acciones'];
   readonly filas = signal<Anticipo[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(20);
 
-  /** Mapa proveedor_id → nombre (el listado del backend no incluye el nombre). */
-  readonly proveedores = signal<Record<string, string>>({});
-
-  constructor() {
-    firstValueFrom(this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100 })).then(
-      (respuesta) => {
-        const mapa: Record<string, string> = {};
-        for (const proveedor of respuesta.items) mapa[proveedor.id] = proveedor.nombre;
-        this.proveedores.set(mapa);
-      },
-    );
-  }
+  private readonly etiquetasTipo: Record<string, string> = {
+    proveedor: 'Proveedor',
+    transportador: 'Transportador',
+    empleado: 'Empleado',
+  };
 
   ngOnInit(): void {
     this.cargar();
   }
 
-  nombreProveedor(fila: Anticipo): string {
-    return fila.proveedor_nombre ?? this.proveedores()[fila.proveedor_id] ?? '—';
+  nombreBeneficiario(fila: Anticipo): string {
+    return fila.tercero_nombre ?? '—';
+  }
+
+  tipoBeneficiario(fila: Anticipo): string {
+    return this.etiquetasTipo[fila.tipo] ?? fila.tipo;
   }
 
   async cargar(): Promise<void> {
@@ -100,7 +102,7 @@ export class AnticipoListPage implements OnInit {
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar anticipo',
-          mensaje: `¿Eliminar el anticipo de "${this.nombreProveedor(item)}"? El registro quedará inactivo.`,
+          mensaje: `¿Eliminar el anticipo de "${this.nombreBeneficiario(item)}"? El registro quedará inactivo.`,
         },
       })
       .afterClosed()

@@ -4,7 +4,10 @@ import { CrudService } from '../../core/api.service';
 import { Anticipo } from '../../core/models';
 
 export interface AnticipoCreatePayload {
-  proveedor_id: string;
+  tipo: 'proveedor' | 'transportador' | 'empleado';
+  proveedor_id?: string;
+  transportador_id?: string;
+  empleado_id?: string;
   fecha: string; // ISO 'YYYY-MM-DD'
   valor: number | string;
   observaciones?: string | null;

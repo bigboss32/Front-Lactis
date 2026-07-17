@@ -122,6 +122,7 @@ export interface PagoEmpleado extends TenantFields {
   periodo: string | null;
   dias_trabajados: number;
   valor_dia: number;
+  anticipos: number;
   total: number;
   observaciones: string | null;
 }
@@ -219,12 +220,18 @@ export interface Liquidacion extends TenantFields {
 }
 
 export interface Anticipo extends TenantFields {
-  proveedor_id: string;
+  tipo: 'proveedor' | 'transportador' | 'empleado' | string;
+  proveedor_id: string | null;
+  transportador_id: string | null;
+  empleado_id: string | null;
   proveedor_nombre: string | null;
+  tercero_nombre: string | null;
   fecha: string;
   valor: Monto;
   observaciones: string | null;
   liquidacion_id: string | null;
+  pago_empleado_id: string | null;
+  aplicado: boolean;
 }
 
 // -------------------------------------------------------------- producción

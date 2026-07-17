@@ -96,6 +96,11 @@ import { NominaService } from './nomina.service';
           <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor_dia | money }}</td>
         </ng-container>
 
+        <ng-container matColumnDef="anticipos">
+          <th mat-header-cell *matHeaderCellDef class="num">Anticipos</th>
+          <td mat-cell *matCellDef="let pago" class="num">{{ pago.anticipos | money }}</td>
+        </ng-container>
+
         <ng-container matColumnDef="total">
           <th mat-header-cell *matHeaderCellDef class="num">Total</th>
           <td mat-cell *matCellDef="let pago" class="num">{{ pago.total | money }}</td>
@@ -162,7 +167,7 @@ export class PagosEmpleadoDialog {
 
   readonly data = inject<{ empleado: Empleado }>(MAT_DIALOG_DATA);
 
-  readonly columnas = ['fecha', 'dias_trabajados', 'valor_dia', 'total', 'acciones'];
+  readonly columnas = ['fecha', 'dias_trabajados', 'valor_dia', 'anticipos', 'total', 'acciones'];
   readonly pagos = signal<PagoEmpleado[]>([]);
   readonly cargando = signal(false);
   readonly guardando = signal(false);

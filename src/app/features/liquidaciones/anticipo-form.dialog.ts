@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,10 +12,16 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { Anticipo, Page, Proveedor } from '../../core/models';
+import { Anticipo, Empleado, Page, Proveedor, Transportador } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
-import { AnticiposService } from './anticipos.service';
+import { AnticipoCreatePayload, AnticiposService } from './anticipos.service';
+
+type TipoAnticipo = 'proveedor' | 'transportador' | 'empleado';
+interface Beneficiario {
+  id: string;
+  nombre: string;
+}
 
 @Component({
   selector: 'app-anticipo-form',
@@ -26,11 +33,19 @@ import { AnticiposService } from './anticipos.service';
     <h2 mat-dialog-title>{{ data?.item ? 'Editar anticipo' : 'Nuevo anticipo' }}</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form-grid" id="form-anticipo" (ngSubmit)="guardar()">
-        <mat-form-field class="full">
-          <mat-label>Proveedor</mat-label>
-          <mat-select formControlName="proveedor_id" required>
-            @for (proveedor of proveedores(); track proveedor.id) {
-              <mat-option [value]="proveedor.id">{{ proveedor.nombre }}</mat-option>
+        <mat-form-field>
+          <mat-label>Tipo</mat-label>
+          <mat-select formControlName="tipo" (selectionChange)="cambiarTipo()" required>
+            <mat-option value="proveedor">Proveedor</mat-option>
+            <mat-option value="transportador">Transportador</mat-option>
+            <mat-option value="empleado">Empleado</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>{{ etiquetaBeneficiario() }}</mat-label>
+          <mat-select formControlName="beneficiario_id" required>
+            @for (beneficiario of beneficiarios(); track beneficiario.id) {
+              <mat-option [value]="beneficiario.id">{{ beneficiario.nombre }}</mat-option>
             }
           </mat-select>
         </mat-form-field>
@@ -73,21 +88,73 @@ export class AnticipoFormDialog {
 
   readonly data = inject<{ item?: Anticipo } | null>(MAT_DIALOG_DATA, { optional: true });
   readonly proveedores = signal<Proveedor[]>([]);
+  readonly transportadores = signal<Transportador[]>([]);
+  readonly empleados = signal<Empleado[]>([]);
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
-    proveedor_id: [this.data?.item?.proveedor_id ?? '', Validators.required],
+    tipo: [(this.data?.item?.tipo as TipoAnticipo) ?? 'proveedor', Validators.required],
+    beneficiario_id: [this.beneficiarioInicial(), Validators.required],
     fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     valor: [Number(this.data?.item?.valor ?? 0), [Validators.required, Validators.min(0.01)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
 
+  /** El valor de `tipo` se sigue por señal para recomputar el catálogo de beneficiarios. */
+  private readonly tipoSeleccionado = toSignal(this.form.controls.tipo.valueChanges, {
+    initialValue: this.form.controls.tipo.value,
+  });
+
+  readonly beneficiarios = computed<Beneficiario[]>(() => {
+    switch (this.tipoSeleccionado()) {
+      case 'transportador':
+        return this.transportadores().map((t) => ({ id: t.id, nombre: t.nombre }));
+      case 'empleado':
+        return this.empleados().map((e) => ({ id: e.id, nombre: `${e.nombre} ${e.apellido}` }));
+      default:
+        return this.proveedores().map((p) => ({ id: p.id, nombre: p.nombre }));
+    }
+  });
+
+  readonly etiquetaBeneficiario = computed(() => {
+    switch (this.tipoSeleccionado()) {
+      case 'transportador':
+        return 'Transportador';
+      case 'empleado':
+        return 'Empleado';
+      default:
+        return 'Proveedor';
+    }
+  });
+
   constructor() {
-    firstValueFrom(
-      this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100, estado: 'activo' }),
-    ).then((page) => this.proveedores.set(page.items));
-    // El backend no permite cambiar el proveedor de un anticipo existente.
-    if (this.data?.item) this.form.controls.proveedor_id.disable();
+    const params = { page_size: 100, estado: 'activo' };
+    firstValueFrom(this.api.get<Page<Proveedor>>('/proveedores', params)).then((page) =>
+      this.proveedores.set(page.items),
+    );
+    firstValueFrom(this.api.get<Page<Transportador>>('/transportadores', params)).then((page) =>
+      this.transportadores.set(page.items),
+    );
+    firstValueFrom(this.api.get<Page<Empleado>>('/empleados', params)).then((page) =>
+      this.empleados.set(page.items),
+    );
+    // El backend no permite cambiar el beneficiario ni el tipo de un anticipo existente.
+    if (this.data?.item) {
+      this.form.controls.tipo.disable();
+      this.form.controls.beneficiario_id.disable();
+    }
+  }
+
+  /** En modo edición precarga el beneficiario según el tipo del anticipo. */
+  private beneficiarioInicial(): string {
+    const item = this.data?.item;
+    if (!item) return '';
+    return item.proveedor_id ?? item.transportador_id ?? item.empleado_id ?? '';
+  }
+
+  /** Al cambiar el tipo se limpia el beneficiario para forzar una nueva elección. */
+  cambiarTipo(): void {
+    this.form.controls.beneficiario_id.setValue('');
   }
 
   async guardar(): Promise<void> {
@@ -104,14 +171,16 @@ export class AnticipoFormDialog {
           }),
         );
       } else {
-        await firstValueFrom(
-          this.servicio.create({
-            proveedor_id: valores.proveedor_id,
-            fecha: dateToIso(valores.fecha),
-            valor: valores.valor,
-            observaciones: valores.observaciones || null,
-          }),
-        );
+        const payload: AnticipoCreatePayload = {
+          tipo: valores.tipo,
+          fecha: dateToIso(valores.fecha),
+          valor: valores.valor,
+          observaciones: valores.observaciones || null,
+        };
+        if (valores.tipo === 'transportador') payload.transportador_id = valores.beneficiario_id;
+        else if (valores.tipo === 'empleado') payload.empleado_id = valores.beneficiario_id;
+        else payload.proveedor_id = valores.beneficiario_id;
+        await firstValueFrom(this.servicio.create(payload));
       }
       this.dialogRef.close(true);
     } catch (err) {
