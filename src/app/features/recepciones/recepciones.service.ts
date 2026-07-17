@@ -27,6 +27,8 @@ export interface RecepcionFiltro extends QueryParams {
   transportador_id?: string | null;
   desde?: string | null;
   hasta?: string | null;
+  /** Búsqueda por nombre de proveedor. */
+  search?: string | null;
 }
 
 // ---------------------------------------------------------- grilla quincena

@@ -34,6 +34,29 @@
       <div class="tab-panel">
         <div class="page-toolbar">
           <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Buscar proveedor</mat-label>
+            <input matInput [formControl]="buscar" placeholder="Nombre del proveedor…" />
+            <mat-icon matSuffix>search</mat-icon>
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Ruta</mat-label>
+            <mat-select [formControl]="rutaId">
+              <mat-option [value]="null">Todas</mat-option>
+              @for (ruta of rutas(); track ruta.id) {
+                <mat-option [value]="ruta.id">{{ ruta.nombre }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Proveedor</mat-label>
+            <mat-select [formControl]="proveedorId">
+              <mat-option [value]="null">Todos</mat-option>
+              @for (proveedor of proveedores(); track proveedor.id) {
+                <mat-option [value]="proveedor.id">{{ proveedor.nombre }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
             <mat-label>Desde</mat-label>
             <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
             <mat-datepicker-toggle matSuffix [for]="pDesde" />
@@ -44,15 +67,6 @@
             <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
             <mat-datepicker-toggle matSuffix [for]="pHasta" />
             <mat-datepicker #pHasta />
-          </mat-form-field>
-          <mat-form-field subscriptSizing="dynamic">
-            <mat-label>Proveedor</mat-label>
-            <mat-select [formControl]="proveedorId">
-              <mat-option [value]="null">Todos</mat-option>
-              @for (proveedor of proveedores(); track proveedor.id) {
-                <mat-option [value]="proveedor.id">{{ proveedor.nombre }}</mat-option>
-              }
-            </mat-select>
           </mat-form-field>
           <span class="spacer"></span>
           <button

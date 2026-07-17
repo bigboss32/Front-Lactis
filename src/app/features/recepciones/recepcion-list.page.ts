@@ -21,7 +21,7 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Page, Proveedor, Recepcion, ResumenPeriodo } from '../../core/models';
+import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { PageHeader } from '../../shared/page-header';
 import { dateToIso } from '../../shared/date-utils';
@@ -109,11 +109,14 @@ export class RecepcionListPage implements OnInit {
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenPeriodo | null>(null);
   readonly proveedores = signal<Proveedor[]>([]);
+  readonly rutas = signal<Ruta[]>([]);
   readonly exportando = signal(false);
 
   readonly desde = new FormControl<Date | null>(quincenaActual().desde);
   readonly hasta = new FormControl<Date | null>(quincenaActual().hasta);
   readonly proveedorId = new FormControl<string | null>(null);
+  readonly rutaId = new FormControl<string | null>(null);
+  readonly buscar = new FormControl('', { nonNullable: true });
 
   constructor() {
     this.desde.valueChanges
@@ -123,6 +126,10 @@ export class RecepcionListPage implements OnInit {
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.proveedorId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    this.rutaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    this.buscar.valueChanges
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.recargar());
   }
 
   ngOnInit(): void {
@@ -131,6 +138,9 @@ export class RecepcionListPage implements OnInit {
     firstValueFrom(
       this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100, estado: 'activo' }),
     ).then((respuesta) => this.proveedores.set(respuesta.items));
+    firstValueFrom(
+      this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
+    ).then((respuesta) => this.rutas.set(respuesta.items));
   }
 
   recargar(): void {
@@ -147,6 +157,8 @@ export class RecepcionListPage implements OnInit {
           page: this.page(),
           page_size: this.pageSize(),
           proveedor_id: this.proveedorId.value,
+          ruta_id: this.rutaId.value,
+          search: this.buscar.value || null,
           desde: dateToIso(this.desde.value),
           hasta: dateToIso(this.hasta.value),
         }),
