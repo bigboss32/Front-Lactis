@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, inject, signal, viewChild } from '@angular/core';
+import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -75,6 +75,8 @@ function quincenaActual(): { desde: Date; hasta: Date } {
     .stat { display: flex; flex-direction: column; }
     .stat .valor { font-size: 1.15rem; font-weight: 600; }
     .stat .etiqueta { color: var(--mat-sys-on-surface-variant); font-size: 0.8rem; }
+    /* Métricas derivadas (con transporte): se resaltan en color primario */
+    .stat.destacado .valor { color: var(--mat-sys-primary); }
 
     .liq {
       display: inline-flex;
@@ -111,6 +113,20 @@ export class RecepcionListPage implements OnInit {
   readonly proveedores = signal<Proveedor[]>([]);
   readonly rutas = signal<Ruta[]>([]);
   readonly exportando = signal(false);
+
+  /** Total pagado en el período: leche (valor neto) + transporte. */
+  readonly totalConTransporte = computed(() => {
+    const r = this.resumen();
+    return r ? Number(r.valor_neto) + Number(r.valor_transporte) : 0;
+  });
+
+  /** Costo por litro puesto: (leche + transporte) / litros del período. */
+  readonly precioPromedioConTransporte = computed(() => {
+    const r = this.resumen();
+    if (!r) return 0;
+    const litros = Number(r.total_litros);
+    return litros > 0 ? (Number(r.valor_neto) + Number(r.valor_transporte)) / litros : 0;
+  });
 
   readonly desde = new FormControl<Date | null>(quincenaActual().desde);
   readonly hasta = new FormControl<Date | null>(quincenaActual().hasta);

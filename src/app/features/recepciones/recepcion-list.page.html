@@ -105,9 +105,17 @@
                 <span class="valor">{{ r.valor_neto | money }}</span>
                 <span class="etiqueta">Valor neto</span>
               </div>
+              <div class="stat destacado">
+                <span class="valor">{{ totalConTransporte() | money }}</span>
+                <span class="etiqueta">Total (leche + transporte)</span>
+              </div>
               <div class="stat">
                 <span class="valor">{{ r.precio_promedio | money }}</span>
                 <span class="etiqueta">Precio promedio/L</span>
+              </div>
+              <div class="stat destacado">
+                <span class="valor">{{ precioPromedioConTransporte() | money }}</span>
+                <span class="etiqueta">Precio prom. con transporte/L</span>
               </div>
             </div>
           </mat-card>

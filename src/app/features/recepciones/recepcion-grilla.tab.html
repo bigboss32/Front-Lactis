@@ -68,6 +68,7 @@
               <th class="col-total" scope="col">Litros</th>
               <th class="col-total" scope="col">Valor neto</th>
               <th class="col-total" scope="col">Transporte</th>
+              <th class="col-total col-total-final" scope="col">Total</th>
             </tr>
           </thead>
 
@@ -135,6 +136,7 @@
                 <td class="col-total">{{ fila.total_litros | cantidad: 'L' }}</td>
                 <td class="col-total">{{ fila.valor_neto | money }}</td>
                 <td class="col-total">{{ fila.valor_transporte | money }}</td>
+                <td class="col-total col-total-final">{{ totalFila(fila) | money }}</td>
               </tr>
             }
           </tbody>
@@ -150,6 +152,7 @@
               <td class="col-total">{{ g.total_litros | cantidad: 'L' }}</td>
               <td class="col-total">{{ g.total_valor_neto | money }}</td>
               <td class="col-total">{{ g.total_transporte | money }}</td>
+              <td class="col-total col-total-final">{{ totalGrilla(g) | money }}</td>
             </tr>
           </tfoot>
         </table>

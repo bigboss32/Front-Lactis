@@ -205,6 +205,10 @@ function quincenaDeHoy(): Quincena {
     }
     th.col-total { vertical-align: bottom; border-left: 1px solid var(--mat-sys-outline-variant); }
 
+    /* Columna "Total" (leche + transporte): se resalta en color primario */
+    .col-total-final { color: var(--mat-sys-primary); }
+    th.col-total-final { font-weight: 700; }
+
     /* Fila TOTAL DÍA */
     tfoot .fila-total td {
       background: var(--mat-sys-surface-container);
@@ -299,6 +303,16 @@ export class RecepcionGrillaTab implements OnInit {
       return { iso, dia, abrev: DIAS_SEMANA[new Date(anio, mes - 1, dia).getDay()] };
     });
   });
+
+  /** Total pagado a un proveedor en la quincena: leche (valor neto) + transporte. */
+  totalFila(fila: FilaGrilla): number {
+    return Number(fila.valor_neto) + Number(fila.valor_transporte);
+  }
+
+  /** Total general de la quincena: leche (valor neto) + transporte. */
+  totalGrilla(g: GrillaQuincena): number {
+    return Number(g.total_valor_neto) + Number(g.total_transporte);
+  }
 
   constructor() {
     this.buscar.valueChanges
