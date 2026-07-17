@@ -87,8 +87,18 @@ export class RecepcionesService extends CrudService<Recepcion, RecepcionPayload>
     return this.api.get<ResumenPeriodo>(`${this.base}/resumen/periodo`, { desde, hasta });
   }
 
-  /** Grilla proveedores × días de un período (fechas ISO 'YYYY-MM-DD'). */
-  grilla(desde: string, hasta: string): Observable<GrillaQuincena> {
-    return this.api.get<GrillaQuincena>(`${this.base}/grilla/quincena`, { desde, hasta });
+  /** Grilla proveedores × días de un período, con filtros por nombre y ruta. */
+  grilla(
+    desde: string,
+    hasta: string,
+    search?: string | null,
+    ruta_id?: string | null,
+  ): Observable<GrillaQuincena> {
+    return this.api.get<GrillaQuincena>(`${this.base}/grilla/quincena`, {
+      desde,
+      hasta,
+      search,
+      ruta_id,
+    });
   }
 }

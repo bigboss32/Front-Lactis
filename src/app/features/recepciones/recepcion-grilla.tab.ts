@@ -8,9 +8,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { firstValueFrom } from 'rxjs';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSelectModule } from '@angular/material/select';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
+import { Page, Ruta } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
@@ -49,7 +55,8 @@ function quincenaDeHoy(): Quincena {
   selector: 'app-recepcion-grilla-tab',
   imports: [
     MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    MatTooltipModule, HasPermissionDirective, MoneyPipe, CantidadPipe, DatePipe,
+    MatTooltipModule, MatFormFieldModule, MatInputModule, MatSelectModule,
+    ReactiveFormsModule, HasPermissionDirective, MoneyPipe, CantidadPipe, DatePipe,
   ],
   templateUrl: './recepcion-grilla.tab.html',
   styles: `
@@ -73,6 +80,15 @@ function quincenaDeHoy(): Quincena {
       font-weight: 400;
       color: var(--mat-sys-on-surface-variant);
     }
+
+    /* --------------------------------------------------- filtros de la grilla */
+    .filtros-grilla {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .filtros-grilla mat-form-field { min-width: 220px; }
 
     /* --------------------------------------------------------------- grilla */
     .grilla-card { padding: 0; overflow: hidden; }
@@ -253,6 +269,10 @@ export class RecepcionGrillaTab implements OnInit {
   readonly grilla = signal<GrillaQuincena | null>(null);
   readonly cargando = signal(false);
   readonly exportando = signal(false);
+  readonly rutas = signal<Ruta[]>([]);
+
+  readonly buscar = new FormControl('', { nonNullable: true });
+  readonly rutaId = new FormControl<string | null>(null);
 
   readonly puedeCrear = computed(() => this.auth.hasPermission('recepcion', 'crear'));
   readonly puedeEditar = computed(() => this.auth.hasPermission('recepcion', 'editar'));
@@ -280,8 +300,18 @@ export class RecepcionGrillaTab implements OnInit {
     });
   });
 
+  constructor() {
+    this.buscar.valueChanges
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.cargar());
+    this.rutaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.cargar());
+  }
+
   ngOnInit(): void {
     this.cargar();
+    firstValueFrom(
+      this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
+    ).then((r) => this.rutas.set(r.items));
   }
 
   anterior(): void {
@@ -312,7 +342,11 @@ export class RecepcionGrillaTab implements OnInit {
     this.cargando.set(true);
     try {
       const { desde, hasta } = this.rango();
-      this.grilla.set(await firstValueFrom(this.servicio.grilla(desde, hasta)));
+      this.grilla.set(
+        await firstValueFrom(
+          this.servicio.grilla(desde, hasta, this.buscar.value || null, this.rutaId.value),
+        ),
+      );
     } catch (err) {
       this.grilla.set(null);
       this.mostrarError(err, 'No fue posible cargar la grilla');

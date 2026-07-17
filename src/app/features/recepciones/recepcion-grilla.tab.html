@@ -24,6 +24,24 @@
   </button>
 </div>
 
+<!-- Filtros de la grilla: por nombre de proveedor y por ruta -->
+<div class="filtros-grilla">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar proveedor</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Nombre del proveedor…" />
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Ruta</mat-label>
+    <mat-select [formControl]="rutaId">
+      <mat-option [value]="null">Todas</mat-option>
+      @for (ruta of rutas(); track ruta.id) {
+        <mat-option [value]="ruta.id">{{ ruta.nombre }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+</div>
+
 <mat-card class="grilla-card">
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" />
