@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
 
-import { CrudService } from '../../core/api.service';
-import { Proveedor } from '../../core/models';
+import { CrudService, ListOpts } from '../../core/api.service';
+import { Page, Proveedor } from '../../core/models';
 
 export interface ProveedorPayload {
   nombre: string;
@@ -19,5 +20,10 @@ export interface ProveedorPayload {
 export class ProveedoresService extends CrudService<Proveedor, ProveedorPayload> {
   constructor() {
     super('/proveedores');
+  }
+
+  /** Listado con búsqueda, estado y filtro por ruta. */
+  filtrar(opts: ListOpts & { ruta_id?: string | null } = {}): Observable<Page<Proveedor>> {
+    return this.api.get<Page<Proveedor>>('/proveedores/filtrar/avanzado', opts);
   }
 }

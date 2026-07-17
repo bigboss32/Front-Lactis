@@ -15,8 +15,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
+import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Proveedor } from '../../core/models';
+import { Page, Proveedor, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
@@ -36,6 +37,7 @@ import { ProveedoresService } from './proveedores.service';
 })
 export class ProveedorListPage implements OnInit {
   private readonly servicio = inject(ProveedoresService);
+  private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
 
@@ -46,18 +48,24 @@ export class ProveedorListPage implements OnInit {
   readonly page = signal(1);
   readonly pageSize = signal(20);
 
+  readonly rutas = signal<Ruta[]>([]);
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly estado = new FormControl<string | null>(null);
+  readonly rutaId = new FormControl<string | null>(null);
 
   constructor() {
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.estado.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    this.rutaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
   }
 
   ngOnInit(): void {
     this.cargar();
+    firstValueFrom(
+      this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
+    ).then((r) => this.rutas.set(r.items));
   }
 
   recargar(): void {
@@ -69,11 +77,12 @@ export class ProveedorListPage implements OnInit {
     this.cargando.set(true);
     try {
       const respuesta = await firstValueFrom(
-        this.servicio.list({
+        this.servicio.filtrar({
           page: this.page(),
           page_size: this.pageSize(),
           search: this.buscar.value || null,
           estado: this.estado.value,
+          ruta_id: this.rutaId.value,
         }),
       );
       this.filas.set(respuesta.items);
