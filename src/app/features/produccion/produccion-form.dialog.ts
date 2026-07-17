@@ -5,7 +5,6 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -13,13 +12,15 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Page, Produccion, TipoQueso } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 import { ProduccionService } from './produccion.service';
 
 @Component({
   selector: 'app-produccion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule,
+    MatButtonModule, MatDatepickerModule, SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar producción' : 'Nueva producción' }}</h2>
@@ -31,14 +32,11 @@ import { ProduccionService } from './produccion.service';
           <mat-datepicker-toggle matSuffix [for]="pFecha" />
           <mat-datepicker #pFecha />
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>Tipo de queso</mat-label>
-          <mat-select formControlName="tipo_queso_id" required>
-            @for (tipo of tiposQueso(); track tipo.id) {
-              <mat-option [value]="tipo.id">{{ tipo.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable
+          formControlName="tipo_queso_id"
+          [opciones]="tiposQueso()"
+          label="Tipo de queso"
+        />
         <mat-form-field>
           <mat-label>Cantidad (unidades)</mat-label>
           <input matInput type="number" min="0" formControlName="cantidad" required />
@@ -118,6 +116,8 @@ export class ProduccionFormDialog {
     firstValueFrom(
       this.api.get<Page<TipoQueso>>('/tipos-queso', { page_size: 100, estado: 'activo' }),
     ).then((page) => this.tiposQueso.set(page.items));
+
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { Monto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { CantidadPipe } from '../../shared/pipes';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { ReventaService } from './reventa.service';
 
 export interface ConversionDialogData {
@@ -87,6 +88,10 @@ export class ConversionFormDialog {
     kilos: [0, [Validators.required, Validators.min(0.01)]],
     observaciones: [''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

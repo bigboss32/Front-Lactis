@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, computed, inject, output, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -18,8 +18,8 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Page, Ruta } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
-import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { RecepcionDialogData, RecepcionFormDialog } from './recepcion-form.dialog';
 import { FilaGrilla, GrillaQuincena, RecepcionesService } from './recepciones.service';
 
@@ -56,7 +56,7 @@ function quincenaDeHoy(): Quincena {
   imports: [
     MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
     MatTooltipModule, MatFormFieldModule, MatInputModule, MatSelectModule,
-    ReactiveFormsModule, HasPermissionDirective, MoneyPipe, CantidadPipe, DatePipe,
+    ReactiveFormsModule, MoneyPipe, CantidadPipe, DatePipe,
   ],
   templateUrl: './recepcion-grilla.tab.html',
   styles: `
@@ -264,6 +264,8 @@ export class RecepcionGrillaTab implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Se emite tras guardar desde la grilla, para que el listado se recargue. */
   readonly cambio = output<void>();
@@ -272,7 +274,6 @@ export class RecepcionGrillaTab implements OnInit {
   readonly quincena = signal<Quincena>(quincenaDeHoy());
   readonly grilla = signal<GrillaQuincena | null>(null);
   readonly cargando = signal(false);
-  readonly exportando = signal(false);
   readonly rutas = signal<Ruta[]>([]);
 
   readonly buscar = new FormControl('', { nonNullable: true });
@@ -322,6 +323,11 @@ export class RecepcionGrillaTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'recepciones-grilla',
+      { buscar: this.buscar, rutaId: this.rutaId },
+      this.destroyRef,
+    );
     this.cargar();
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
@@ -391,19 +397,6 @@ export class RecepcionGrillaTab implements OnInit {
     }
   }
 
-  async exportar(): Promise<void> {
-    this.exportando.set(true);
-    try {
-      const { desde, hasta } = this.rango();
-      await firstValueFrom(
-        this.api.download('/reportes/export/recepciones', 'recepciones.xlsx', { desde, hasta }),
-      );
-    } catch {
-      this.snackbar.open('No fue posible exportar el archivo', 'OK', { duration: 5000 });
-    } finally {
-      this.exportando.set(false);
-    }
-  }
 
   private abrirDialogo(data: RecepcionDialogData): void {
     this.dialog

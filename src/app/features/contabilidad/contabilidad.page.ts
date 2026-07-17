@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatCardModule } from '@angular/material/card';
@@ -18,6 +18,8 @@ import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ContabilidadService } from './contabilidad.service';
 
 const ETIQUETAS_ORIGEN: Record<string, string> = {
@@ -35,6 +37,7 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
     ReactiveFormsModule, DatePipe, MatCardModule, MatTabsModule, MatTableModule,
     MatFormFieldModule, MatInputModule, MatIconModule, MatProgressBarModule,
     MatDatepickerModule, PageHeader, AppChart, MoneyPipe, CantidadPipe,
+    RangoFechasRapido,
   ],
   templateUrl: './contabilidad.page.html',
   styles: `
@@ -97,6 +100,8 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
 })
 export class ContabilidadPage implements OnInit {
   private readonly servicio = inject(ContabilidadService);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly desde = new FormControl<Date | null>(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -132,6 +137,11 @@ export class ContabilidadPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'contabilidad',
+      { desde: this.desde, hasta: this.hasta },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

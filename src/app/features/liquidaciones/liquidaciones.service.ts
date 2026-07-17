@@ -37,8 +37,4 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
   descargarPdf(id: string): Observable<void> {
     return this.api.download(`${this.base}/${id}/pdf`, 'liquidacion.pdf');
   }
-
-  exportarExcel(desde: string, hasta: string): Observable<void> {
-    return this.api.download(`${this.base}/export/excel`, 'liquidaciones.xlsx', { desde, hasta });
-  }
 }

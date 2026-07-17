@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -20,6 +20,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Page, Proveedor, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
 import { ProveedorFormDialog } from './proveedor-form.dialog';
@@ -40,6 +41,8 @@ export class ProveedorListPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['nombre', 'vereda', 'telefono', 'precio_litro', 'estado', 'acciones'];
   readonly filas = signal<Proveedor[]>([]);
@@ -62,6 +65,11 @@ export class ProveedorListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'proveedores',
+      { buscar: this.buscar, estado: this.estado, rutaId: this.rutaId },
+      this.destroyRef,
+    );
     this.cargar();
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),

@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,6 +13,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
@@ -23,7 +24,10 @@ import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { RecepcionFormDialog } from './recepcion-form.dialog';
@@ -44,7 +48,7 @@ function quincenaActual(): { desde: Date; hasta: Date } {
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatDatepickerModule, MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
     PageHeader, MoneyPipe, CantidadPipe, DatePipe, HasPermissionDirective,
-    RecepcionGrillaTab,
+    RecepcionGrillaTab, RangoFechasRapido, MatSortModule,
   ],
   templateUrl: './recepcion-list.page.html',
   styles: `
@@ -96,6 +100,8 @@ export class RecepcionListPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Pestaña de grilla: se recarga cuando se guarda o elimina desde el listado. */
   private readonly grillaTab = viewChild(RecepcionGrillaTab);
@@ -105,6 +111,18 @@ export class RecepcionListPage implements OnInit {
     'descuentos', 'valor_neto', 'liquidacion', 'acciones',
   ];
   readonly filas = signal<Recepcion[]>([]);
+  readonly orden = signal<Sort>({ active: '', direction: '' });
+  readonly filasOrdenadas = computed(() =>
+    ordenarFilas(this.filas(), this.orden(), {
+      proveedor: (f) => f.proveedor_nombre,
+      litros: (f) => Number(f.cantidad_litros),
+      precio_litro: (f) => Number(f.precio_litro),
+      valor_bruto: (f) => Number(f.valor_bruto),
+      descuentos: (f) => Number(f.descuentos),
+      valor_neto: (f) => Number(f.valor_neto),
+      liquidacion: (f) => f.liquidacion_id,
+    }),
+  );
   readonly total = signal(0);
   readonly cargando = signal(false);
   readonly page = signal(1);
@@ -112,7 +130,6 @@ export class RecepcionListPage implements OnInit {
   readonly resumen = signal<ResumenPeriodo | null>(null);
   readonly proveedores = signal<Proveedor[]>([]);
   readonly rutas = signal<Ruta[]>([]);
-  readonly exportando = signal(false);
 
   /** Total pagado en el período: leche (valor neto) + transporte. */
   readonly totalConTransporte = computed(() => {
@@ -149,6 +166,17 @@ export class RecepcionListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'recepciones',
+      {
+        buscar: this.buscar,
+        rutaId: this.rutaId,
+        proveedorId: this.proveedorId,
+        desde: this.desde,
+        hasta: this.hasta,
+      },
+      this.destroyRef,
+    );
     this.cargar();
     this.cargarResumen();
     firstValueFrom(
@@ -251,21 +279,5 @@ export class RecepcionListPage implements OnInit {
           this.snackbar.open(detalle, 'OK', { duration: 5000 });
         }
       });
-  }
-
-  async exportar(): Promise<void> {
-    this.exportando.set(true);
-    try {
-      await firstValueFrom(
-        this.api.download('/reportes/export/recepciones', 'recepciones.xlsx', {
-          desde: dateToIso(this.desde.value),
-          hasta: dateToIso(this.hasta.value),
-        }),
-      );
-    } catch {
-      this.snackbar.open('No fue posible exportar el archivo', 'OK', { duration: 5000 });
-    } finally {
-      this.exportando.set(false);
-    }
   }
 }

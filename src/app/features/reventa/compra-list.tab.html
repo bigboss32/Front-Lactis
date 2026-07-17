@@ -2,6 +2,11 @@
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Buscar productor</mat-label>
     <input matInput [formControl]="buscar" placeholder="Nombre del productor" />
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    }
     <mat-icon matSuffix>search</mat-icon>
   </mat-form-field>
   <mat-form-field subscriptSizing="dynamic">
@@ -20,7 +25,7 @@
   </button>
 </div>
 
-<mat-card class="table-card">
+<mat-card class="table-card tarjetas">
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" />
   }
@@ -28,49 +33,49 @@
   <table mat-table [dataSource]="filas()">
     <ng-container matColumnDef="fecha">
       <th mat-header-cell *matHeaderCellDef>Fecha</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="productor">
       <th mat-header-cell *matHeaderCellDef>Productor</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.productor }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Productor'">{{ fila.productor }}</td>
     </ng-container>
 
     <ng-container matColumnDef="kilos_brutos">
       <th mat-header-cell *matHeaderCellDef class="num">Kilos brutos</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.kilos_brutos | cantidad: 'kg' }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Kilos brutos'">{{ fila.kilos_brutos | cantidad: 'kg' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="merma">
       <th mat-header-cell *matHeaderCellDef class="num">Merma</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.merma_kilos | cantidad: 'kg' }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Merma'">{{ fila.merma_kilos | cantidad: 'kg' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="kilos_netos">
       <th mat-header-cell *matHeaderCellDef class="num">Kilos netos</th>
-      <td mat-cell *matCellDef="let fila" class="num">
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Kilos netos'">
         <strong>{{ fila.kilos_netos | cantidad: 'kg' }}</strong>
       </td>
     </ng-container>
 
     <ng-container matColumnDef="precio_kilo">
       <th mat-header-cell *matHeaderCellDef class="num">Precio/kg</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.precio_kilo | money }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Precio/kg'">{{ fila.precio_kilo | money }}</td>
     </ng-container>
 
     <ng-container matColumnDef="valor_total">
       <th mat-header-cell *matHeaderCellDef class="num">Total</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_total | money }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Total'">{{ fila.valor_total | money }}</td>
     </ng-container>
 
     <ng-container matColumnDef="abonado">
       <th mat-header-cell *matHeaderCellDef class="num">Abonado</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.abonado | money }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Abonado'">{{ fila.abonado | money }}</td>
     </ng-container>
 
     <ng-container matColumnDef="saldo">
       <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
-      <td mat-cell *matCellDef="let fila" class="num">
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
         {{ fila.saldo | money }}
         @if (conSaldo(fila)) {
           <span class="badge-saldo" matTooltip="Saldo pendiente por pagar al productor">
@@ -82,7 +87,7 @@
 
     <ng-container matColumnDef="estado">
       <th mat-header-cell *matHeaderCellDef>Estado</th>
-      <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
     </ng-container>
 
     <ng-container matColumnDef="acciones">

@@ -10,14 +10,6 @@
     >
       <mat-icon>recycling</mat-icon> Pasar queso a borona
     </button>
-    <button
-      mat-stroked-button
-      *hasPermission="'reventa:exportar'"
-      [disabled]="exportando()"
-      (click)="exportarExcel()"
-    >
-      <mat-icon>download</mat-icon> Exportar Excel
-    </button>
   </app-page-header>
 
   <div class="page-toolbar">
@@ -33,6 +25,7 @@
       <mat-datepicker-toggle matSuffix [for]="pHasta" />
       <mat-datepicker #pHasta />
     </mat-form-field>
+    <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
   </div>
 
   @if (resumen(); as r) {

@@ -9,6 +9,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Cliente } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { ClientesService } from './clientes.service';
 
 @Component({
@@ -85,6 +86,10 @@ export class ClienteFormDialog {
     ciudad: [this.data?.item?.ciudad ?? ''],
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

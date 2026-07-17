@@ -5,7 +5,6 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -15,6 +14,8 @@ import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 
 /** Datos de apertura del diálogo: edición (`item`) o celda de la grilla (`prefill`). */
 export interface RecepcionDialogData {
@@ -27,7 +28,7 @@ export interface RecepcionDialogData {
   selector: 'app-recepcion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
+    MatButtonModule, MatDatepickerModule, MilesInputDirective, SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
@@ -49,23 +50,8 @@ export interface RecepcionDialogData {
           <mat-datepicker-toggle matSuffix [for]="pFecha" />
           <mat-datepicker #pFecha />
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>Proveedor</mat-label>
-          <mat-select formControlName="proveedor_id" required>
-            @for (proveedor of proveedores(); track proveedor.id) {
-              <mat-option [value]="proveedor.id">{{ proveedor.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Transportador</mat-label>
-          <mat-select formControlName="transportador_id">
-            <mat-option [value]="null">Sin transportador</mat-option>
-            @for (transportador of transportadores(); track transportador.id) {
-              <mat-option [value]="transportador.id">{{ transportador.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable formControlName="proveedor_id" [opciones]="proveedores()" label="Proveedor" />
+        <app-select-buscable formControlName="transportador_id" [opciones]="transportadores()" label="Transportador" />
         <mat-form-field>
           <mat-label>Cantidad de litros</mat-label>
           <input matInput type="number" min="0" formControlName="cantidad_litros" required />
@@ -183,6 +169,8 @@ export class RecepcionFormDialog {
     firstValueFrom(
       this.api.get<Page<Transportador>>('/transportadores', { page_size: 100, estado: 'activo' }),
     ).then((page) => this.transportadores.set(page.items));
+
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

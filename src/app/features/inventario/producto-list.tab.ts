@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,6 +19,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Producto } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { CATEGORIA_LABELS, ProductosService } from './inventario.service';
 import { ProductoFormDialog } from './producto-form.dialog';
@@ -38,6 +39,8 @@ export class ProductoListTab implements OnInit {
   private readonly servicio = inject(ProductosService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['nombre', 'categoria', 'unidad', 'stock_minimo', 'costo_unitario', 'estado', 'acciones'];
   readonly filas = signal<Producto[]>([]);
@@ -57,6 +60,11 @@ export class ProductoListTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'inventario-productos',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

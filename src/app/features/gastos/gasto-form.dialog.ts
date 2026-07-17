@@ -6,7 +6,6 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -16,13 +15,15 @@ import { CategoriaGasto, Gasto, Page } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { GastosService } from './gastos.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 
 @Component({
   selector: 'app-gasto-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatIconModule, MatDatepickerModule,
-    MilesInputDirective,
+    MatButtonModule, MatIconModule, MatDatepickerModule,
+    MilesInputDirective, SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar gasto' : 'Nuevo gasto' }}</h2>
@@ -35,14 +36,7 @@ import { MilesInputDirective } from '../../shared/miles-input.directive';
             <mat-datepicker-toggle matSuffix [for]="pFecha" />
             <mat-datepicker #pFecha />
           </mat-form-field>
-          <mat-form-field>
-            <mat-label>Categoría</mat-label>
-            <mat-select formControlName="categoria_id" required>
-              @for (cat of categorias(); track cat.id) {
-                <mat-option [value]="cat.id">{{ cat.nombre }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          <app-select-buscable formControlName="categoria_id" [opciones]="categorias()" label="Categoría" />
           <mat-form-field class="full">
             <mat-label>Concepto</mat-label>
             <input matInput formControlName="concepto" required />
@@ -130,6 +124,7 @@ export class GastoFormDialog {
     firstValueFrom(
       this.api.get<Page<CategoriaGasto>>('/categorias-gasto', { page_size: 100, estado: 'activo' }),
     ).then((pagina) => this.categorias.set(pagina.items));
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

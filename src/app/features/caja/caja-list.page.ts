@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -20,8 +20,10 @@ import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CajaDiaria, Page, Sucursal } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { dateToIso } from '../../shared/date-utils';
 import { AbrirCajaDialog } from './abrir-caja.dialog';
 import { CajaDetalleDialog } from './caja-detalle.dialog';
@@ -33,7 +35,7 @@ import { CajaService } from './caja.service';
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatDatepickerModule,
-    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
+    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective, RangoFechasRapido,
   ],
   templateUrl: './caja-list.page.html',
   styles: `
@@ -46,6 +48,8 @@ export class CajaListPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = [
     'fecha', 'sucursal', 'saldo_inicial', 'total_ingresos', 'total_egresos',
@@ -69,6 +73,11 @@ export class CajaListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'caja',
+      { estado: this.estado, desde: this.desde, hasta: this.hasta },
+      this.destroyRef,
+    );
     this.cargar();
     // Catálogo para mostrar el nombre de la sucursal; se ignora si el usuario no tiene acceso.
     firstValueFrom(this.api.get<Page<Sucursal>>('/sucursales', { page_size: 100 }))

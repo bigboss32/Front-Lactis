@@ -2,7 +2,13 @@
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Buscar</mat-label>
     <input matInput [formControl]="buscar" placeholder="Banco, número, titular…" />
-    <mat-icon matSuffix>search</mat-icon>
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    } @else {
+      <mat-icon matSuffix>search</mat-icon>
+    }
   </mat-form-field>
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Estado</mat-label>
@@ -18,7 +24,7 @@
   </button>
 </div>
 
-<mat-card class="table-card">
+<mat-card class="table-card tarjetas">
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" />
   }
@@ -26,34 +32,34 @@
   <table mat-table [dataSource]="filas()">
     <ng-container matColumnDef="banco">
       <th mat-header-cell *matHeaderCellDef>Banco</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.banco }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Banco'">{{ fila.banco }}</td>
     </ng-container>
 
     <ng-container matColumnDef="numero_cuenta">
       <th mat-header-cell *matHeaderCellDef>Número de cuenta</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.numero_cuenta }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Número de cuenta'">{{ fila.numero_cuenta }}</td>
     </ng-container>
 
     <ng-container matColumnDef="tipo">
       <th mat-header-cell *matHeaderCellDef>Tipo</th>
-      <td mat-cell *matCellDef="let fila">
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo'">
         {{ fila.tipo === 'ahorros' ? 'Ahorros' : 'Corriente' }}
       </td>
     </ng-container>
 
     <ng-container matColumnDef="titular">
       <th mat-header-cell *matHeaderCellDef>Titular</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.titular ?? '—' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Titular'">{{ fila.titular ?? '—' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="saldo_inicial">
       <th mat-header-cell *matHeaderCellDef class="num">Saldo inicial</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_inicial | money }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo inicial'">{{ fila.saldo_inicial | money }}</td>
     </ng-container>
 
     <ng-container matColumnDef="estado">
       <th mat-header-cell *matHeaderCellDef>Estado</th>
-      <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
     </ng-container>
 
     <ng-container matColumnDef="acciones">

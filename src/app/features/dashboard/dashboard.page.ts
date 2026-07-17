@@ -40,17 +40,6 @@ interface Kpi {
   tendencia?: Tendencia | null;
 }
 
-/** Tarjeta-botón de la sección "¿Qué quieres hacer hoy?". */
-interface AccionRapida {
-  titulo: string;
-  descripcion: string;
-  icono: string;
-  color: string;
-  link: string;
-  permiso: string;
-  tooltip: string;
-}
-
 @Component({
   selector: 'app-dashboard-page',
   imports: [
@@ -67,52 +56,6 @@ export class DashboardPage implements OnInit {
 
   readonly datos = signal<Dashboard | null>(null);
   readonly cargando = signal(false);
-
-  // -------------------------------------------------------- accesos rápidos
-  readonly acciones: AccionRapida[] = [
-    {
-      titulo: 'Registrar leche de hoy',
-      descripcion: 'Anota los litros que entrega cada proveedor',
-      icono: 'water_drop', color: CHART_COLORS[0],
-      link: '/recepciones', permiso: 'recepcion:crear',
-      tooltip: 'Abre el módulo de recepciones de leche',
-    },
-    {
-      titulo: 'Generar liquidación',
-      descripcion: 'Calcula el pago a proveedores y transportadores',
-      icono: 'request_quote', color: CHART_COLORS[7],
-      link: '/liquidaciones', permiso: 'liquidaciones:crear',
-      tooltip: 'Abre el módulo de liquidaciones',
-    },
-    {
-      titulo: 'Registrar venta',
-      descripcion: 'Crea una factura o remisión para un cliente',
-      icono: 'point_of_sale', color: CHART_COLORS[1],
-      link: '/ventas', permiso: 'ventas:crear',
-      tooltip: 'Abre el módulo de ventas',
-    },
-    {
-      titulo: 'Registrar gasto',
-      descripcion: 'Guarda una compra o un pago del negocio',
-      icono: 'receipt_long', color: CHART_COLORS[6],
-      link: '/gastos', permiso: 'gastos:crear',
-      tooltip: 'Abre el módulo de gastos',
-    },
-    {
-      titulo: 'Movimiento de caja',
-      descripcion: 'Registra entradas y salidas de efectivo',
-      icono: 'savings', color: CHART_COLORS[2],
-      link: '/caja', permiso: 'caja:crear',
-      tooltip: 'Abre el módulo de caja diaria',
-    },
-    {
-      titulo: 'Ver inventario',
-      descripcion: 'Consulta las existencias de productos e insumos',
-      icono: 'inventory_2', color: CHART_COLORS[4],
-      link: '/inventario', permiso: 'inventario:consultar',
-      tooltip: 'Abre el módulo de inventario',
-    },
-  ];
 
   // ------------------------------------------------------------------- KPIs
   readonly kpis = computed<Kpi[]>(() => {

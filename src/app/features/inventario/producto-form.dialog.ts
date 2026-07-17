@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { Producto } from '../../core/models';
 import { CATEGORIAS_PRODUCTO, ProductosService } from './inventario.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 /** Diálogo de creación/edición de productos del catálogo de inventario. */
 @Component({
@@ -88,6 +89,10 @@ export class ProductoFormDialog {
       [Validators.required, Validators.min(0)],
     ],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

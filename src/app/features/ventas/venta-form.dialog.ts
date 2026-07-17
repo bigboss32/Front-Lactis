@@ -18,6 +18,8 @@ import { ApiService } from '../../core/api.service';
 import { Cliente, Page, Producto } from '../../core/models';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { SelectBuscable } from '../../shared/select-buscable';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { VentaPayload, VentasService } from './ventas.service';
 
@@ -27,6 +29,7 @@ import { VentaPayload, VentasService } from './ventas.service';
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatCheckboxModule,
     MatTooltipModule, MatDatepickerModule, MoneyPipe, MilesInputDirective,
+    SelectBuscable,
   ],
   templateUrl: './venta-form.dialog.html',
   styles: `
@@ -146,6 +149,8 @@ export class VentaFormDialog {
     ).then((pagina) => {
       this.productos.set(pagina.items.filter((p) => p.categoria === 'producto_terminado'));
     });
+
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   get lineas() {

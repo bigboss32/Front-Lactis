@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Rol, Usuario } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { UsuariosService } from './usuarios.service';
 
 /** Contraseña con al menos una letra y un número (misma regla del backend). */
@@ -153,6 +154,7 @@ export class UsuarioFormDialog {
         this.api.get<Page<Rol>>('/roles', { page_size: 100, estado: 'activo' }),
       ).then((page) => this.roles.set(page.items));
     }
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

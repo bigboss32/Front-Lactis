@@ -36,6 +36,8 @@
         <mat-icon>menu</mat-icon>
       </button>
 
+      <app-barra-busqueda-global class="busqueda-toolbar" />
+
       @if (auth.esSuperadmin() && empresas().length > 0) {
         <mat-select
           class="selector-empresa"

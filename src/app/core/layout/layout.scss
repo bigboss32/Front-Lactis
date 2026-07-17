@@ -44,6 +44,14 @@
   border-bottom: 1px solid var(--mat-sys-outline-variant);
   background: var(--mat-sys-surface);
 
+  // Barra de búsqueda global: crece hasta 380px y se encoge en pantallas pequeñas.
+  .busqueda-toolbar {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 380px;
+    margin: 0 8px;
+  }
+
   .selector-empresa {
     max-width: 280px;
     margin-left: 8px;

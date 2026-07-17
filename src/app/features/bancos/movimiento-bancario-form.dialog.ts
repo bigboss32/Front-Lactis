@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,6 +13,8 @@ import { firstValueFrom } from 'rxjs';
 import { CuentaBancaria } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
 
 @Component({
@@ -20,21 +22,13 @@ import { CuentasBancariasService, MovimientosBancariosService } from './bancos.s
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
+    SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento bancario</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form-grid" id="form-mov-bancario" (ngSubmit)="guardar()">
-        <mat-form-field>
-          <mat-label>Cuenta</mat-label>
-          <mat-select formControlName="cuenta_id" required>
-            @for (cuenta of cuentas(); track cuenta.id) {
-              <mat-option [value]="cuenta.id">
-                {{ cuenta.banco }} — {{ cuenta.numero_cuenta }}
-              </mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable formControlName="cuenta_id" [opciones]="cuentasOpciones()" label="Cuenta" />
         <mat-form-field>
           <mat-label>Fecha</mat-label>
           <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
@@ -84,6 +78,9 @@ export class MovimientoBancarioFormDialog {
   private readonly snackbar = inject(MatSnackBar);
 
   readonly cuentas = signal<CuentaBancaria[]>([]);
+  readonly cuentasOpciones = computed(() =>
+    this.cuentas().map((c) => ({ id: c.id, nombre: `${c.banco} — ${c.numero_cuenta}` })),
+  );
   readonly guardando = signal(false);
 
   readonly form = this.fb.group({
@@ -99,6 +96,7 @@ export class MovimientoBancarioFormDialog {
     firstValueFrom(
       this.cuentasServicio.list({ page_size: 100, estado: 'activo' }),
     ).then((page) => this.cuentas.set(page.items));
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

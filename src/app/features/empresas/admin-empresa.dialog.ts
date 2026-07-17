@@ -10,6 +10,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Empresa, Page, Rol, Usuario } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 /** Nombre exacto del rol de sistema que administra una empresa. */
 const ROL_ADMIN_EMPRESA = 'Administrador Empresa';
@@ -104,6 +105,10 @@ export class AdminEmpresaDialog {
       [Validators.required, Validators.minLength(8), Validators.pattern(PASSWORD_PATTERN)],
     ],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

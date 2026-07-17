@@ -29,7 +29,13 @@
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Buscar proveedor</mat-label>
     <input matInput [formControl]="buscar" placeholder="Nombre del proveedor…" />
-    <mat-icon matSuffix>search</mat-icon>
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    } @else {
+      <mat-icon matSuffix>search</mat-icon>
+    }
   </mat-form-field>
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Ruta</mat-label>
@@ -161,21 +167,11 @@
   }
 </mat-card>
 
-<!-- Leyenda + exportación con el rango de la grilla -->
+<!-- Leyenda -->
 <div class="leyenda">
   <span class="leyenda-item"><span class="muestra"></span> Sin registro (clic para anotar)</span>
   <span class="leyenda-item"><span class="muestra">nº</span> Litros del día (clic para editar)</span>
   <span class="leyenda-item">
     <span class="muestra liquidada"><mat-icon>lock</mat-icon></span> Liquidada — no editable
   </span>
-  <span class="spacer"></span>
-  <button
-    mat-stroked-button
-    *hasPermission="'reportes:exportar'"
-    matTooltip="Descarga el Excel de las recepciones de esta quincena"
-    [disabled]="exportando()"
-    (click)="exportar()"
-  >
-    <mat-icon>file_download</mat-icon> Exportar Excel
-  </button>
 </div>

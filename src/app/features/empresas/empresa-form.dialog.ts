@@ -9,6 +9,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Empresa } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { EmpresasService } from './empresas.service';
 
 @Component({
@@ -90,6 +91,10 @@ export class EmpresaFormDialog {
     telefono: [this.data?.item?.telefono ?? ''],
     correo: [this.data?.item?.correo ?? '', [Validators.email]],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

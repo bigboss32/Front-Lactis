@@ -29,7 +29,13 @@
     <mat-form-field subscriptSizing="dynamic">
       <mat-label>Buscar</mat-label>
       <input matInput [formControl]="buscar" placeholder="Nombre, usuario, correo…" />
-      <mat-icon matSuffix>search</mat-icon>
+      @if (buscar.value) {
+        <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+          <mat-icon>close</mat-icon>
+        </button>
+      } @else {
+        <mat-icon matSuffix>search</mat-icon>
+      }
     </mat-form-field>
     <mat-form-field subscriptSizing="dynamic">
       <mat-label>Estado</mat-label>
@@ -41,7 +47,7 @@
     </mat-form-field>
   </div>
 
-  <mat-card class="table-card">
+  <mat-card class="table-card tarjetas">
     @if (cargando()) {
       <mat-progress-bar mode="indeterminate" />
     }
@@ -49,22 +55,24 @@
     <table mat-table [dataSource]="filas()">
       <ng-container matColumnDef="nombre">
         <th mat-header-cell *matHeaderCellDef>Nombre</th>
-        <td mat-cell *matCellDef="let fila">{{ fila.nombre }} {{ fila.apellido }}</td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Nombre'">
+          {{ fila.nombre }} {{ fila.apellido }}
+        </td>
       </ng-container>
 
       <ng-container matColumnDef="username">
         <th mat-header-cell *matHeaderCellDef>Usuario</th>
-        <td mat-cell *matCellDef="let fila">{{ fila.username }}</td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Usuario'">{{ fila.username }}</td>
       </ng-container>
 
       <ng-container matColumnDef="correo">
         <th mat-header-cell *matHeaderCellDef>Correo</th>
-        <td mat-cell *matCellDef="let fila">{{ fila.correo }}</td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Correo'">{{ fila.correo }}</td>
       </ng-container>
 
       <ng-container matColumnDef="roles">
         <th mat-header-cell *matHeaderCellDef>Roles</th>
-        <td mat-cell *matCellDef="let fila">
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Roles'">
           <div class="roles">
             @for (rol of fila.roles; track rol.id) {
               <span class="rol-chip">{{ rol.nombre }}</span>
@@ -77,7 +85,7 @@
 
       <ng-container matColumnDef="bloqueado">
         <th mat-header-cell *matHeaderCellDef class="centro">Bloqueado</th>
-        <td mat-cell *matCellDef="let fila" class="centro">
+        <td mat-cell *matCellDef="let fila" class="centro" [attr.data-label]="'Bloqueado'">
           @if (fila.bloqueado) {
             <mat-icon class="icono-bloqueado" matTooltip="Usuario bloqueado">lock</mat-icon>
           } @else {
@@ -88,7 +96,9 @@
 
       <ng-container matColumnDef="estado">
         <th mat-header-cell *matHeaderCellDef>Estado</th>
-        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'">
+          <app-estado-chip [estado]="fila.estado" />
+        </td>
       </ng-container>
 
       <ng-container matColumnDef="acciones">

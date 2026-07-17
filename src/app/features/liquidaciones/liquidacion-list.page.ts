@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -20,7 +21,10 @@ import { firstValueFrom } from 'rxjs';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Liquidacion } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { GenerarQuincenaDialog } from './generar-quincena.dialog';
@@ -42,6 +46,7 @@ interface ResumenEstados {
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     PageHeader, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
+    RangoFechasRapido, MatSortModule,
   ],
   templateUrl: './liquidacion-list.page.html',
   styles: `
@@ -149,14 +154,26 @@ export class LiquidacionListPage implements OnInit {
   private readonly servicio = inject(LiquidacionesService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = [
     'tipo', 'tercero', 'periodo', 'litros', 'valor_total', 'anticipos', 'saldo', 'estado', 'acciones',
   ];
   readonly filas = signal<Liquidacion[]>([]);
+  readonly orden = signal<Sort>({ active: '', direction: '' });
+  readonly filasOrdenadas = computed(() =>
+    ordenarFilas(this.filas(), this.orden(), {
+      tercero: (f) => f.proveedor_nombre ?? f.transportador_nombre,
+      periodo: (f) => f.periodo_inicio,
+      litros: (f) => Number(f.total_litros),
+      valor_total: (f) => Number(f.valor_total),
+      anticipos: (f) => Number(f.anticipos),
+      saldo: (f) => Number(f.saldo),
+    }),
+  );
   readonly total = signal(0);
   readonly cargando = signal(false);
-  readonly exportando = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenEstados | null>(null);
@@ -174,6 +191,11 @@ export class LiquidacionListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'liquidaciones',
+      { tipo: this.tipo, estado: this.estado, desde: this.desde, hasta: this.hasta },
+      this.destroyRef,
+    );
     this.cargar();
     void this.cargarResumen();
   }
@@ -274,24 +296,4 @@ export class LiquidacionListPage implements OnInit {
       });
   }
 
-  async exportarExcel(): Promise<void> {
-    const desde = dateToIso(this.desde.value);
-    const hasta = dateToIso(this.hasta.value);
-    if (!desde || !hasta) {
-      this.snackbar.open('Selecciona el rango de fechas (desde y hasta) para exportar', 'OK', {
-        duration: 4000,
-      });
-      return;
-    }
-    this.exportando.set(true);
-    try {
-      await firstValueFrom(this.servicio.exportarExcel(desde, hasta));
-    } catch {
-      this.snackbar.open('No fue posible exportar: verifica que existan liquidaciones en el período', 'OK', {
-        duration: 5000,
-      });
-    } finally {
-      this.exportando.set(false);
-    }
-  }
 }

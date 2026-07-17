@@ -9,6 +9,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Usuario } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { UsuariosService } from './usuarios.service';
 
 /** Contraseña con al menos una letra y un número (misma regla del backend). */
@@ -73,6 +74,10 @@ export class RestablecerPasswordDialog {
       [Validators.required, Validators.minLength(8), Validators.pattern(PASSWORD_PATTERN)],
     ],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

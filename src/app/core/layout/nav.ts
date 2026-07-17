@@ -4,6 +4,8 @@ export interface NavItem {
   icon: string;
   route: string;
   modulo: string;
+  /** Si es true, se muestra siempre (sin exigir permiso del módulo). */
+  siempre?: boolean;
 }
 
 export interface NavGroup {
@@ -14,7 +16,10 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     title: '',
-    items: [{ label: 'Dashboard', icon: 'dashboard', route: '/dashboard', modulo: 'reportes' }],
+    items: [
+      { label: 'Inicio', icon: 'home', route: '/inicio', modulo: 'reportes', siempre: true },
+      { label: 'Estadísticas', icon: 'insights', route: '/dashboard', modulo: 'reportes' },
+    ],
   },
   {
     title: 'Leche',

@@ -14,6 +14,7 @@ import { Venta } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { VentasService } from './ventas.service';
 
 @Component({
@@ -87,6 +88,10 @@ export class PagoFormDialog {
     referencia: [''],
     observaciones: [''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

@@ -14,6 +14,8 @@ import { ApiService } from '../../core/api.service';
 import { Page, Producto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.service';
 
 /** Diálogo para registrar un movimiento de inventario (los movimientos no se editan). */
@@ -22,19 +24,13 @@ import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.ser
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
+    SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form-grid" id="form-movimiento" (ngSubmit)="guardar()">
-        <mat-form-field class="full">
-          <mat-label>Producto</mat-label>
-          <mat-select formControlName="producto_id" required>
-            @for (producto of productos(); track producto.id) {
-              <mat-option [value]="producto.id">{{ producto.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable class="full" formControlName="producto_id" [opciones]="productos()" label="Producto" />
         <mat-form-field>
           <mat-label>Fecha</mat-label>
           <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
@@ -108,6 +104,7 @@ export class MovimientoFormDialog {
     firstValueFrom(
       this.api.get<Page<Producto>>('/inventario/productos', { page_size: 100, estado: 'activo' }),
     ).then((page) => this.productos.set(page.items));
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

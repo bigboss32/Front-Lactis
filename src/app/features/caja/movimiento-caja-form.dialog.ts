@@ -11,6 +11,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 @Component({
   selector: 'app-movimiento-caja-form-dialog',
@@ -72,6 +73,10 @@ export class MovimientoCajaFormDialog {
     valor: [0, [Validators.required, Validators.min(0.01)]],
     referencia: [''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

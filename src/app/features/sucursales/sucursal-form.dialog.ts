@@ -10,6 +10,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Sucursal } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { SucursalesService, TIPOS_SUCURSAL } from './sucursales.service';
 
 @Component({
@@ -79,6 +80,10 @@ export class SucursalFormDialog {
     telefono: [this.data?.item?.telefono ?? ''],
     responsable: [this.data?.item?.responsable ?? ''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

@@ -15,6 +15,7 @@ import { firstValueFrom } from 'rxjs';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
 
 /** Precio de venta de queso sugerido por kilo (del cuaderno del dueño). */
@@ -139,6 +140,7 @@ export class VentaQuesoFormDialog {
           this.form.controls.precio_kilo.setValue(tipo === 'queso' ? PRECIO_VENTA_SUGERIDO : 0);
         });
     }
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   tipoLabel(tipo: TipoVenta): string {

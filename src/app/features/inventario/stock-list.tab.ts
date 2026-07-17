@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,6 +14,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { ProductoStock } from '../../core/models';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe } from '../../shared/pipes';
 import { CATEGORIA_LABELS, ProductosService } from './inventario.service';
 import { KardexDialog } from './kardex.dialog';
@@ -33,6 +34,8 @@ import { KardexDialog } from './kardex.dialog';
 export class StockListTab implements OnInit {
   private readonly servicio = inject(ProductosService);
   private readonly dialog = inject(MatDialog);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['producto', 'categoria', 'unidad', 'stock_actual', 'stock_minimo', 'alerta', 'acciones'];
   readonly filas = signal<ProductoStock[]>([]);
@@ -50,6 +53,11 @@ export class StockListTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'inventario-stock',
+      { soloBajoMinimo: this.soloBajoMinimo },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

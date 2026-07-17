@@ -10,14 +10,7 @@
         </mat-select>
       </mat-form-field>
 
-      <mat-form-field>
-        <mat-label>Cliente</mat-label>
-        <mat-select formControlName="cliente_id" required>
-          @for (cliente of clientes(); track cliente.id) {
-            <mat-option [value]="cliente.id">{{ cliente.nombre }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
+      <app-select-buscable formControlName="cliente_id" [opciones]="clientes()" label="Cliente" />
 
       <mat-form-field>
         <mat-label>Fecha</mat-label>
@@ -37,14 +30,7 @@
     <div formArrayName="lineas">
       @for (linea of lineas.controls; track linea; let i = $index) {
         <div class="linea" [formGroupName]="i">
-          <mat-form-field subscriptSizing="dynamic">
-            <mat-label>Producto</mat-label>
-            <mat-select formControlName="producto_id" required>
-              @for (producto of productos(); track producto.id) {
-                <mat-option [value]="producto.id">{{ producto.nombre }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          <app-select-buscable formControlName="producto_id" [opciones]="productos()" label="Producto" />
 
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Cantidad</mat-label>

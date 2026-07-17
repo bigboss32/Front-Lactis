@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { Empleado } from '../../core/models';
 import { dateToIso, isoToDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { EmpleadosService } from './empleados.service';
 
 @Component({
@@ -105,6 +106,10 @@ export class EmpleadoFormDialog {
       [Validators.min(0)],
     ],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

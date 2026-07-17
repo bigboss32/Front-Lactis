@@ -19,6 +19,7 @@ import { AuthService } from '../auth/auth.service';
 import { Empresa, Page } from '../models';
 import { NotificacionesService } from '../notificaciones.service';
 import { ThemeService } from '../theme.service';
+import { BarraBusquedaGlobal } from '../../shared/barra-busqueda-global';
 import { NAV_GROUPS } from './nav';
 
 @Component({
@@ -27,6 +28,7 @@ import { NAV_GROUPS } from './nav';
     RouterOutlet, RouterLink, RouterLinkActive,
     MatSidenavModule, MatToolbarModule, MatListModule, MatIconModule, MatButtonModule,
     MatMenuModule, MatBadgeModule, MatDividerModule, MatSelectModule, MatTooltipModule,
+    BarraBusquedaGlobal,
   ],
   templateUrl: './layout.html',
   styleUrl: './layout.scss',
@@ -50,7 +52,7 @@ export class Layout implements OnInit, OnDestroy {
     this.auth.perfil();
     return NAV_GROUPS.map((grupo) => ({
       ...grupo,
-      items: grupo.items.filter((item) => this.auth.hasPermission(item.modulo)),
+      items: grupo.items.filter((item) => item.siempre || this.auth.hasPermission(item.modulo)),
     })).filter((grupo) => grupo.items.length > 0);
   });
 

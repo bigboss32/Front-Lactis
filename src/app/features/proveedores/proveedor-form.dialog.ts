@@ -4,7 +4,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -12,13 +11,15 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Ruta } from '../../core/models';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 import { ProveedoresService } from './proveedores.service';
 
 @Component({
   selector: 'app-proveedor-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MilesInputDirective,
+    MatButtonModule, MilesInputDirective, SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar proveedor' : 'Nuevo proveedor' }}</h2>
@@ -49,15 +50,7 @@ import { ProveedoresService } from './proveedores.service';
           <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_litro" required />
           <span matTextPrefix>$&nbsp;</span>
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>Ruta</mat-label>
-          <mat-select formControlName="ruta_id">
-            <mat-option [value]="null">Sin ruta</mat-option>
-            @for (ruta of rutas(); track ruta.id) {
-              <mat-option [value]="ruta.id">{{ ruta.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable formControlName="ruta_id" [opciones]="rutas()" label="Ruta" />
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
@@ -103,6 +96,8 @@ export class ProveedorFormDialog {
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
     ).then((page) => this.rutas.set(page.items));
+
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   async guardar(): Promise<void> {

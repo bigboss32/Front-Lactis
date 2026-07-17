@@ -9,6 +9,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { CajaService } from './caja.service';
 
 /** Arqueo de caja: registra el efectivo contado y cierra la caja del día. */
@@ -60,6 +61,10 @@ export class CerrarCajaDialog {
     efectivo_contado: [0, [Validators.required, Validators.min(0)]],
     observaciones: [''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

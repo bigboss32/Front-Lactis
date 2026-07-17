@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -20,6 +20,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Empresa } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { AdminEmpresaDialog } from './admin-empresa.dialog';
 import { EmpresaFormDialog } from './empresa-form.dialog';
@@ -40,6 +41,8 @@ export class EmpresaListPage implements OnInit {
   private readonly servicio = inject(EmpresasService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
 
   readonly columnas = ['nombre', 'nit', 'ciudad', 'telefono', 'correo', 'estado', 'acciones'];
@@ -60,6 +63,11 @@ export class EmpresaListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'empresas',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

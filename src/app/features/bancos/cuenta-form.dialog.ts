@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { CuentaBancaria } from '../../core/models';
 import { CuentaPayload, CuentasBancariasService } from './bancos.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 @Component({
   selector: 'app-cuenta-form',
@@ -83,6 +84,10 @@ export class CuentaFormDialog {
     titular: [this.data?.item?.titular ?? ''],
     saldo_inicial: [Number(this.data?.item?.saldo_inicial ?? 0)],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

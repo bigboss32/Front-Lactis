@@ -10,6 +10,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { CategoriaGasto } from '../../core/models';
 import { CategoriasGastoService } from './categorias-gasto.service';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 @Component({
   selector: 'app-categoria-gasto-form',
@@ -57,6 +58,10 @@ export class CategoriaGastoFormDialog {
     nombre: [this.data?.item?.nombre ?? '', [Validators.required, Validators.minLength(2)]],
     descripcion: [this.data?.item?.descripcion ?? ''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

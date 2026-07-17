@@ -14,6 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { LiquidacionesService } from './liquidaciones.service';
 
 const MESES = [
@@ -200,6 +201,10 @@ export class GenerarQuincenaDialog {
     }
     return `Del ${inicio.dia} de ${inicio.mes} de ${inicio.anio} al ${fin.dia} de ${fin.mes} de ${fin.anio}`;
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   aplicarPreset(preset: PresetQuincena): void {
     this.form.patchValue({

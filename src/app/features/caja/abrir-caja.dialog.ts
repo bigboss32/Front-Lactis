@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { CajaService } from './caja.service';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 @Component({
   selector: 'app-abrir-caja-dialog',
@@ -61,6 +62,10 @@ export class AbrirCajaDialog {
     fecha: [hoyDate(), Validators.required],
     saldo_inicial: [0, [Validators.required, Validators.min(0)]],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

@@ -11,6 +11,7 @@ import { firstValueFrom } from 'rxjs';
 import { TipoQueso } from '../../core/models';
 import { TiposQuesoService } from './produccion.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
 
 @Component({
   selector: 'app-tipo-queso-form',
@@ -67,6 +68,10 @@ export class TipoQuesoFormDialog {
       [Validators.required, Validators.min(0)],
     ],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

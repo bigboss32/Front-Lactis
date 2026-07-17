@@ -28,6 +28,7 @@
     <mat-datepicker-toggle matSuffix [for]="pHasta" />
     <mat-datepicker #pHasta />
   </mat-form-field>
+  <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
   <span class="spacer"></span>
   <button
     mat-stroked-button
@@ -42,7 +43,7 @@
   </button>
 </div>
 
-<mat-card class="table-card">
+<mat-card class="table-card tarjetas">
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" />
   }
@@ -68,41 +69,41 @@
 
     <ng-container matColumnDef="fecha">
       <th mat-header-cell *matHeaderCellDef>Fecha</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="cuenta">
       <th mat-header-cell *matHeaderCellDef>Cuenta</th>
-      <td mat-cell *matCellDef="let fila">{{ cuentaNombre(fila.cuenta_id) }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cuenta'">{{ cuentaNombre(fila.cuenta_id) }}</td>
     </ng-container>
 
     <ng-container matColumnDef="tipo">
       <th mat-header-cell *matHeaderCellDef>Tipo</th>
-      <td mat-cell *matCellDef="let fila">
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo'">
         {{ fila.tipo === 'ingreso' ? 'Ingreso' : 'Egreso' }}
       </td>
     </ng-container>
 
     <ng-container matColumnDef="concepto">
       <th mat-header-cell *matHeaderCellDef>Concepto</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.concepto }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Concepto'">{{ fila.concepto }}</td>
     </ng-container>
 
     <ng-container matColumnDef="referencia">
       <th mat-header-cell *matHeaderCellDef>Referencia</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.referencia ?? '—' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Referencia'">{{ fila.referencia ?? '—' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="valor">
       <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
-      <td mat-cell *matCellDef="let fila" class="num" [class.negativo]="fila.tipo === 'egreso'">
+      <td mat-cell *matCellDef="let fila" class="num" [class.negativo]="fila.tipo === 'egreso'" [attr.data-label]="'Valor'">
         {{ fila.valor | money }}
       </td>
     </ng-container>
 
     <ng-container matColumnDef="conciliado">
       <th mat-header-cell *matHeaderCellDef>Conciliado</th>
-      <td mat-cell *matCellDef="let fila">
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Conciliado'">
         <app-estado-chip [estado]="fila.conciliado ? 'conciliado' : 'pendiente'" />
       </td>
     </ng-container>

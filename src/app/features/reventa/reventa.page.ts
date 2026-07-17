@@ -16,6 +16,7 @@ import { Monto } from '../../core/models';
 import { dateToIso } from '../../shared/date-utils';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { CompraListTab } from './compra-list.tab';
 import { ConversionFormDialog } from './conversion-form.dialog';
 import { ConversionListPanel } from './conversion-list.panel';
@@ -45,7 +46,7 @@ function ultimoDiaMesDate(): Date {
     ReactiveFormsModule, MatButtonModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatIconModule, MatTabsModule, PageHeader, MoneyPipe,
     CantidadPipe, HasPermissionDirective, CompraListTab, VentaQuesoListTab,
-    ConversionListPanel,
+    ConversionListPanel, RangoFechasRapido,
   ],
   templateUrl: './reventa.page.html',
   styles: `
@@ -136,7 +137,6 @@ export class ReventaPage {
   });
 
   readonly resumen = signal<ResumenReventa | null>(null);
-  readonly exportando = signal(false);
   /** Se incrementa para forzar la recarga del historial de borona. */
   readonly recargaConversiones = signal(0);
 
@@ -181,24 +181,4 @@ export class ReventaPage {
       });
   }
 
-  async exportarExcel(): Promise<void> {
-    const desde = dateToIso(this.desde.value);
-    const hasta = dateToIso(this.hasta.value);
-    if (!desde || !hasta) {
-      this.snackbar.open('Selecciona el rango de fechas (desde y hasta) para exportar', 'OK', {
-        duration: 4000,
-      });
-      return;
-    }
-    this.exportando.set(true);
-    try {
-      await firstValueFrom(this.servicio.exportarExcel(desde, hasta));
-    } catch {
-      this.snackbar.open('No fue posible exportar: verifica que existan registros en el período', 'OK', {
-        duration: 5000,
-      });
-    } finally {
-      this.exportando.set(false);
-    }
-  }
 }

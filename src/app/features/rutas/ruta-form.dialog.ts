@@ -9,6 +9,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Ruta } from '../../core/models';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { RutasService } from './rutas.service';
 
 @Component({
@@ -62,6 +63,10 @@ export class RutaFormDialog {
     municipio: [this.data?.item?.municipio ?? ''],
     descripcion: [this.data?.item?.descripcion ?? ''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -20,6 +20,7 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
@@ -60,6 +61,8 @@ export class CompraListTab {
   private readonly servicio = inject(ReventaService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Rango de fechas que controla la página (filtro del período). */
   readonly desde = input<string | null>(null);
@@ -85,6 +88,13 @@ export class CompraListTab {
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.estado.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    // Recuerda los filtros de esta pestaña durante la sesión. Restaura sin
+    // disparar eventos; la carga inicial del effect ya usará esos valores.
+    this.estadoFiltros.vincular(
+      'reventa-compras',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     // Carga inicial y recarga cuando la página cambia el rango de fechas.
     effect(() => {
       this.desde();

@@ -1,5 +1,5 @@
 <div class="page">
-  <app-page-header titulo="Dashboard" subtitulo="Indicadores del negocio">
+  <app-page-header titulo="Estadísticas" subtitulo="Indicadores del negocio">
     @if (datos(); as d) {
       <span class="fecha-corte">
         <mat-icon>event</mat-icon>
@@ -20,30 +20,6 @@
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" class="barra-carga" />
   }
-
-  <!-- Accesos rápidos: siempre visibles, no dependen de los indicadores -->
-  <section class="acciones" aria-labelledby="titulo-acciones">
-    <h2 id="titulo-acciones" class="seccion-titulo">¿Qué quieres hacer hoy?</h2>
-    <div class="acciones-grid">
-      @for (a of acciones; track a.titulo) {
-        <a
-          class="accion-card"
-          *hasPermission="a.permiso"
-          [routerLink]="a.link"
-          [style.--acento]="a.color"
-          [matTooltip]="a.tooltip"
-        >
-          <div class="accion-icono">
-            <mat-icon aria-hidden="true">{{ a.icono }}</mat-icon>
-          </div>
-          <div class="accion-texto">
-            <p class="accion-titulo">{{ a.titulo }}</p>
-            <p class="accion-desc">{{ a.descripcion }}</p>
-          </div>
-        </a>
-      }
-    </div>
-  </section>
 
   @if (datos(); as d) {
     <div class="kpi-grid">

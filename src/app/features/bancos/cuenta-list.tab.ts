@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -19,6 +19,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { CuentaBancaria } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { MoneyPipe } from '../../shared/pipes';
 import { CuentasBancariasService } from './bancos.service';
 import { CuentaFormDialog } from './cuenta-form.dialog';
@@ -38,6 +39,8 @@ export class CuentaListTab implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly money = new MoneyPipe();
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = [
     'banco', 'numero_cuenta', 'tipo', 'titular', 'saldo_inicial', 'estado', 'acciones',
@@ -59,6 +62,11 @@ export class CuentaListTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'bancos',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

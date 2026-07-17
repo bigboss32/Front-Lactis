@@ -11,6 +11,7 @@
     <mat-datepicker-toggle matSuffix [for]="pHasta" />
     <mat-datepicker #pHasta />
   </mat-form-field>
+  <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Tipo de queso</mat-label>
     <mat-select [formControl]="tipoQuesoId">
@@ -30,7 +31,7 @@
   </button>
 </div>
 
-<mat-card class="table-card">
+<mat-card class="table-card tarjetas">
   @if (cargando()) {
     <mat-progress-bar mode="indeterminate" />
   }
@@ -38,39 +39,39 @@
   <table mat-table [dataSource]="filas()">
     <ng-container matColumnDef="fecha">
       <th mat-header-cell *matHeaderCellDef>Fecha</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="tipo_queso">
       <th mat-header-cell *matHeaderCellDef>Tipo de queso</th>
-      <td mat-cell *matCellDef="let fila">{{ fila.tipo_queso_nombre ?? '—' }}</td>
+      <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo de queso'">{{ fila.tipo_queso_nombre ?? '—' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="cantidad">
       <th mat-header-cell *matHeaderCellDef class="num">Cantidad</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.cantidad | cantidad }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Cantidad'">{{ fila.cantidad | cantidad }}</td>
     </ng-container>
 
     <ng-container matColumnDef="peso_kg">
       <th mat-header-cell *matHeaderCellDef class="num">Peso</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.peso_kg | cantidad: 'kg' }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Peso'">{{ fila.peso_kg | cantidad: 'kg' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="litros_usados">
       <th mat-header-cell *matHeaderCellDef class="num">Litros usados</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.litros_usados | cantidad: 'L' }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Litros usados'">{{ fila.litros_usados | cantidad: 'L' }}</td>
     </ng-container>
 
     <ng-container matColumnDef="rendimiento">
       <th mat-header-cell *matHeaderCellDef class="num">Rendimiento</th>
-      <td mat-cell *matCellDef="let fila" class="num">
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Rendimiento'">
         {{ fila.rendimiento | number: '1.3-4' }} kg/L
       </td>
     </ng-container>
 
     <ng-container matColumnDef="merma">
       <th mat-header-cell *matHeaderCellDef class="num">Merma</th>
-      <td mat-cell *matCellDef="let fila" class="num">{{ fila.merma | cantidad }}</td>
+      <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Merma'">{{ fila.merma | cantidad }}</td>
     </ng-container>
 
     <ng-container matColumnDef="acciones">

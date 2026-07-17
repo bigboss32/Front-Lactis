@@ -13,6 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { CompraQueso, ReventaService } from './reventa.service';
 
 /**
@@ -147,6 +148,10 @@ export class CompraFormDialog {
     const brutos = Number(valores.kilos_brutos || 0);
     return brutos > 0 && Number(valores.merma_kilos || 0) >= brutos;
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid || this.mermaInvalida()) return;

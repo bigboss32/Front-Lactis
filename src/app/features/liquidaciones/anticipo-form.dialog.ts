@@ -15,6 +15,8 @@ import { ApiService } from '../../core/api.service';
 import { Anticipo, Empleado, Page, Proveedor, Transportador } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { protegerCambios } from '../../shared/proteger-cambios';
+import { SelectBuscable } from '../../shared/select-buscable';
 import { AnticipoCreatePayload, AnticiposService } from './anticipos.service';
 
 type TipoAnticipo = 'proveedor' | 'transportador' | 'empleado';
@@ -28,6 +30,7 @@ interface Beneficiario {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
+    SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar anticipo' : 'Nuevo anticipo' }}</h2>
@@ -41,14 +44,11 @@ interface Beneficiario {
             <mat-option value="empleado">Empleado</mat-option>
           </mat-select>
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>{{ etiquetaBeneficiario() }}</mat-label>
-          <mat-select formControlName="beneficiario_id" required>
-            @for (beneficiario of beneficiarios(); track beneficiario.id) {
-              <mat-option [value]="beneficiario.id">{{ beneficiario.nombre }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
+        <app-select-buscable
+          formControlName="beneficiario_id"
+          [opciones]="beneficiarios()"
+          [label]="etiquetaBeneficiario()"
+        />
         <mat-form-field>
           <mat-label>Fecha</mat-label>
           <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
@@ -143,6 +143,7 @@ export class AnticipoFormDialog {
       this.form.controls.tipo.disable();
       this.form.controls.beneficiario_id.disable();
     }
+    protegerCambios(this.dialogRef, () => this.form);
   }
 
   /** En modo edición precarga el beneficiario según el tipo del anticipo. */

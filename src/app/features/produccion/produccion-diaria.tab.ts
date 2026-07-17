@@ -1,5 +1,5 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -22,7 +22,9 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Page, Produccion, TipoQueso } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { dateToIso } from '../../shared/date-utils';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe } from '../../shared/pipes';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ProduccionFormDialog } from './produccion-form.dialog';
 import { ProduccionService } from './produccion.service';
 
@@ -33,6 +35,7 @@ import { ProduccionService } from './produccion.service';
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     DatePipe, DecimalPipe, CantidadPipe, HasPermissionDirective,
+    RangoFechasRapido,
   ],
   templateUrl: './produccion-diaria.tab.html',
 })
@@ -41,6 +44,8 @@ export class ProduccionDiariaTab implements OnInit {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = [
     'fecha', 'tipo_queso', 'cantidad', 'peso_kg', 'litros_usados',
@@ -72,6 +77,11 @@ export class ProduccionDiariaTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'produccion',
+      { desde: this.desde, hasta: this.hasta, tipoQuesoId: this.tipoQuesoId },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

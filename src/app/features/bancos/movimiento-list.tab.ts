@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -22,7 +22,9 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { CuentaBancaria, MovimientoBancario } from '../../core/models';
 import { dateToIso } from '../../shared/date-utils';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { MoneyPipe } from '../../shared/pipes';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
 import { MovimientoBancarioFormDialog } from './movimiento-bancario-form.dialog';
 
@@ -32,7 +34,7 @@ import { MovimientoBancarioFormDialog } from './movimiento-bancario-form.dialog'
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatCheckboxModule, MatDatepickerModule,
-    EstadoChip, MoneyPipe, HasPermissionDirective,
+    EstadoChip, MoneyPipe, HasPermissionDirective, RangoFechasRapido,
   ],
   templateUrl: './movimiento-list.tab.html',
   styles: `
@@ -44,6 +46,8 @@ export class MovimientoBancarioListTab implements OnInit {
   private readonly cuentasServicio = inject(CuentasBancariasService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = [
     'seleccion', 'fecha', 'cuenta', 'tipo', 'concepto', 'referencia', 'valor', 'conciliado',
@@ -79,6 +83,16 @@ export class MovimientoBancarioListTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'bancos-movimientos',
+      {
+        cuentaId: this.cuentaId,
+        conciliado: this.conciliado,
+        desde: this.desde,
+        hasta: this.hasta,
+      },
+      this.destroyRef,
+    );
     this.cargar();
     firstValueFrom(this.cuentasServicio.list({ page_size: 100, estado: 'activo' })).then((page) =>
       this.cuentas.set(page.items),

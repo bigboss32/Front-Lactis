@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -11,6 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
@@ -22,8 +23,11 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { MoneyPipe } from '../../shared/pipes';
+import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { GastoFormDialog } from './gasto-form.dialog';
 import { GastosService } from './gastos.service';
 
@@ -33,7 +37,8 @@ import { GastosService } from './gastos.service';
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
-    EstadoChip, MoneyPipe, DatePipe, HasPermissionDirective,
+    EstadoChip, MoneyPipe, DatePipe, HasPermissionDirective, RangoFechasRapido,
+    MatSortModule,
   ],
   templateUrl: './gasto-list.page.html',
 })
@@ -42,6 +47,8 @@ export class GastoListPage implements OnInit {
   private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly uploadsBase = UPLOADS_BASE;
   readonly columnas = [
@@ -49,12 +56,18 @@ export class GastoListPage implements OnInit {
     'valor', 'adjunto', 'estado', 'acciones',
   ];
   readonly filas = signal<Gasto[]>([]);
+  readonly orden = signal<Sort>({ active: '', direction: '' });
+  readonly filasOrdenadas = computed(() =>
+    ordenarFilas(this.filas(), this.orden(), {
+      categoria: (f) => f.categoria_nombre,
+      valor: (f) => Number(f.valor),
+    }),
+  );
   readonly total = signal(0);
   readonly cargando = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly categorias = signal<CategoriaGasto[]>([]);
-  readonly exportando = signal(false);
 
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly categoria = new FormControl<string | null>(null);
@@ -75,6 +88,11 @@ export class GastoListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'gastos',
+      { buscar: this.buscar, categoria: this.categoria, desde: this.desde, hasta: this.hasta },
+      this.destroyRef,
+    );
     this.cargar();
   }
 
@@ -138,19 +156,4 @@ export class GastoListPage implements OnInit {
       });
   }
 
-  async exportarExcel(): Promise<void> {
-    this.exportando.set(true);
-    try {
-      await firstValueFrom(
-        this.api.download('/reportes/export/gastos', 'gastos.xlsx', {
-          desde: dateToIso(this.desde.value),
-          hasta: dateToIso(this.hasta.value),
-        }),
-      );
-    } catch {
-      this.snackbar.open('No fue posible exportar el archivo', 'OK', { duration: 5000 });
-    } finally {
-      this.exportando.set(false);
-    }
-  }
 }

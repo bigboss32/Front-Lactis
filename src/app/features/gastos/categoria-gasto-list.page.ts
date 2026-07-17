@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -19,6 +19,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { CategoriaGasto } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CategoriaGastoFormDialog } from './categoria-gasto-form.dialog';
 import { CategoriasGastoService } from './categorias-gasto.service';
 
@@ -36,6 +37,8 @@ export class CategoriaGastoListPage implements OnInit {
   private readonly servicio = inject(CategoriasGastoService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['nombre', 'descripcion', 'estado', 'acciones'];
   readonly filas = signal<CategoriaGasto[]>([]);
@@ -55,6 +58,11 @@ export class CategoriaGastoListPage implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'gastos-categorias',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

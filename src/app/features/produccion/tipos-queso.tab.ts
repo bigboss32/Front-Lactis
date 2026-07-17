@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -19,6 +19,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { TipoQueso } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { MoneyPipe } from '../../shared/pipes';
 import { TipoQuesoFormDialog } from './tipo-queso-form.dialog';
 import { TiposQuesoService } from './produccion.service';
@@ -37,6 +38,8 @@ export class TiposQuesoTab implements OnInit {
   private readonly servicio = inject(TiposQuesoService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['nombre', 'descripcion', 'precio_referencia', 'estado', 'acciones'];
   readonly filas = signal<TipoQueso[]>([]);
@@ -56,6 +59,11 @@ export class TiposQuesoTab implements OnInit {
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'produccion-tipos',
+      { buscar: this.buscar, estado: this.estado },
+      this.destroyRef,
+    );
     this.cargar();
   }
 

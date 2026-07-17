@@ -29,9 +29,10 @@
       <mat-datepicker-toggle matSuffix [for]="pHasta" />
       <mat-datepicker #pHasta />
     </mat-form-field>
+    <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
   </div>
 
-  <mat-card class="table-card">
+  <mat-card class="table-card tarjetas">
     @if (cargando()) {
       <mat-progress-bar mode="indeterminate" />
     }
@@ -39,42 +40,42 @@
     <table mat-table [dataSource]="filas()">
       <ng-container matColumnDef="fecha">
         <th mat-header-cell *matHeaderCellDef>Fecha</th>
-        <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
       </ng-container>
 
       <ng-container matColumnDef="sucursal">
         <th mat-header-cell *matHeaderCellDef>Sucursal</th>
-        <td mat-cell *matCellDef="let fila">{{ sucursalNombre(fila.sucursal_id) }}</td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Sucursal'">{{ sucursalNombre(fila.sucursal_id) }}</td>
       </ng-container>
 
       <ng-container matColumnDef="saldo_inicial">
         <th mat-header-cell *matHeaderCellDef class="num">Saldo inicial</th>
-        <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_inicial | money }}</td>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo inicial'">{{ fila.saldo_inicial | money }}</td>
       </ng-container>
 
       <ng-container matColumnDef="total_ingresos">
         <th mat-header-cell *matHeaderCellDef class="num">Ingresos</th>
-        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_ingresos | money }}</td>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Ingresos'">{{ fila.total_ingresos | money }}</td>
       </ng-container>
 
       <ng-container matColumnDef="total_egresos">
         <th mat-header-cell *matHeaderCellDef class="num">Egresos</th>
-        <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_egresos | money }}</td>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Egresos'">{{ fila.total_egresos | money }}</td>
       </ng-container>
 
       <ng-container matColumnDef="saldo_final">
         <th mat-header-cell *matHeaderCellDef class="num">Saldo final</th>
-        <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo_final | money }}</td>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo final'">{{ fila.saldo_final | money }}</td>
       </ng-container>
 
       <ng-container matColumnDef="estado">
         <th mat-header-cell *matHeaderCellDef>Estado</th>
-        <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
       </ng-container>
 
       <ng-container matColumnDef="diferencia">
         <th mat-header-cell *matHeaderCellDef class="num">Diferencia</th>
-        <td mat-cell *matCellDef="let fila" class="num">
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Diferencia'">
           @if (fila.estado === 'cerrada') {
             <span [class.negativo]="+(fila.diferencia ?? 0) < 0">{{ fila.diferencia | money }}</span>
           } @else {

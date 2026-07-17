@@ -12,6 +12,7 @@ import { firstValueFrom } from 'rxjs';
 import { Monto } from '../../core/models';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
+import { protegerCambios } from '../../shared/proteger-cambios';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { ReventaService } from './reventa.service';
 
@@ -82,6 +83,10 @@ export class AbonoFormDialog {
     ],
     observaciones: [''],
   });
+
+  constructor() {
+    protegerCambios(this.dialogRef, () => this.form);
+  }
 
   async guardar(): Promise<void> {
     if (this.form.invalid) return;

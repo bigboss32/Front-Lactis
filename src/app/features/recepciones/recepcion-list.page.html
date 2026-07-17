@@ -36,7 +36,13 @@
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Buscar proveedor</mat-label>
             <input matInput [formControl]="buscar" placeholder="Nombre del proveedor…" />
-            <mat-icon matSuffix>search</mat-icon>
+            @if (buscar.value) {
+              <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+                <mat-icon>close</mat-icon>
+              </button>
+            } @else {
+              <mat-icon matSuffix>search</mat-icon>
+            }
           </mat-form-field>
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Ruta</mat-label>
@@ -68,16 +74,7 @@
             <mat-datepicker-toggle matSuffix [for]="pHasta" />
             <mat-datepicker #pHasta />
           </mat-form-field>
-          <span class="spacer"></span>
-          <button
-            mat-stroked-button
-            *hasPermission="'reportes:exportar'"
-            matTooltip="Descarga el Excel con el rango de fechas filtrado"
-            [disabled]="exportando()"
-            (click)="exportar()"
-          >
-            <mat-icon>file_download</mat-icon> Exportar Excel
-          </button>
+          <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
         </div>
 
         @if (resumen(); as r) {
@@ -126,45 +123,45 @@
             <mat-progress-bar mode="indeterminate" />
           }
 
-          <table mat-table [dataSource]="filas()">
+          <table mat-table [dataSource]="filasOrdenadas()" class="tarjetas" matSort (matSortChange)="orden.set($event)">
             <ng-container matColumnDef="fecha">
-              <th mat-header-cell *matHeaderCellDef>Fecha</th>
-              <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+              <th mat-header-cell *matHeaderCellDef mat-sort-header>Fecha</th>
+              <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
             </ng-container>
 
             <ng-container matColumnDef="proveedor">
-              <th mat-header-cell *matHeaderCellDef>Proveedor</th>
-              <td mat-cell *matCellDef="let fila">{{ fila.proveedor_nombre ?? '—' }}</td>
+              <th mat-header-cell *matHeaderCellDef mat-sort-header>Proveedor</th>
+              <td mat-cell *matCellDef="let fila" [attr.data-label]="'Proveedor'">{{ fila.proveedor_nombre ?? '—' }}</td>
             </ng-container>
 
             <ng-container matColumnDef="litros">
-              <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
-              <td mat-cell *matCellDef="let fila" class="num">{{ fila.cantidad_litros | cantidad: 'L' }}</td>
+              <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Litros</th>
+              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Litros'">{{ fila.cantidad_litros | cantidad: 'L' }}</td>
             </ng-container>
 
             <ng-container matColumnDef="precio_litro">
-              <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
-              <td mat-cell *matCellDef="let fila" class="num">{{ fila.precio_litro | money }}</td>
+              <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Precio/L</th>
+              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Precio/L'">{{ fila.precio_litro | money }}</td>
             </ng-container>
 
             <ng-container matColumnDef="valor_bruto">
-              <th mat-header-cell *matHeaderCellDef class="num">Valor bruto</th>
-              <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_bruto | money }}</td>
+              <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Valor bruto</th>
+              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor bruto'">{{ fila.valor_bruto | money }}</td>
             </ng-container>
 
             <ng-container matColumnDef="descuentos">
-              <th mat-header-cell *matHeaderCellDef class="num">Descuentos</th>
-              <td mat-cell *matCellDef="let fila" class="num">{{ fila.descuentos | money }}</td>
+              <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Descuentos</th>
+              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Descuentos'">{{ fila.descuentos | money }}</td>
             </ng-container>
 
             <ng-container matColumnDef="valor_neto">
-              <th mat-header-cell *matHeaderCellDef class="num">Valor neto</th>
-              <td mat-cell *matCellDef="let fila" class="num">{{ fila.valor_neto | money }}</td>
+              <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Valor neto</th>
+              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor neto'">{{ fila.valor_neto | money }}</td>
             </ng-container>
 
             <ng-container matColumnDef="liquidacion">
-              <th mat-header-cell *matHeaderCellDef>Liquidación</th>
-              <td mat-cell *matCellDef="let fila">
+              <th mat-header-cell *matHeaderCellDef mat-sort-header>Liquidación</th>
+              <td mat-cell *matCellDef="let fila" [attr.data-label]="'Liquidación'">
                 @if (fila.liquidacion_id) {
                   <span class="liq liquidada"><mat-icon>check_circle</mat-icon> Liquidada</span>
                 } @else {

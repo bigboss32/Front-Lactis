@@ -137,10 +137,6 @@ export class ReventaService {
     return this.api.get<ResumenReventa>(`${this.base}/resumen`, { desde, hasta });
   }
 
-  exportarExcel(desde: string, hasta: string): Observable<void> {
-    return this.api.download(`${this.base}/export/excel`, 'reventa.xlsx', { desde, hasta });
-  }
-
   // ----------------------------------------------------------------- compras
   listarCompras(opts: ReventaListOpts = {}): Observable<Page<CompraQueso>> {
     return this.api.get<Page<CompraQueso>>(`${this.base}/compras`, opts);

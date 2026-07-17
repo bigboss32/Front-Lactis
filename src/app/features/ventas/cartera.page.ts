@@ -29,7 +29,7 @@ import { VentasService } from './ventas.service';
         </button>
       </app-page-header>
 
-      <mat-card class="table-card">
+      <mat-card class="table-card tarjetas">
         @if (cargando()) {
           <mat-progress-bar mode="indeterminate" />
         }
@@ -37,31 +37,31 @@ import { VentasService } from './ventas.service';
         <table mat-table [dataSource]="filas()">
           <ng-container matColumnDef="cliente">
             <th mat-header-cell *matHeaderCellDef>Cliente</th>
-            <td mat-cell *matCellDef="let fila">{{ fila.cliente_nombre }}</td>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cliente'">{{ fila.cliente_nombre }}</td>
             <td mat-footer-cell *matFooterCellDef>Total</td>
           </ng-container>
 
           <ng-container matColumnDef="ventas_pendientes">
             <th mat-header-cell *matHeaderCellDef class="num">Ventas pendientes</th>
-            <td mat-cell *matCellDef="let fila" class="num">{{ fila.ventas_pendientes }}</td>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Ventas pendientes'">{{ fila.ventas_pendientes }}</td>
             <td mat-footer-cell *matFooterCellDef></td>
           </ng-container>
 
           <ng-container matColumnDef="total_facturado">
             <th mat-header-cell *matHeaderCellDef class="num">Facturado</th>
-            <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_facturado | money }}</td>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Facturado'">{{ fila.total_facturado | money }}</td>
             <td mat-footer-cell *matFooterCellDef></td>
           </ng-container>
 
           <ng-container matColumnDef="total_pagado">
             <th mat-header-cell *matHeaderCellDef class="num">Pagado</th>
-            <td mat-cell *matCellDef="let fila" class="num">{{ fila.total_pagado | money }}</td>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Pagado'">{{ fila.total_pagado | money }}</td>
             <td mat-footer-cell *matFooterCellDef></td>
           </ng-container>
 
           <ng-container matColumnDef="saldo">
             <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
-            <td mat-cell *matCellDef="let fila" class="num">{{ fila.saldo | money }}</td>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">{{ fila.saldo | money }}</td>
             <td mat-footer-cell *matFooterCellDef class="num">{{ totalSaldo() | money }}</td>
           </ng-container>
 

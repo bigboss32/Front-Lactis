@@ -14,10 +14,15 @@ export const routes: Routes = [
     component: Layout,
     canActivate: [authGuard],
     children: [
-      { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+      { path: '', pathMatch: 'full', redirectTo: 'inicio' },
+      {
+        path: 'inicio',
+        title: 'Inicio | Lactis',
+        loadComponent: () => import('./features/inicio/inicio.page').then((m) => m.InicioPage),
+      },
       {
         path: 'dashboard',
-        title: 'Dashboard | Lactis',
+        title: 'Estadísticas | Lactis',
         loadComponent: () => import('./features/dashboard/dashboard.page').then((m) => m.DashboardPage),
       },
       {
