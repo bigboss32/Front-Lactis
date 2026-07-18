@@ -44,12 +44,22 @@
   border-bottom: 1px solid var(--mat-sys-outline-variant);
   background: var(--mat-sys-surface);
 
-  // Barra de búsqueda global: crece hasta 380px y se encoge en pantallas pequeñas.
+  // Barra de búsqueda global: en escritorio crece hasta 380px; en móvil/tablet
+  // se colapsa en un ícono (no ocupa ancho) y la barra se despliega superpuesta.
   .busqueda-toolbar {
     flex: 1 1 auto;
     min-width: 0;
     max-width: 380px;
     margin: 0 8px;
+  }
+
+  @media (max-width: 720px) {
+    .busqueda-toolbar {
+      flex: 0 0 auto;
+      width: auto;
+      max-width: none;
+      margin: 0;
+    }
   }
 
   .selector-empresa {

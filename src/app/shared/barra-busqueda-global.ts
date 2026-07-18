@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
+import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -12,54 +13,80 @@ import { BuscadorGlobalService, ResultadoBusqueda } from './buscador-global.serv
 
 const PREFIJO_FILTROS = 'qe.filtros.';
 
-/** Barra de búsqueda global de la barra superior: secciones + registros. */
+/**
+ * Barra de búsqueda global de la barra superior.
+ * En escritorio se muestra siempre; en móvil/tablet es un ícono de lupa que
+ * despliega la barra a lo ancho (para no aplastarla ni tapar los iconos).
+ */
 @Component({
   selector: 'app-barra-busqueda-global',
   imports: [
     ReactiveFormsModule, MatFormFieldModule, MatInputModule,
-    MatAutocompleteModule, MatIconModule,
+    MatAutocompleteModule, MatIconModule, MatButtonModule,
   ],
   template: `
-    <mat-form-field class="buscador" subscriptSizing="dynamic" appearance="outline">
-      <mat-icon matPrefix>search</mat-icon>
-      <input
-        #entrada
-        matInput
-        [formControl]="control"
-        [matAutocomplete]="auto"
-        placeholder="Buscar… (Ctrl+K)"
-        aria-label="Búsqueda global"
-        autocomplete="off"
-      />
-      <mat-autocomplete
-        #auto="matAutocomplete"
-        (optionSelected)="seleccionar($event.option.value)"
+    @if (compacto() && !abierta()) {
+      <button mat-icon-button aria-label="Buscar" matTooltip="Buscar" (click)="abrir()">
+        <mat-icon>search</mat-icon>
+      </button>
+    } @else {
+      <mat-form-field
+        class="buscador"
+        [class.overlay]="compacto()"
+        subscriptSizing="dynamic"
+        appearance="outline"
       >
-        @for (g of grupos(); track g.grupo) {
-          <mat-optgroup [label]="g.grupo">
-            @for (r of g.items; track r.route + r.label) {
-              <mat-option [value]="r">
-                <mat-icon class="op-icono">{{ r.icono }}</mat-icon>
-                <span class="op-label">{{ r.label }}</span>
-                @if (r.sublabel) {
-                  <small class="op-sub">{{ r.sublabel }}</small>
-                }
-              </mat-option>
-            }
-          </mat-optgroup>
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          #entrada
+          matInput
+          [formControl]="control"
+          [matAutocomplete]="auto"
+          placeholder="Buscar…"
+          aria-label="Búsqueda global"
+          autocomplete="off"
+          (blur)="alPerderFoco()"
+        />
+        <mat-autocomplete
+          #auto="matAutocomplete"
+          (optionSelected)="seleccionar($event.option.value)"
+        >
+          @for (g of grupos(); track g.grupo) {
+            <mat-optgroup [label]="g.grupo">
+              @for (r of g.items; track r.route + r.label) {
+                <mat-option [value]="r">
+                  <mat-icon class="op-icono">{{ r.icono }}</mat-icon>
+                  <span class="op-label">{{ r.label }}</span>
+                  @if (r.sublabel) {
+                    <small class="op-sub">{{ r.sublabel }}</small>
+                  }
+                </mat-option>
+              }
+            </mat-optgroup>
+          }
+          @if (sinResultados()) {
+            <mat-option [disabled]="true">Sin resultados</mat-option>
+          }
+        </mat-autocomplete>
+        @if (compacto()) {
+          <button matSuffix mat-icon-button aria-label="Cerrar búsqueda" (click)="cerrar()">
+            <mat-icon>close</mat-icon>
+          </button>
         }
-        @if (sinResultados()) {
-          <mat-option [disabled]="true">Sin resultados</mat-option>
-        }
-      </mat-autocomplete>
-    </mat-form-field>
+      </mat-form-field>
+    }
   `,
   styles: `
-    .buscador {
-      width: 100%;
-      max-width: 360px;
+    :host { display: block; }
+    .buscador { width: 100%; }
+    // En móvil la barra se despliega a lo ancho, superpuesta sobre la barra superior.
+    .buscador.overlay {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      max-width: none;
+      z-index: 20;
     }
-    // Compacta el campo dentro de la barra superior.
     .buscador ::ng-deep .mat-mdc-form-field-infix { min-height: 40px; padding: 6px 0; }
     .buscador ::ng-deep .mat-mdc-text-field-wrapper { background: var(--mat-sys-surface-container-high); }
     .op-icono {
@@ -80,7 +107,12 @@ export class BarraBusquedaGlobal {
 
   readonly control = new FormControl('');
   readonly resultados = signal<ResultadoBusqueda[]>([]);
-  private readonly entrada = viewChild.required<ElementRef<HTMLInputElement>>('entrada');
+  readonly abierta = signal(false);
+  private readonly entrada = viewChild<ElementRef<HTMLInputElement>>('entrada');
+
+  /** Móvil/tablet: la barra se colapsa en un ícono. */
+  private readonly mq = window.matchMedia('(max-width: 720px)');
+  readonly compacto = signal(this.mq.matches);
 
   private readonly ORDEN = ['Ir a', 'Proveedores', 'Clientes', 'Productos'];
 
@@ -99,6 +131,8 @@ export class BarraBusquedaGlobal {
   );
 
   constructor() {
+    this.mq.addEventListener('change', (e) => this.compacto.set(e.matches));
+
     this.control.valueChanges
       .pipe(
         debounceTime(250),
@@ -116,14 +150,32 @@ export class BarraBusquedaGlobal {
       .subscribe((r) => this.resultados.set(r));
   }
 
+  abrir(): void {
+    this.abierta.set(true);
+    setTimeout(() => this.entrada()?.nativeElement.focus(), 0);
+  }
+
+  cerrar(): void {
+    this.control.setValue('', { emitEvent: false });
+    this.resultados.set([]);
+    this.abierta.set(false);
+  }
+
+  /** En móvil, al perder foco sin texto se colapsa de nuevo al ícono. */
+  alPerderFoco(): void {
+    if (this.compacto() && !(this.control.value ?? '').trim()) {
+      setTimeout(() => this.abierta.set(false), 150);
+    }
+  }
+
   seleccionar(r: ResultadoBusqueda): void {
-    // Prefiltra el listado destino reutilizando la persistencia de filtros.
     if (r.claveFiltro && r.termino) {
       sessionStorage.setItem(PREFIJO_FILTROS + r.claveFiltro, JSON.stringify({ buscar: r.termino }));
     }
     this.control.setValue('', { emitEvent: false });
     this.resultados.set([]);
-    this.entrada().nativeElement.blur();
+    this.abierta.set(false);
+    this.entrada()?.nativeElement.blur();
     this.router.navigateByUrl(r.route);
   }
 
@@ -133,7 +185,8 @@ export class BarraBusquedaGlobal {
     const esSlash = evento.key === '/' && !this.enCampo(evento.target);
     if (esK || esSlash) {
       evento.preventDefault();
-      this.entrada().nativeElement.focus();
+      if (this.compacto()) this.abrir();
+      else this.entrada()?.nativeElement.focus();
     }
   }
 
