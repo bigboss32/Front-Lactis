@@ -4,6 +4,7 @@
     class="sidenav"
     [mode]="esMovil() ? 'over' : 'side'"
     [opened]="!esMovil()"
+    (wheel)="reenviarRueda($event)"
   >
     <div class="brand">
       <img src="lactis-logo.svg" alt="Lactis" width="26" height="26" />
@@ -30,7 +31,7 @@
     </mat-nav-list>
   </mat-sidenav>
 
-  <mat-sidenav-content>
+  <mat-sidenav-content #contenido>
     <mat-toolbar class="toolbar">
       <button mat-icon-button (click)="sidenav.toggle()" aria-label="Menú">
         <mat-icon>menu</mat-icon>

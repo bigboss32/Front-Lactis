@@ -1,5 +1,5 @@
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MatBadgeModule } from '@angular/material/badge';
@@ -47,6 +47,8 @@ export class Layout implements OnInit, OnDestroy {
     { initialValue: false },
   );
   readonly empresas = signal<Empresa[]>([]);
+  /** Elemento con el scroll de la página (mat-sidenav-content). */
+  private readonly contenido = viewChild('contenido', { read: ElementRef });
 
   readonly grupos = computed(() => {
     this.auth.perfil();
@@ -85,5 +87,26 @@ export class Layout implements OnInit, OnDestroy {
 
   logout(): void {
     this.auth.logout();
+  }
+
+  /**
+   * Reenvía la rueda del mouse del menú lateral al contenido cuando el menú no
+   * puede desplazarse (o ya llegó a su tope): así la página scrollea aunque el
+   * cursor esté sobre el menú, evitando la "zona muerta" de scroll.
+   */
+  reenviarRueda(evento: WheelEvent): void {
+    const host = evento.currentTarget as HTMLElement;
+    // El scroll del menú vive en el contenedor interno de Material.
+    const nav = (host.querySelector('.mat-drawer-inner-container') as HTMLElement | null) ?? host;
+    const enTope =
+      (evento.deltaY < 0 && nav.scrollTop <= 0) ||
+      (evento.deltaY > 0 && nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1);
+    if (nav.scrollHeight <= nav.clientHeight + 1 || enTope) {
+      const cont = this.contenido()?.nativeElement;
+      if (cont) {
+        cont.scrollTop += evento.deltaY;
+        evento.preventDefault();
+      }
+    }
   }
 }
