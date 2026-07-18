@@ -479,6 +479,10 @@ export interface Dashboard {
   produccion_kg_mes: Monto;
   ventas_mes: Monto;
   gastos_mes: Monto;
+  litros_quincena_anterior: Monto;
+  produccion_kg_mes_anterior: Monto;
+  ventas_mes_anterior: Monto;
+  gastos_mes_anterior: Monto;
   cartera_pendiente: Monto;
   liquidaciones_por_pagar: Monto;
   alertas_no_leidas: number;

@@ -25,6 +25,13 @@ interface Tendencia {
   porcentaje: number;
 }
 
+/** Comparativo del valor actual frente al período anterior. */
+interface Comparativo {
+  direccion: 'sube' | 'baja' | 'igual';
+  porcentaje: number;
+  etiqueta: string;
+}
+
 /** Tarjeta de indicador: el `tipo` decide el pipe de formato en la plantilla. */
 interface Kpi {
   titulo: string;
@@ -38,6 +45,8 @@ interface Kpi {
   subtituloMoney?: Monto;
   /** Variación frente al día anterior (solo litros y ventas). */
   tendencia?: Tendencia | null;
+  /** Comparativo frente al período anterior (quincena/mes). */
+  comparativo?: Comparativo | null;
 }
 
 @Component({
@@ -71,19 +80,22 @@ export class DashboardPage implements OnInit {
         titulo: 'Litros quincena', icono: 'local_shipping', color: CHART_COLORS[5],
         valor: d.litros_quincena, tipo: 'litros', link: '/recepciones',
         subtituloMoney: d.valor_leche_quincena,
+        comparativo: this.comparar(d.litros_quincena, d.litros_quincena_anterior, 'vs quincena anterior'),
       },
       {
         titulo: 'Producción del mes', icono: 'factory', color: CHART_COLORS[4],
         valor: d.produccion_kg_mes, tipo: 'kg', link: '/produccion',
+        comparativo: this.comparar(d.produccion_kg_mes, d.produccion_kg_mes_anterior, 'vs mes anterior'),
       },
       {
         titulo: 'Ventas del mes', icono: 'point_of_sale', color: CHART_COLORS[1],
         valor: d.ventas_mes, tipo: 'money', link: '/ventas',
-        tendencia: this.tendenciaDe(d.ventas_por_dia),
+        comparativo: this.comparar(d.ventas_mes, d.ventas_mes_anterior, 'vs mes anterior'),
       },
       {
         titulo: 'Gastos del mes', icono: 'receipt_long', color: CHART_COLORS[6],
         valor: d.gastos_mes, tipo: 'money', link: '/gastos',
+        comparativo: this.comparar(d.gastos_mes, d.gastos_mes_anterior, 'vs mes anterior'),
       },
       {
         titulo: 'Cartera pendiente', icono: 'account_balance_wallet', color: CHART_COLORS[3],
@@ -196,6 +208,18 @@ export class DashboardPage implements OnInit {
    * Retorna null si no hay al menos 2 puntos o si el % no es calculable
    * (día anterior en cero): en ese caso la vista no muestra nada.
    */
+  /** Compara el valor actual con el del período anterior (quincena/mes). */
+  private comparar(actual: Monto, anterior: Monto, etiqueta: string): Comparativo | null {
+    const a = Number(actual);
+    const b = Number(anterior);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    if (a === 0 && b === 0) return null; // sin datos en ninguno de los dos períodos
+    if (a === b) return { direccion: 'igual', porcentaje: 0, etiqueta };
+    if (b === 0) return null;
+    const pct = ((a - b) / b) * 100;
+    return { direccion: pct > 0 ? 'sube' : 'baja', porcentaje: Math.abs(pct), etiqueta };
+  }
+
   private tendenciaDe(serie: SerieDia[]): Tendencia | null {
     if (serie.length < 2) return null;
     const ultimo = Number(serie[serie.length - 1].valor);

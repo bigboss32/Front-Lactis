@@ -168,6 +168,18 @@
     &.baja { color: #c62828; }
     &.igual { color: var(--mat-sys-on-surface-variant); }
   }
+
+  .kpi-comparativo {
+    margin: 3px 0 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 0.72rem;
+    color: var(--mat-sys-on-surface-variant);
+    white-space: nowrap;
+
+    mat-icon { font-size: 13px; width: 13px; height: 13px; }
+  }
 }
 
 :host-context(html.dark) {

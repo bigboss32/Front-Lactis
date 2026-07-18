@@ -153,6 +153,15 @@ body {
   .mat-expansion-panel-body { overflow-x: auto; }
 }
 
+// ---------------------------------------------- alertas visuales en las filas
+// Resaltan condiciones de negocio directamente en los listados.
+tr.mat-mdc-row.fila-alerta > td.mat-mdc-cell {
+  background: color-mix(in srgb, #f9a825 13%, transparent);
+}
+tr.mat-mdc-row.fila-peligro > td.mat-mdc-cell {
+  background: color-mix(in srgb, #c62828 13%, transparent);
+}
+
 // ------------------------------------------------ tablas como tarjetas (móvil)
 // Opt-in: la tabla se marca con .table-card.tarjetas y cada celda lleva
 // [attr.data-label]. En celular la tabla deja de desplazarse en horizontal y

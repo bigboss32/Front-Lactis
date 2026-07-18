@@ -57,7 +57,11 @@
     </ng-container>
 
     <tr mat-header-row *matHeaderRowDef="columnas"></tr>
-    <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+    <tr
+      mat-row
+      *matRowDef="let fila; columns: columnas"
+      [class.fila-alerta]="fila.bajo_minimo"
+    ></tr>
   </table>
 
   @if (!cargando() && filas().length === 0) {

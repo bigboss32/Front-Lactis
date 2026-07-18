@@ -72,6 +72,16 @@
                   }
                 }
               }
+              @if (kpi.comparativo; as c) {
+                <p class="kpi-comparativo">
+                  @switch (c.direccion) {
+                    @case ('sube') { <mat-icon aria-hidden="true">arrow_upward</mat-icon> }
+                    @case ('baja') { <mat-icon aria-hidden="true">arrow_downward</mat-icon> }
+                    @default { <mat-icon aria-hidden="true">remove</mat-icon> }
+                  }
+                  {{ c.porcentaje | cantidad }}% {{ c.etiqueta }}
+                </p>
+              }
             </div>
           </mat-card>
         </a>
