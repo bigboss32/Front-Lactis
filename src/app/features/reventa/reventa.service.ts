@@ -30,7 +30,6 @@ export interface CompraQueso extends TenantFields {
   fecha: string;
   productor: string;
   kilos_brutos: Monto;
-  merma_kilos: Monto;
   borona_kilos: Monto;
   kilos_netos: Monto;
   precio_kilo: Monto;
@@ -48,6 +47,10 @@ export interface VentaQueso extends TenantFields {
   kilos: Monto;
   precio_kilo: Monto;
   valor_total: Monto;
+  /** Gastos que conlleva vender el lote (ej. transporte por kilo). No lo paga el cliente. */
+  gasto_concepto: string | null;
+  gasto_por_kilo: Monto;
+  gasto_monto: Monto; // total = gasto_por_kilo × kilos
   abonado: Monto;
   saldo: Monto;
   observaciones: string | null;
@@ -71,8 +74,10 @@ export interface ResumenReventa {
   total_ventas: Monto; // queso + borona
   precio_promedio_compra: Monto;
   precio_promedio_venta: Monto; // solo queso
-  ganancia_estimada: Monto;
-  margen_por_kilo: Monto;
+  total_gastos: Monto; // gastos de venta del período
+  merma_estimada: Monto; // kilos comprados - vendidos (queso) del período
+  ganancia_estimada: Monto; // ventas - costo - gastos (neta)
+  margen_por_kilo: Monto; // ganancia neta por kilo de queso vendido
   // Del período (borona)
   kilos_borona_vendidos: Monto;
   total_ventas_borona: Monto;
@@ -88,7 +93,6 @@ export interface CompraQuesoPayload {
   fecha: string;
   productor: string;
   kilos_brutos: number;
-  merma_kilos: number;
   borona_kilos: number;
   precio_kilo: number;
   observaciones?: string | null;
@@ -101,6 +105,8 @@ export interface VentaQuesoPayload {
   tipo: TipoVenta;
   kilos: number;
   precio_kilo: number;
+  gasto_concepto?: string | null;
+  gasto_por_kilo?: number;
   observaciones?: string | null;
   /** Solo al crear: registra la venta ya pagada por completo. */
   pagada_de_contado?: boolean;

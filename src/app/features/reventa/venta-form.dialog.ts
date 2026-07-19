@@ -22,8 +22,9 @@ import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
 const PRECIO_VENTA_SUGERIDO = 19500;
 
 /**
- * Registra o edita una venta de queso de reventa. Calcula el total en vivo y,
- * al crear, permite marcarla como pagada de contado.
+ * Registra o edita una venta de queso de reventa. Calcula el total en vivo,
+ * permite anotar los gastos de vender (ej. transporte) y, al crear, marcarla
+ * como pagada de contado.
  */
 @Component({
   selector: 'app-venta-queso-form',
@@ -64,11 +65,24 @@ const PRECIO_VENTA_SUGERIDO = 19500;
           <mat-label>Kilos</mat-label>
           <input matInput type="number" min="0" step="0.1" formControlName="kilos" required />
           <span matTextSuffix>kg</span>
+          <mat-hint>El peso real al vender (aquí se ve la merma)</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Precio por kilo</mat-label>
           <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
           <span matTextPrefix>$&nbsp;</span>
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Concepto del gasto</mat-label>
+          <input matInput formControlName="gasto_concepto" maxlength="150" placeholder="Ej. Transporte" />
+          <mat-hint>Opcional</mat-hint>
+        </mat-form-field>
+        <mat-form-field>
+          <mat-label>Gasto por kilo</mat-label>
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
+          <span matTextPrefix>$&nbsp;</span>
+          <span matTextSuffix>/kg</span>
+          <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
         </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
@@ -83,6 +97,9 @@ const PRECIO_VENTA_SUGERIDO = 19500;
 
       <div class="calculo">
         <span>Total de la venta: <strong>{{ total() | money }}</strong></span>
+        @if (gastoTotal() > 0) {
+          <span>Gastos: <strong>{{ gastoTotal() | money }}</strong> ({{ gastoPorKilo() | money }}/kg)</span>
+        }
       </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -98,7 +115,13 @@ const PRECIO_VENTA_SUGERIDO = 19500;
     </mat-dialog-actions>
   `,
   styles: `
+    // Espacio extra entre filas: las pistas de kilos/gasto ocupan una línea más.
+    .form-grid { row-gap: 22px; }
+
     .calculo {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 32px;
       margin-top: 16px;
       padding: 10px 14px;
       border-radius: 8px;
@@ -127,6 +150,8 @@ export class VentaQuesoFormDialog {
       Number(this.data?.item?.precio_kilo ?? PRECIO_VENTA_SUGERIDO),
       [Validators.required, Validators.min(0.01)],
     ],
+    gasto_concepto: [this.data?.item?.gasto_concepto ?? ''],
+    gasto_por_kilo: [Number(this.data?.item?.gasto_por_kilo ?? 0), [Validators.min(0)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
     pagada_de_contado: [false],
   });
@@ -156,6 +181,17 @@ export class VentaQuesoFormDialog {
     return Number(valores.kilos || 0) * Number(valores.precio_kilo || 0);
   });
 
+  readonly gastoPorKilo = computed(() => {
+    this.cambios();
+    return Number(this.form.getRawValue().gasto_por_kilo || 0);
+  });
+
+  readonly gastoTotal = computed(() => {
+    this.cambios();
+    const valores = this.form.getRawValue();
+    return Number(valores.gasto_por_kilo || 0) * Number(valores.kilos || 0);
+  });
+
   async guardar(): Promise<void> {
     if (this.form.invalid) return;
     this.guardando.set(true);
@@ -166,6 +202,8 @@ export class VentaQuesoFormDialog {
         cliente: valores.cliente.trim(),
         kilos: Number(valores.kilos),
         precio_kilo: Number(valores.precio_kilo),
+        gasto_concepto: valores.gasto_concepto?.trim() || null,
+        gasto_por_kilo: Number(valores.gasto_por_kilo || 0),
         observaciones: valores.observaciones || null,
       };
       await firstValueFrom(

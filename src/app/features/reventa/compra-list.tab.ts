@@ -71,7 +71,7 @@ export class CompraListTab {
   readonly cambio = output<void>();
 
   readonly columnas = [
-    'fecha', 'productor', 'kilos_brutos', 'merma', 'kilos_netos',
+    'fecha', 'productor', 'kilos',
     'precio_kilo', 'valor_total', 'abonado', 'saldo', 'estado', 'acciones',
   ];
   readonly filas = signal<CompraQueso[]>([]);

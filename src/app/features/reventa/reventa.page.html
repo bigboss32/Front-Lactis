@@ -56,8 +56,8 @@
         </span>
         <span class="textos">
           <span class="cifra">{{ r.ganancia_estimada | money }}</span>
-          <span class="titulo">Ganancia del período</span>
-          <span class="detalle">{{ r.margen_por_kilo | money }}/kg de margen</span>
+          <span class="titulo">Ganancia neta del período</span>
+          <span class="detalle">{{ r.margen_por_kilo | money }}/kg · ya descontados los gastos</span>
         </span>
       </div>
 
@@ -78,12 +78,35 @@
       </div>
     </div>
 
-    <p class="linea-info">
-      En el período: comprados <strong>{{ r.kilos_comprados | cantidad: 'kg' }}</strong>
-      a <strong>{{ r.precio_promedio_compra | money }}</strong>/kg promedio ·
-      queso vendido <strong>{{ r.kilos_vendidos | cantidad: 'kg' }}</strong>
-      a <strong>{{ r.precio_promedio_venta | money }}</strong>/kg promedio
-    </p>
+    <div class="desglose">
+      <div class="dato">
+        <span class="etq">Comprado</span>
+        <span class="val">{{ r.kilos_comprados | cantidad: 'kg' }} · {{ r.total_compras | money }}</span>
+        <span class="sub">{{ r.precio_promedio_compra | money }}/kg promedio</span>
+      </div>
+      <div class="dato">
+        <span class="etq">Vendido (queso)</span>
+        <span class="val">{{ r.kilos_vendidos | cantidad: 'kg' }} · {{ r.total_ventas | money }}</span>
+        <span class="sub">{{ r.precio_promedio_venta | money }}/kg promedio</span>
+      </div>
+      @if (esPositivo(r.merma_estimada)) {
+        <div class="dato">
+          <span class="etq">Merma aprox.</span>
+          <span class="val">{{ r.merma_estimada | cantidad: 'kg' }}</span>
+          <span class="sub">comprado − vendido</span>
+        </div>
+      }
+      <div class="dato">
+        <span class="etq">Gastos de venta</span>
+        <span class="val">{{ r.total_gastos | money }}</span>
+        <span class="sub">transporte, etc.</span>
+      </div>
+      <div class="dato total" [class.neg]="esNegativo(r.ganancia_estimada)">
+        <span class="etq">Ganancia neta</span>
+        <span class="val">{{ r.ganancia_estimada | money }}</span>
+        <span class="sub">ventas − costo − gastos</span>
+      </div>
+    </div>
   }
 
   <mat-tab-group>

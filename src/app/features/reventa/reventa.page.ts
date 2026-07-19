@@ -36,9 +36,9 @@ function ultimoDiaMesDate(): Date {
 }
 
 /**
- * Página del negocio de reventa: queso comprado a productores (con merma y
- * abonos) que se revende a clientes. Contabilidad separada del libro de la
- * quesera: no toca contabilidad ni ventas normales.
+ * Página del negocio de reventa: queso comprado a productores (con abonos)
+ * que se revende a clientes. Contabilidad separada del libro de la quesera:
+ * no toca contabilidad ni ventas normales.
  */
 @Component({
   selector: 'app-reventa-page',
@@ -108,13 +108,39 @@ function ultimoDiaMesDate(): Date {
       .tarjeta.rojo  { --color-tarjeta: #e57373; }
     }
 
-    // ------------------------------------------ línea informativa del período
-    .linea-info {
-      margin: 0 0 16px;
-      font-size: 0.85rem;
-      color: var(--mat-sys-on-surface-variant);
+    // ------------------------------------------ desglose del período
+    .desglose {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 4px 0 16px;
+    }
 
-      strong { color: var(--mat-sys-on-surface); font-variant-numeric: tabular-nums; }
+    .desglose .dato {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      padding: 8px 14px;
+      min-width: 130px;
+      border: 1px solid var(--mat-sys-outline-variant);
+      border-radius: 10px;
+      background: var(--mat-sys-surface-container-low);
+    }
+
+    .desglose .etq { font-size: 0.75rem; color: var(--mat-sys-on-surface-variant); }
+    .desglose .val { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .desglose .sub { font-size: 0.72rem; color: var(--mat-sys-on-surface-variant); }
+
+    .desglose .dato.total { border-color: #2e7d32; }
+    .desglose .dato.total .val { color: #2e7d32; }
+    .desglose .dato.total.neg { border-color: #c62828; }
+    .desglose .dato.total.neg .val { color: #c62828; }
+
+    :host-context(html.dark) {
+      .desglose .dato.total { border-color: #81c784; }
+      .desglose .dato.total .val { color: #81c784; }
+      .desglose .dato.total.neg { border-color: #e57373; }
+      .desglose .dato.total.neg .val { color: #e57373; }
     }
 
     .tab-panel { padding-top: 16px; }
@@ -163,6 +189,10 @@ export class ReventaPage {
 
   esNegativo(valor: Monto): boolean {
     return Number(valor) < 0;
+  }
+
+  esPositivo(valor: Monto): boolean {
+    return Number(valor) > 0;
   }
 
   pasarABorona(): void {

@@ -12,19 +12,20 @@ import { firstValueFrom } from 'rxjs';
 
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { CompraQueso, ReventaService } from './reventa.service';
 
 /**
- * Registra o edita una compra de queso a un productor. Muestra en vivo los
- * kilos netos (brutos − merma) y el total a pagar mientras se escribe.
+ * Registra o edita una compra de queso a un productor. Al comprar se paga por
+ * todo lo recibido (no hay merma: la merma real se ve al vender). Muestra en
+ * vivo el total a pagar mientras se escribe.
  */
 @Component({
   selector: 'app-compra-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatButtonModule, MoneyPipe, CantidadPipe, MilesInputDirective,
+    MatDatepickerModule, MatButtonModule, MoneyPipe, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar compra' : 'Nueva compra de queso' }}</h2>
@@ -41,15 +42,10 @@ import { CompraQueso, ReventaService } from './reventa.service';
           <input matInput formControlName="productor" required maxlength="150" />
         </mat-form-field>
         <mat-form-field>
-          <mat-label>Kilos brutos</mat-label>
+          <mat-label>Kilos</mat-label>
           <input matInput type="number" min="0" step="0.1" formControlName="kilos_brutos" required />
           <span matTextSuffix>kg</span>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Merma</mat-label>
-          <input matInput type="number" min="0" step="0.1" formControlName="merma_kilos" />
-          <span matTextSuffix>kg</span>
-          <mat-hint>Kilos que se pierden; se pagan solo los netos</mat-hint>
+          <mat-hint>Lo que compras y pagas al productor</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Borona</mat-label>
@@ -68,13 +64,8 @@ import { CompraQueso, ReventaService } from './reventa.service';
         </mat-form-field>
       </form>
 
-      <div class="calculo" [class.invalido]="mermaInvalida()">
-        @if (mermaInvalida()) {
-          <span>La merma no puede ser mayor o igual a los kilos brutos</span>
-        } @else {
-          <span>Kilos netos a pagar: <strong>{{ kilosNetos() | cantidad: 'kg' }}</strong></span>
-          <span>Total a pagar: <strong>{{ totalPagar() | money }}</strong></span>
-        }
+      <div class="calculo">
+        <span>Total a pagar: <strong>{{ totalPagar() | money }}</strong></span>
       </div>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -83,14 +74,14 @@ import { CompraQueso, ReventaService } from './reventa.service';
         mat-flat-button
         type="submit"
         form="form-compra"
-        [disabled]="form.invalid || mermaInvalida() || guardando()"
+        [disabled]="form.invalid || guardando()"
       >
         Guardar
       </button>
     </mat-dialog-actions>
   `,
   styles: `
-    // Espacio extra entre filas: las pistas de merma/borona ocupan dos líneas.
+    // Espacio extra entre filas: las pistas de kilos/borona ocupan una línea más.
     .form-grid { row-gap: 22px; }
 
     .calculo {
@@ -104,8 +95,6 @@ import { CompraQueso, ReventaService } from './reventa.service';
       color: var(--mat-sys-on-surface-variant);
 
       strong { color: var(--mat-sys-on-surface); font-variant-numeric: tabular-nums; }
-
-      &.invalido { color: var(--mat-sys-error); font-weight: 500; }
     }
   `,
 })
@@ -122,7 +111,6 @@ export class CompraFormDialog {
     fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     productor: [this.data?.item?.productor ?? '', [Validators.required, Validators.minLength(2)]],
     kilos_brutos: [Number(this.data?.item?.kilos_brutos ?? 0), [Validators.required, Validators.min(0.01)]],
-    merma_kilos: [Number(this.data?.item?.merma_kilos ?? 0), [Validators.min(0)]],
     borona_kilos: [Number(this.data?.item?.borona_kilos ?? 0), [Validators.min(0)]],
     precio_kilo: [Number(this.data?.item?.precio_kilo ?? 0), [Validators.required, Validators.min(0.01)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
@@ -131,22 +119,10 @@ export class CompraFormDialog {
   /** Re-emite en cada cambio del formulario para recalcular en vivo. */
   private readonly cambios = toSignal(this.form.valueChanges);
 
-  readonly kilosNetos = computed(() => {
-    this.cambios();
-    const valores = this.form.getRawValue();
-    return Math.max(Number(valores.kilos_brutos || 0) - Number(valores.merma_kilos || 0), 0);
-  });
-
   readonly totalPagar = computed(() => {
     this.cambios();
-    return this.kilosNetos() * Number(this.form.getRawValue().precio_kilo || 0);
-  });
-
-  readonly mermaInvalida = computed(() => {
-    this.cambios();
     const valores = this.form.getRawValue();
-    const brutos = Number(valores.kilos_brutos || 0);
-    return brutos > 0 && Number(valores.merma_kilos || 0) >= brutos;
+    return Number(valores.kilos_brutos || 0) * Number(valores.precio_kilo || 0);
   });
 
   constructor() {
@@ -154,7 +130,7 @@ export class CompraFormDialog {
   }
 
   async guardar(): Promise<void> {
-    if (this.form.invalid || this.mermaInvalida()) return;
+    if (this.form.invalid) return;
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
@@ -162,7 +138,6 @@ export class CompraFormDialog {
         fecha: dateToIso(valores.fecha),
         productor: valores.productor.trim(),
         kilos_brutos: Number(valores.kilos_brutos),
-        merma_kilos: Number(valores.merma_kilos || 0),
         borona_kilos: Number(valores.borona_kilos || 0),
         precio_kilo: Number(valores.precio_kilo),
         observaciones: valores.observaciones || null,

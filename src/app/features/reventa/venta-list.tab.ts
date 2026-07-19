@@ -86,7 +86,7 @@ export class VentaQuesoListTab {
   readonly cambio = output<void>();
 
   readonly columnas = [
-    'fecha', 'cliente', 'kilos', 'precio_kilo', 'valor_total', 'abonado', 'saldo', 'estado', 'acciones',
+    'fecha', 'cliente', 'kilos', 'precio_kilo', 'valor_total', 'gastos', 'abonado', 'saldo', 'estado', 'acciones',
   ];
   readonly filas = signal<VentaQueso[]>([]);
   readonly total = signal(0);
@@ -154,6 +154,16 @@ export class VentaQuesoListTab {
 
   conSaldo(fila: VentaQueso): boolean {
     return Number(fila.saldo) > 0 && fila.estado !== 'anulada';
+  }
+
+  tieneGasto(fila: VentaQueso): boolean {
+    return Number(fila.gasto_monto) > 0;
+  }
+
+  gastoTooltip(fila: VentaQueso): string {
+    const concepto = fila.gasto_concepto || 'Gasto de la venta';
+    const porKilo = Number(fila.gasto_por_kilo);
+    return porKilo > 0 ? `${concepto} · $${porKilo.toLocaleString('es-CO')}/kg` : concepto;
   }
 
   puedeAbonar(fila: VentaQueso): boolean {
