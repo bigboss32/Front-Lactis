@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
@@ -14,6 +15,7 @@ import { Page, Produccion, TipoQueso } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { RecepcionesService } from '../recepciones/recepciones.service';
 import { ProduccionService } from './produccion.service';
 
 @Component({
@@ -50,6 +52,9 @@ import { ProduccionService } from './produccion.service';
           <mat-label>Litros usados</mat-label>
           <input matInput type="number" min="0" formControlName="litros_usados" required />
           <span matTextSuffix>&nbsp;L</span>
+          <mat-hint>{{
+            cargandoLitros() ? 'Cargando litros del día…' : 'Litros recibidos ese día (editable)'
+          }}</mat-hint>
         </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
@@ -81,6 +86,7 @@ import { ProduccionService } from './produccion.service';
 export class ProduccionFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly servicio = inject(ProduccionService);
+  private readonly recepciones = inject(RecepcionesService);
   private readonly api = inject(ApiService);
   private readonly dialogRef = inject(MatDialogRef<ProduccionFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
@@ -88,6 +94,7 @@ export class ProduccionFormDialog {
   readonly data = inject<{ item?: Produccion } | null>(MAT_DIALOG_DATA, { optional: true });
   readonly tiposQueso = signal<TipoQueso[]>([]);
   readonly guardando = signal(false);
+  readonly cargandoLitros = signal(false);
 
   readonly form = this.fb.group({
     fecha: [
@@ -112,7 +119,36 @@ export class ProduccionFormDialog {
       this.api.get<Page<TipoQueso>>('/tipos-queso', { page_size: 100, estado: 'activo' }),
     ).then((page) => this.tiposQueso.set(page.items));
 
+    // Al cambiar la fecha, trae los litros recibidos ese día desde la recepción.
+    this.form.controls.fecha.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((fecha) => this.cargarLitrosDelDia(fecha));
+
+    // En una producción nueva, precarga los litros de la fecha por defecto (hoy).
+    if (!this.data?.item) {
+      this.cargarLitrosDelDia(this.form.controls.fecha.value);
+    }
+
     protegerCambios(this.dialogRef, () => this.form);
+  }
+
+  /**
+   * Consulta la recepción de leche de un día (desde = hasta = fecha) y coloca
+   * el total de litros recibidos en "Litros usados". El campo queda editable
+   * por si se produce con solo una parte de la leche del día.
+   */
+  private async cargarLitrosDelDia(fecha: Date | null): Promise<void> {
+    const iso = dateToIso(fecha);
+    if (!iso) return;
+    this.cargandoLitros.set(true);
+    try {
+      const resumen = await firstValueFrom(this.recepciones.resumenPeriodo(iso, iso));
+      this.form.controls.litros_usados.setValue(Number(resumen.total_litros));
+    } catch {
+      // Silencioso: si falla la consulta, los litros se pueden escribir a mano.
+    } finally {
+      this.cargandoLitros.set(false);
+    }
   }
 
   async guardar(): Promise<void> {
