@@ -13,16 +13,21 @@ import { Monto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { CantidadPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
-import { ReventaService } from './reventa.service';
+import { DestinoConversion, ReventaService } from './reventa.service';
 
 export interface ConversionDialogData {
-  /** Kilos de queso disponibles para pasar a borona (kilos_disponibles). */
+  /** Kilos de queso disponibles (kilos_disponibles). */
   disponible: Monto;
+  /** A dónde va el queso: borona (vendible) o merma (pérdida). Por defecto borona. */
+  destino?: DestinoConversion;
 }
 
 /**
- * Pasa queso del inventario de reventa a borona (queso devuelto o que ya no
- * sirve como queso entero). El backend valida contra el disponible real.
+ * Reduce el queso disponible de reventa. Según el destino:
+ * - borona: queso devuelto o ya no vendible como entero; suma a la borona.
+ * - merma: pérdida de peso (se pesó menos al vender); no suma a ningún lado.
+ * Para la merma el diálogo llega con los kilos disponibles precargados, para
+ * cerrar la semana de un solo paso. El backend valida contra el disponible real.
  */
 @Component({
   selector: 'app-conversion-form',
@@ -31,8 +36,14 @@ export interface ConversionDialogData {
     MatDatepickerModule, MatButtonModule, CantidadPipe,
   ],
   template: `
-    <h2 mat-dialog-title>Pasar queso a borona</h2>
+    <h2 mat-dialog-title>{{ esMerma ? 'Registrar merma' : 'Pasar queso a borona' }}</h2>
     <mat-dialog-content>
+      @if (esMerma) {
+        <p class="ayuda">
+          Descuenta del queso disponible los kilos que se perdieron (merma). No se
+          venden ni suman a la borona; solo dejan el inventario al día.
+        </p>
+      }
       <form [formGroup]="form" class="form-grid" id="form-conversion" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Fecha</mat-label>
@@ -52,7 +63,7 @@ export interface ConversionDialogData {
             matInput
             formControlName="observaciones"
             rows="2"
-            placeholder="Ej. Queso devuelto del viaje"
+            [placeholder]="esMerma ? 'Ej. Merma de la semana' : 'Ej. Queso devuelto del viaje'"
           ></textarea>
         </mat-form-field>
       </form>
@@ -65,13 +76,18 @@ export interface ConversionDialogData {
         form="form-conversion"
         [disabled]="form.invalid || guardando()"
       >
-        Pasar a borona
+        {{ esMerma ? 'Registrar merma' : 'Pasar a borona' }}
       </button>
     </mat-dialog-actions>
   `,
   styles: `
     // Espacio extra: la pista de disponible ocupa una línea adicional.
     .form-grid { row-gap: 22px; }
+    .ayuda {
+      margin: 0 0 12px;
+      font-size: 0.85rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
   `,
 })
 export class ConversionFormDialog {
@@ -82,10 +98,16 @@ export class ConversionFormDialog {
 
   readonly data = inject<ConversionDialogData>(MAT_DIALOG_DATA);
   readonly guardando = signal(false);
+  readonly destino: DestinoConversion = this.data.destino ?? 'borona';
+  readonly esMerma = this.destino === 'merma';
 
   readonly form = this.fb.group({
     fecha: [hoyDate(), Validators.required],
-    kilos: [0, [Validators.required, Validators.min(0.01)]],
+    // La merma llega con los kilos disponibles precargados (cerrar semana de un paso).
+    kilos: [
+      this.esMerma ? Number(this.data.disponible) : 0,
+      [Validators.required, Validators.min(0.01)],
+    ],
     observaciones: [''],
   });
 
@@ -102,15 +124,17 @@ export class ConversionFormDialog {
         this.servicio.crearConversion({
           fecha: dateToIso(valores.fecha),
           kilos: Number(valores.kilos),
+          destino: this.destino,
           observaciones: valores.observaciones || null,
         }),
       );
       this.dialogRef.close(true);
     } catch (err) {
+      const generico = this.esMerma
+        ? 'No fue posible registrar la merma'
+        : 'No fue posible pasar el queso a borona';
       const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible pasar el queso a borona')
-          : 'No fue posible pasar el queso a borona';
+        err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? generico) : generico;
       this.snackbar.open(detalle, 'OK', { duration: 5000 });
     } finally {
       this.guardando.set(false);

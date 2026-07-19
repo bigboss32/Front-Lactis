@@ -57,10 +57,14 @@ export interface VentaQueso extends TenantFields {
   abonos: AbonoReventa[];
 }
 
-/** Queso del inventario de reventa que se pasa a borona (devuelto o dañado). */
+/** Destino de un ajuste que baja el queso disponible: borona (vendible) o merma (pérdida). */
+export type DestinoConversion = 'borona' | 'merma';
+
+/** Ajuste que reduce el queso disponible de reventa (pasa a borona o se pierde como merma). */
 export interface ConversionBorona extends TenantFields {
   fecha: string;
   kilos: Monto;
+  destino: DestinoConversion;
   observaciones: string | null;
 }
 
@@ -115,6 +119,7 @@ export interface VentaQuesoPayload {
 export interface ConversionBoronaPayload {
   fecha: string;
   kilos: number;
+  destino?: DestinoConversion;
   observaciones?: string | null;
 }
 

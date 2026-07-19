@@ -33,10 +33,10 @@ import { ConversionBorona, ReventaService } from './reventa.service';
     <mat-expansion-panel class="historial">
       <mat-expansion-panel-header>
         <mat-panel-title>
-          <mat-icon>recycling</mat-icon> Historial de borona
+          <mat-icon>inventory</mat-icon> Ajustes de inventario
         </mat-panel-title>
         <mat-panel-description>
-          Queso pasado a borona{{ total() ? ' (' + total() + ')' : '' }}
+          Queso pasado a borona o merma{{ total() ? ' (' + total() + ')' : '' }}
         </mat-panel-description>
       </mat-expansion-panel-header>
 
@@ -48,6 +48,15 @@ import { ConversionBorona, ReventaService } from './reventa.service';
         <ng-container matColumnDef="fecha">
           <th mat-header-cell *matHeaderCellDef>Fecha</th>
           <td mat-cell *matCellDef="let fila">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="destino">
+          <th mat-header-cell *matHeaderCellDef>Tipo</th>
+          <td mat-cell *matCellDef="let fila">
+            <span class="badge" [class.merma]="fila.destino === 'merma'">
+              {{ fila.destino === 'merma' ? 'Merma' : 'Borona' }}
+            </span>
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="kilos">
@@ -80,8 +89,8 @@ import { ConversionBorona, ReventaService } from './reventa.service';
 
       @if (!cargando() && filas().length === 0) {
         <div class="empty-state">
-          <mat-icon>recycling</mat-icon>
-          <p>Aún no se ha pasado queso a borona</p>
+          <mat-icon>inventory</mat-icon>
+          <p>Aún no hay ajustes de inventario</p>
         </div>
       }
 
@@ -109,6 +118,21 @@ import { ConversionBorona, ReventaService } from './reventa.service';
     table { width: 100%; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .col-acciones { width: 56px; text-align: right; }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      background: color-mix(in srgb, #1565c0 15%, transparent);
+      color: #1565c0;
+    }
+    .badge.merma { background: color-mix(in srgb, #c62828 15%, transparent); color: #c62828; }
+
+    :host-context(html.dark) {
+      .badge { color: #64b5f6; }
+      .badge.merma { color: #e57373; }
+    }
   `,
 })
 export class ConversionListPanel {
@@ -121,7 +145,7 @@ export class ConversionListPanel {
   /** Avisa a la página que hubo cambios para recargar el resumen. */
   readonly cambio = output<void>();
 
-  readonly columnas = ['fecha', 'kilos', 'observaciones', 'acciones'];
+  readonly columnas = ['fecha', 'destino', 'kilos', 'observaciones', 'acciones'];
   readonly filas = signal<ConversionBorona[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -161,9 +185,9 @@ export class ConversionListPanel {
     this.dialog
       .open(ConfirmDialog, {
         data: {
-          titulo: 'Eliminar conversión',
+          titulo: 'Eliminar ajuste',
           mensaje:
-            '¿Eliminar este registro de queso pasado a borona? El queso volverá al inventario disponible.',
+            '¿Eliminar este ajuste? El queso volverá al inventario disponible.',
         },
       })
       .afterClosed()

@@ -10,6 +10,13 @@
     >
       <mat-icon>recycling</mat-icon> Pasar queso a borona
     </button>
+    <button
+      mat-stroked-button
+      *hasPermission="'reventa:crear'"
+      (click)="registrarMerma()"
+    >
+      <mat-icon>scale</mat-icon> Registrar merma
+    </button>
   </app-page-header>
 
   <div class="page-toolbar">
@@ -57,7 +64,7 @@
         <span class="textos">
           <span class="cifra">{{ r.ganancia_estimada | money }}</span>
           <span class="titulo">Ganancia neta del período</span>
-          <span class="detalle">{{ r.margen_por_kilo | money }}/kg · ya descontados los gastos</span>
+          <span class="detalle">{{ r.margen_por_kilo | money }}/kg · ya con compra, merma y gastos</span>
         </span>
       </div>
 
@@ -104,7 +111,7 @@
       <div class="dato total" [class.neg]="esNegativo(r.ganancia_estimada)">
         <span class="etq">Ganancia neta</span>
         <span class="val">{{ r.ganancia_estimada | money }}</span>
-        <span class="sub">ventas − costo − gastos</span>
+        <span class="sub">vendido − comprado − gastos</span>
       </div>
     </div>
   }

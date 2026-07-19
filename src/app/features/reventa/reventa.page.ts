@@ -199,13 +199,29 @@ export class ReventaPage {
     const resumen = this.resumen();
     this.dialog
       .open(ConversionFormDialog, {
-        data: { disponible: resumen?.kilos_disponibles ?? 0 },
+        data: { disponible: resumen?.kilos_disponibles ?? 0, destino: 'borona' },
         width: '480px',
       })
       .afterClosed()
       .subscribe((guardado) => {
         if (!guardado) return;
         this.snackbar.open('Queso pasado a borona', 'OK', { duration: 3000 });
+        this.recargaConversiones.update((n) => n + 1);
+        void this.cargarResumen();
+      });
+  }
+
+  registrarMerma(): void {
+    const resumen = this.resumen();
+    this.dialog
+      .open(ConversionFormDialog, {
+        data: { disponible: resumen?.kilos_disponibles ?? 0, destino: 'merma' },
+        width: '480px',
+      })
+      .afterClosed()
+      .subscribe((guardado) => {
+        if (!guardado) return;
+        this.snackbar.open('Merma registrada', 'OK', { duration: 3000 });
         this.recargaConversiones.update((n) => n + 1);
         void this.cargarResumen();
       });
