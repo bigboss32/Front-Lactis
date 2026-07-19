@@ -277,12 +277,12 @@ export class PreLiquidacionDialog {
       let opciones: OpcionSelect[];
       if (tipo === 'proveedor') {
         const pagina = await firstValueFrom(
-          this.proveedoresSrv.list({ page_size: 500, estado: 'activo' }),
+          this.proveedoresSrv.list({ page_size: 200, estado: 'activo' }),
         );
         opciones = pagina.items.map((t) => ({ id: t.id, nombre: t.nombre }));
       } else {
         const pagina = await firstValueFrom(
-          this.transportadoresSrv.list({ page_size: 500, estado: 'activo' }),
+          this.transportadoresSrv.list({ page_size: 200, estado: 'activo' }),
         );
         opciones = pagina.items.map((t) => ({ id: t.id, nombre: t.nombre }));
       }
