@@ -59,6 +59,63 @@
         <mat-icon>water_drop</mat-icon>
         <p>No hay recepciones registradas en esta quincena</p>
       </div>
+    } @else if (compacto()) {
+      <div class="tarjetas-prov">
+        @for (fila of g.filas; track fila.proveedor_id) {
+          <div class="tarjeta-prov">
+            <div class="tp-cabecera">
+              <div>
+                <span class="tp-nombre">{{ fila.proveedor_nombre }}</span>
+                @if (fila.vereda) {
+                  <small class="tp-detalle">{{ fila.vereda }}</small>
+                }
+              </div>
+              <span class="tp-precio">{{ fila.precio_litro | money }} /L</span>
+            </div>
+
+            <div class="tp-dias">
+              @for (dia of dias(); track dia.iso) {
+                @if (fila.celdas[dia.iso]; as celda) {
+                  @if (celda.liquidada) {
+                    <span class="dia-chip liquidada" matTooltip="Liquidada — no editable">
+                      {{ dia.dia }} {{ dia.abrev }}: {{ celda.litros | cantidad }}
+                      <mat-icon>lock</mat-icon>
+                    </span>
+                  } @else if (puedeEditar()) {
+                    <button type="button" class="dia-chip" (click)="clickCelda(fila, dia.iso)">
+                      {{ dia.dia }} {{ dia.abrev }}: {{ celda.litros | cantidad }}
+                    </button>
+                  } @else {
+                    <span class="dia-chip">{{ dia.dia }} {{ dia.abrev }}: {{ celda.litros | cantidad }}</span>
+                  }
+                }
+              }
+              @if (puedeCrear()) {
+                <button type="button" class="dia-chip agregar" (click)="agregarDia(fila)">
+                  <mat-icon>add</mat-icon> Día
+                </button>
+              }
+            </div>
+
+            <div class="tp-totales">
+              <span><small>Litros</small> {{ fila.total_litros | cantidad: 'L' }}</span>
+              <span><small>Valor neto</small> {{ fila.valor_neto | money }}</span>
+              <span><small>Transporte</small> {{ fila.valor_transporte | money }}</span>
+              <span class="tp-total"><small>Total</small> {{ totalFila(fila) | money }}</span>
+            </div>
+          </div>
+        }
+
+        <div class="tarjeta-prov tp-resumen">
+          <div class="tp-cabecera"><span class="tp-nombre">TOTAL de la quincena</span></div>
+          <div class="tp-totales">
+            <span><small>Litros</small> {{ g.total_litros | cantidad: 'L' }}</span>
+            <span><small>Valor neto</small> {{ g.total_valor_neto | money }}</span>
+            <span><small>Transporte</small> {{ g.total_transporte | money }}</span>
+            <span class="tp-total"><small>Total</small> {{ totalGrilla(g) | money }}</span>
+          </div>
+        </div>
+      </div>
     } @else {
       <div class="grilla-scroll">
         <table class="grilla">
