@@ -3,6 +3,9 @@
     titulo="Liquidaciones"
     subtitulo="Liquidaciones quincenales de proveedores y transportadores"
   >
+    <button mat-stroked-button *hasPermission="'liquidaciones:consultar'" (click)="abrirPreliquidacion()">
+      <mat-icon>visibility</mat-icon> Pre-liquidación
+    </button>
     <button mat-flat-button *hasPermission="'liquidaciones:crear'" (click)="abrirGenerar()">
       <mat-icon>calculate</mat-icon> Generar quincena
     </button>

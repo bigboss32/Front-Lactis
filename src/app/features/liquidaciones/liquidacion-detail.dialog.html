@@ -99,6 +99,24 @@
     <mat-icon>picture_as_pdf</mat-icon> PDF
   </button>
 
+  <button
+    mat-stroked-button
+    *hasPermission="'liquidaciones:imprimir'"
+    [disabled]="compartiendo()"
+    (click)="compartir()"
+  >
+    <mat-icon>share</mat-icon> Compartir PDF
+  </button>
+
+  <button
+    mat-stroked-button
+    *hasPermission="'liquidaciones:imprimir'"
+    matTooltip="Abre WhatsApp con el resumen en texto"
+    (click)="enviarWhatsApp()"
+  >
+    <mat-icon>chat</mat-icon> WhatsApp
+  </button>
+
   @if (liq().estado === 'borrador' || liq().estado === 'aprobada') {
     <button
       mat-stroked-button

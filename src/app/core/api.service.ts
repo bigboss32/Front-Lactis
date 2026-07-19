@@ -55,6 +55,19 @@ export class ApiService {
     return this.http.post<T>(`${API_BASE}${path}`, form);
   }
 
+  /** GET de un binario (PDF/Excel) como Blob, para compartir o previsualizar. */
+  getBlob(path: string, params?: QueryParams): Observable<Blob> {
+    return this.http.get(`${API_BASE}${path}`, {
+      params: toHttpParams(params),
+      responseType: 'blob',
+    });
+  }
+
+  /** POST que devuelve un binario (PDF) como Blob. */
+  postBlob(path: string, body?: unknown): Observable<Blob> {
+    return this.http.post(`${API_BASE}${path}`, body ?? {}, { responseType: 'blob' });
+  }
+
   /** Descarga un binario (PDF/Excel) y dispara el guardado en el navegador. */
   download(path: string, fallbackName: string, params?: QueryParams): Observable<void> {
     return this.http

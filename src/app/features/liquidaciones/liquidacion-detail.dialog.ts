@@ -7,10 +7,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable, firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Liquidacion } from '../../core/models';
+import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
@@ -21,7 +23,7 @@ import { LiquidacionesService } from './liquidaciones.service';
   selector: 'app-liquidacion-detail',
   imports: [
     DatePipe, MatDialogModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    MatTableModule, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
+    MatTableModule, MatTooltipModule, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
     LiquidacionEstadoStepper,
   ],
   templateUrl: './liquidacion-detail.dialog.html',
@@ -68,6 +70,7 @@ export class LiquidacionDetailDialog {
   readonly liq = signal<Liquidacion>(this.data.item);
   readonly procesando = signal(false);
   readonly descargando = signal(false);
+  readonly compartiendo = signal(false);
 
   readonly tercero = computed(
     () => this.liq().proveedor_nombre ?? this.liq().transportador_nombre ?? '—',
@@ -116,6 +119,45 @@ export class LiquidacionDetailDialog {
     } finally {
       this.descargando.set(false);
     }
+  }
+
+  async compartir(): Promise<void> {
+    this.compartiendo.set(true);
+    try {
+      const blob = await firstValueFrom(this.servicio.pdfBlob(this.liq().id));
+      const nombre = `liquidacion_${this.tercero()}.pdf`.replace(/\s+/g, '_');
+      const resultado = await compartirArchivo(
+        blob,
+        nombre,
+        `Liquidación de ${this.tercero()}`,
+        `Recibo de liquidación de ${this.tercero()}`,
+      );
+      if (resultado === 'descargado') {
+        this.snackbar.open(
+          'Tu dispositivo no permite compartir directamente; se descargó el PDF',
+          'OK',
+          { duration: 4000 },
+        );
+      }
+    } catch {
+      this.snackbar.open('No fue posible compartir el recibo', 'OK', { duration: 5000 });
+    } finally {
+      this.compartiendo.set(false);
+    }
+  }
+
+  /** Abre WhatsApp con un resumen en texto de la liquidación. */
+  enviarWhatsApp(): void {
+    const l = this.liq();
+    const money = (m: unknown) => `$${Number(m).toLocaleString('es-CO')}`;
+    const fecha = (iso: string) => iso.split('-').reverse().join('/');
+    const texto =
+      `*Liquidación de ${this.tercero()}*\n` +
+      `Período: ${fecha(l.periodo_inicio)} al ${fecha(l.periodo_fin)}\n` +
+      `Total litros: ${Number(l.total_litros).toLocaleString('es-CO')} L\n` +
+      `Valor total: ${money(l.valor_total)}\n` +
+      `Saldo a pagar: ${money(l.saldo)}`;
+    compartirWhatsApp(texto);
   }
 
   private async ejecutar(

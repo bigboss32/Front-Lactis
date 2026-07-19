@@ -30,6 +30,7 @@ import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { GenerarQuincenaDialog } from './generar-quincena.dialog';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import { LiquidacionesService } from './liquidaciones.service';
+import { PreLiquidacionDialog } from './preliquidacion.dialog';
 
 /** Conteos y saldos por estado para las tarjetas resumen. */
 interface ResumenEstados {
@@ -284,6 +285,10 @@ export class LiquidacionListPage implements OnInit {
         this.snackbar.open(mensaje, 'OK', { duration: 4000 });
         if (generadas > 0) this.recargar();
       });
+  }
+
+  abrirPreliquidacion(): void {
+    this.dialog.open(PreLiquidacionDialog, { width: '620px' });
   }
 
   verDetalle(fila: Liquidacion): void {
