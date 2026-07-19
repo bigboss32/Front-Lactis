@@ -49,7 +49,7 @@ export class ProduccionDiariaTab implements OnInit {
 
   readonly columnas = [
     'fecha', 'tipo_queso', 'cantidad', 'peso_kg', 'litros_usados',
-    'rendimiento', 'merma', 'acciones',
+    'rendimiento', 'acciones',
   ];
   readonly filas = signal<Produccion[]>([]);
   readonly tiposQueso = signal<TipoQueso[]>([]);
@@ -107,6 +107,16 @@ export class ProduccionDiariaTab implements OnInit {
     } finally {
       this.cargando.set(false);
     }
+  }
+
+  /**
+   * Promedio de litros de leche por kilo de queso (L/kg): litros ÷ peso.
+   * Devuelve null si no hay peso, para no dividir por cero.
+   */
+  promedioLitrosKg(fila: Produccion): number | null {
+    const peso = Number(fila.peso_kg);
+    const litros = Number(fila.litros_usados);
+    return peso > 0 ? litros / peso : null;
   }
 
   cambiarPagina(evento: PageEvent): void {

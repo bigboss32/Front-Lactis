@@ -51,16 +51,12 @@ import { ProduccionService } from './produccion.service';
           <input matInput type="number" min="0" formControlName="litros_usados" required />
           <span matTextSuffix>&nbsp;L</span>
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>Merma</mat-label>
-          <input matInput type="number" min="0" formControlName="merma" required />
-        </mat-form-field>
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
         </mat-form-field>
       </form>
-      <p class="hint">El rendimiento (kg/L) lo calcula el sistema automáticamente.</p>
+      <p class="hint">El promedio de litros por kilo (L/kg) lo calcula el sistema automáticamente.</p>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close type="button">Cancelar</button>
@@ -108,7 +104,6 @@ export class ProduccionFormDialog {
       Number(this.data?.item?.litros_usados ?? 0),
       [Validators.required, Validators.min(0)],
     ],
-    merma: [Number(this.data?.item?.merma ?? 0), [Validators.required, Validators.min(0)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
 

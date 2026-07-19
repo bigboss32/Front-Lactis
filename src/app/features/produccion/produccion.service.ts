@@ -11,7 +11,7 @@ export interface ProduccionPayload {
   cantidad: number | string;
   peso_kg: number | string;
   litros_usados: number | string;
-  merma: number | string;
+  merma?: number | string;
   observaciones?: string | null;
   estado?: string;
 }
