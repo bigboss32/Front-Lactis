@@ -257,56 +257,20 @@ function quincenaDeHoy(): Quincena {
 
     .empty-state { padding: 48px 16px; }
 
-    /* ---------------------------------------------- tarjetas por proveedor (móvil) */
-    .tarjetas-prov { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
-    .tarjeta-prov {
-      border: 1px solid var(--mat-sys-outline-variant);
-      border-radius: 10px;
-      padding: 12px;
+    /* ----------------------------------------- cuadrícula adaptada al celular */
+    /* La grilla sigue siendo cuadrícula en móvil: se desplaza en horizontal y la
+       columna del proveedor queda fija; solo se compacta para que quepan más días. */
+    @media (max-width: 700px) {
+      table.grilla { font-size: 0.8rem; }
+      .col-proveedor { min-width: 122px; max-width: 150px; padding: 6px 8px; }
+      .prov-nombre { font-size: 0.82rem; }
+      .prov-detalle { font-size: 0.7rem; }
+      th.col-dia { min-width: 42px; }
+      td.celda { min-width: 42px; }
+      .celda-btn,
+      .celda-contenido { min-height: 42px; padding: 4px; }
+      .col-total { padding: 6px 8px; }
     }
-    .tp-cabecera {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .tp-nombre { font-weight: 700; }
-    .tp-detalle { display: block; font-size: 0.75rem; color: var(--mat-sys-on-surface-variant); }
-    .tp-precio { font-size: 0.85rem; color: var(--mat-sys-on-surface-variant); white-space: nowrap; }
-
-    .tp-dias { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-    .dia-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      border: 1px solid var(--mat-sys-outline-variant);
-      border-radius: 16px;
-      padding: 4px 10px;
-      font: inherit;
-      font-size: 0.8rem;
-      font-variant-numeric: tabular-nums;
-      background: var(--mat-sys-surface-container-low);
-      color: inherit;
-      cursor: pointer;
-    }
-    .dia-chip.agregar { color: var(--mat-sys-primary); border-style: dashed; cursor: pointer; }
-    .dia-chip.liquidada { background: color-mix(in srgb, #2e7d32 14%, transparent); color: #2e7d32; cursor: default; }
-    .dia-chip mat-icon { font-size: 14px; width: 14px; height: 14px; }
-    :host-context(html.dark) .dia-chip.liquidada { color: #81c784; }
-
-    .tp-totales {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 6px 12px;
-      font-size: 0.85rem;
-      font-variant-numeric: tabular-nums;
-    }
-    .tp-totales span { display: flex; flex-direction: column; }
-    .tp-totales small { color: var(--mat-sys-on-surface-variant); font-size: 0.72rem; }
-    .tp-total strong, .tp-total { font-weight: 700; }
-    .tp-total { color: var(--mat-sys-primary); }
-    .tp-resumen { background: var(--mat-sys-surface-container); }
   `,
 })
 export class RecepcionGrillaTab implements OnInit {
@@ -332,10 +296,6 @@ export class RecepcionGrillaTab implements OnInit {
 
   readonly puedeCrear = computed(() => this.auth.hasPermission('recepcion', 'crear'));
   readonly puedeEditar = computed(() => this.auth.hasPermission('recepcion', 'editar'));
-
-  /** Móvil/tablet: la grilla se muestra como tarjetas por proveedor. */
-  private readonly mq = window.matchMedia('(max-width: 700px)');
-  readonly compacto = signal(this.mq.matches);
 
   /** Rango ISO de la quincena seleccionada: 1-15 o 16-fin de mes. */
   readonly rango = computed(() => {
@@ -371,16 +331,10 @@ export class RecepcionGrillaTab implements OnInit {
   }
 
   constructor() {
-    this.mq.addEventListener('change', (e) => this.compacto.set(e.matches));
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.cargar());
     this.rutaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.cargar());
-  }
-
-  /** Móvil: abre el formulario para registrar un día de este proveedor. */
-  agregarDia(fila: FilaGrilla): void {
-    this.abrirDialogo({ prefill: { fecha: this.rango().desde, proveedor_id: fila.proveedor_id } });
   }
 
   ngOnInit(): void {
