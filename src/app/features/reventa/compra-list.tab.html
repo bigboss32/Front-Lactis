@@ -108,8 +108,8 @@
         <button
           mat-icon-button
           *hasPermission="'reventa:editar'"
-          matTooltip="Editar (solo sin abonos)"
-          [disabled]="tieneAbonos(fila) || fila.estado === 'anulada'"
+          matTooltip="Editar"
+          [disabled]="fila.estado === 'anulada'"
           (click)="editar(fila)"
         >
           <mat-icon>edit</mat-icon>
