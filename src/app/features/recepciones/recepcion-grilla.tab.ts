@@ -132,6 +132,27 @@ function quincenaDeHoy(): Quincena {
       line-height: 1.3;
     }
 
+    /* Proveedor retirado/eliminado: se conserva (para liquidar) pero se resalta */
+    tr.fila-retirado td { background: color-mix(in srgb, #c62828 8%, transparent); }
+    tr.fila-retirado .col-proveedor {
+      background: color-mix(in srgb, #c62828 12%, var(--mat-sys-surface-container-low));
+    }
+    .chip-retirado {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 0 6px;
+      border-radius: 8px;
+      font-size: 0.62rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+      white-space: nowrap;
+      background: color-mix(in srgb, #c62828 18%, transparent);
+      color: #c62828;
+    }
+    :host-context(html.dark) .chip-retirado { color: #e57373; }
+
     /* Columnas de días */
     th.col-dia { min-width: 56px; text-align: center; }
     .num-dia { display: block; font-size: 1rem; font-weight: 600; }
@@ -421,12 +442,15 @@ export class RecepcionGrillaTab implements OnInit {
         autoFocus: 'input[formcontrolname="cantidad_litros"]',
       })
       .afterClosed()
-      .subscribe((guardado) => {
-        if (guardado) {
-          this.snackbar.open('Recepción guardada', 'OK', { duration: 3000 });
-          this.cargar();
-          this.cambio.emit();
-        }
+      .subscribe((resultado) => {
+        if (!resultado) return;
+        this.snackbar.open(
+          resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada',
+          'OK',
+          { duration: 3000 },
+        );
+        this.cargar();
+        this.cambio.emit();
       });
   }
 

@@ -244,13 +244,16 @@ export class RecepcionListPage implements OnInit {
     this.dialog
       .open(RecepcionFormDialog, { data: { item }, width: '640px' })
       .afterClosed()
-      .subscribe((guardado) => {
-        if (guardado) {
-          this.snackbar.open('Recepción guardada', 'OK', { duration: 3000 });
-          this.cargar();
-          this.cargarResumen();
-          this.grillaTab()?.cargar();
-        }
+      .subscribe((resultado) => {
+        if (!resultado) return;
+        this.snackbar.open(
+          resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada',
+          'OK',
+          { duration: 3000 },
+        );
+        this.cargar();
+        this.cargarResumen();
+        this.grillaTab()?.cargar();
       });
   }
 

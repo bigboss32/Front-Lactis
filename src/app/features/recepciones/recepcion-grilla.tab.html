@@ -80,10 +80,17 @@
 
           <tbody>
             @for (fila of g.filas; track fila.proveedor_id) {
-              <tr>
+              <tr [class.fila-retirado]="!fila.proveedor_activo">
                 <td class="col-proveedor">
                   <div class="prov">
-                    <span class="prov-nombre">{{ fila.proveedor_nombre }}</span>
+                    <span class="prov-nombre">
+                      {{ fila.proveedor_nombre }}
+                      @if (!fila.proveedor_activo) {
+                        <span class="chip-retirado" matTooltip="Proveedor retirado: se conserva para poder liquidarlo">
+                          retirado
+                        </span>
+                      }
+                    </span>
                     @if (fila.vereda) {
                       <span class="prov-detalle">{{ fila.vereda }}</span>
                     }

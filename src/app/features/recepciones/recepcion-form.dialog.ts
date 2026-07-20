@@ -2,8 +2,9 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -13,6 +14,7 @@ import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
@@ -28,7 +30,7 @@ export interface RecepcionDialogData {
   selector: 'app-recepcion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatDatepickerModule, MilesInputDirective, SelectBuscable,
+    MatButtonModule, MatIconModule, MatDatepickerModule, MilesInputDirective, SelectBuscable,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
@@ -80,6 +82,17 @@ export interface RecepcionDialogData {
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
+      @if (data?.item && !liquidada) {
+        <button
+          mat-button
+          type="button"
+          class="btn-eliminar"
+          [disabled]="eliminando()"
+          (click)="eliminar()"
+        >
+          <mat-icon>delete</mat-icon> Eliminar
+        </button>
+      }
       <button mat-button mat-dialog-close type="button">Cancelar</button>
       <button
         mat-flat-button
@@ -110,12 +123,16 @@ export interface RecepcionDialogData {
       background: color-mix(in srgb, var(--mat-sys-primary) 12%, transparent);
       color: var(--mat-sys-primary);
     }
+
+    /* El botón Eliminar se ancla a la izquierda de las acciones */
+    .btn-eliminar { margin-right: auto; color: var(--mat-sys-error); }
   `,
 })
 export class RecepcionFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly servicio = inject(RecepcionesService);
   private readonly api = inject(ApiService);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef = inject(MatDialogRef<RecepcionFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
@@ -126,6 +143,7 @@ export class RecepcionFormDialog {
   readonly proveedores = signal<Proveedor[]>([]);
   readonly transportadores = signal<Transportador[]>([]);
   readonly guardando = signal(false);
+  readonly eliminando = signal(false);
 
   readonly form = this.fb.group({
     fecha: [
@@ -196,7 +214,7 @@ export class RecepcionFormDialog {
         payload.proveedor_id = valores.proveedor_id;
         await firstValueFrom(this.servicio.create(payload));
       }
-      this.dialogRef.close(true);
+      this.dialogRef.close('guardado');
     } catch (err) {
       const detalle =
         err instanceof HttpErrorResponse
@@ -206,5 +224,37 @@ export class RecepcionFormDialog {
     } finally {
       this.guardando.set(false);
     }
+  }
+
+  /** Elimina la recepción (p. ej. un registro equivocado). Bloqueada si está liquidada. */
+  eliminar(): void {
+    const item = this.data?.item;
+    if (!item || this.liquidada) return;
+    this.dialog
+      .open(ConfirmDialog, {
+        data: {
+          titulo: 'Eliminar recepción',
+          mensaje:
+            '¿Eliminar esta recepción? Desaparecerá de la grilla y del listado. No se puede deshacer.',
+          accion: 'Eliminar',
+        },
+      })
+      .afterClosed()
+      .subscribe(async (confirmado) => {
+        if (!confirmado) return;
+        this.eliminando.set(true);
+        try {
+          await firstValueFrom(this.servicio.remove(item.id));
+          this.dialogRef.close('eliminado');
+        } catch (err) {
+          const detalle =
+            err instanceof HttpErrorResponse
+              ? (err.error?.error?.detail ?? 'No fue posible eliminar')
+              : 'No fue posible eliminar';
+          this.snackbar.open(detalle, 'OK', { duration: 5000 });
+        } finally {
+          this.eliminando.set(false);
+        }
+      });
   }
 }

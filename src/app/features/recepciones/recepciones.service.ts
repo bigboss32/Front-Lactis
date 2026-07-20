@@ -48,6 +48,8 @@ export interface FilaGrilla {
   proveedor_nombre: string;
   vereda: string | null;
   precio_litro: Monto;
+  /** False si el proveedor fue retirado/eliminado (se conserva para liquidar). */
+  proveedor_activo: boolean;
   /** Clave: fecha ISO 'YYYY-MM-DD'. */
   celdas: Record<string, CeldaGrilla>;
   total_litros: Monto;
