@@ -48,12 +48,6 @@ import { CompraQueso, ReventaService } from './reventa.service';
           <mat-hint>Lo que compras y pagas al productor</mat-hint>
         </mat-form-field>
         <mat-form-field>
-          <mat-label>Borona</mat-label>
-          <input matInput type="number" min="0" step="0.1" formControlName="borona_kilos" />
-          <span matTextSuffix>kg</span>
-          <mat-hint>Pedacería, solo informativa</mat-hint>
-        </mat-form-field>
-        <mat-form-field>
           <mat-label>Precio por kilo</mat-label>
           <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
           <span matTextPrefix>$&nbsp;</span>
@@ -111,7 +105,6 @@ export class CompraFormDialog {
     fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
     productor: [this.data?.item?.productor ?? '', [Validators.required, Validators.minLength(2)]],
     kilos_brutos: [Number(this.data?.item?.kilos_brutos ?? 0), [Validators.required, Validators.min(0.01)]],
-    borona_kilos: [Number(this.data?.item?.borona_kilos ?? 0), [Validators.min(0)]],
     precio_kilo: [Number(this.data?.item?.precio_kilo ?? 0), [Validators.required, Validators.min(0.01)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
@@ -138,7 +131,6 @@ export class CompraFormDialog {
         fecha: dateToIso(valores.fecha),
         productor: valores.productor.trim(),
         kilos_brutos: Number(valores.kilos_brutos),
-        borona_kilos: Number(valores.borona_kilos || 0),
         precio_kilo: Number(valores.precio_kilo),
         observaciones: valores.observaciones || null,
       };

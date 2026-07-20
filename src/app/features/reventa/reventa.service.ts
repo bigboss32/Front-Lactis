@@ -97,7 +97,7 @@ export interface CompraQuesoPayload {
   fecha: string;
   productor: string;
   kilos_brutos: number;
-  borona_kilos: number;
+  borona_kilos?: number;
   precio_kilo: number;
   observaciones?: string | null;
 }
