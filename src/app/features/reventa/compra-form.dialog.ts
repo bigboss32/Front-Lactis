@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -25,7 +26,7 @@ import { CompraQueso, ReventaService } from './reventa.service';
   selector: 'app-compra-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatButtonModule, MoneyPipe, MilesInputDirective,
+    MatDatepickerModule, MatButtonModule, MatAutocompleteModule, MoneyPipe, MilesInputDirective,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar compra' : 'Nueva compra de queso' }}</h2>
@@ -39,7 +40,12 @@ import { CompraQueso, ReventaService } from './reventa.service';
         </mat-form-field>
         <mat-form-field>
           <mat-label>Productor</mat-label>
-          <input matInput formControlName="productor" required maxlength="150" />
+          <input matInput formControlName="productor" required maxlength="150" [matAutocomplete]="autoProd" />
+          <mat-autocomplete #autoProd="matAutocomplete">
+            @for (nombre of productoresFiltrados(); track nombre) {
+              <mat-option [value]="nombre">{{ nombre }}</mat-option>
+            }
+          </mat-autocomplete>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Kilos</mat-label>
@@ -118,7 +124,20 @@ export class CompraFormDialog {
     return Number(valores.kilos_brutos || 0) * Number(valores.precio_kilo || 0);
   });
 
+  /** Productores ya registrados, para autocompletar el nombre. */
+  readonly productores = signal<string[]>([]);
+  readonly productoresFiltrados = computed(() => {
+    this.cambios();
+    const texto = (this.form.getRawValue().productor ?? '').toLowerCase().trim();
+    const todos = this.productores();
+    const filtrados = texto ? todos.filter((n) => n.toLowerCase().includes(texto)) : todos;
+    return filtrados.slice(0, 20);
+  });
+
   constructor() {
+    firstValueFrom(this.servicio.sugerencias())
+      .then((s) => this.productores.set(s.productores))
+      .catch(() => undefined);
     protegerCambios(this.dialogRef, () => this.form);
   }
 

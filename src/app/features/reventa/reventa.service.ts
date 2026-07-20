@@ -92,6 +92,12 @@ export interface ResumenReventa {
   por_cobrar_clientes: Monto;
 }
 
+/** Nombres ya usados para autocompletar al crear compras/ventas. */
+export interface SugerenciasReventa {
+  productores: string[];
+  clientes: string[];
+}
+
 // ------------------------------------------------------------------ payloads
 export interface CompraQuesoPayload {
   fecha: string;
@@ -146,6 +152,11 @@ export class ReventaService {
 
   resumen(desde: string, hasta: string): Observable<ResumenReventa> {
     return this.api.get<ResumenReventa>(`${this.base}/resumen`, { desde, hasta });
+  }
+
+  /** Nombres ya usados de productores y clientes, para autocompletar. */
+  sugerencias(): Observable<SugerenciasReventa> {
+    return this.api.get<SugerenciasReventa>(`${this.base}/sugerencias`);
   }
 
   // ----------------------------------------------------------------- compras

@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -31,7 +32,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatCheckboxModule, MatDatepickerModule, MoneyPipe,
-    MilesInputDirective,
+    MilesInputDirective, MatAutocompleteModule,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar venta' : 'Nueva venta de queso' }}</h2>
@@ -59,7 +60,12 @@ const PRECIO_VENTA_SUGERIDO = 19500;
         </mat-form-field>
         <mat-form-field>
           <mat-label>Cliente</mat-label>
-          <input matInput formControlName="cliente" required maxlength="150" />
+          <input matInput formControlName="cliente" required maxlength="150" [matAutocomplete]="autoCli" />
+          <mat-autocomplete #autoCli="matAutocomplete">
+            @for (nombre of clientesFiltrados(); track nombre) {
+              <mat-option [value]="nombre">{{ nombre }}</mat-option>
+            }
+          </mat-autocomplete>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Kilos</mat-label>
@@ -156,6 +162,9 @@ export class VentaQuesoFormDialog {
     pagada_de_contado: [false],
   });
 
+  /** Clientes ya registrados, para autocompletar el nombre. */
+  readonly clientes = signal<string[]>([]);
+
   constructor() {
     // Al crear: el queso sugiere 19.500/kg; la borona no sugiere precio.
     if (!this.data?.item) {
@@ -165,6 +174,9 @@ export class VentaQuesoFormDialog {
           this.form.controls.precio_kilo.setValue(tipo === 'queso' ? PRECIO_VENTA_SUGERIDO : 0);
         });
     }
+    firstValueFrom(this.servicio.sugerencias())
+      .then((s) => this.clientes.set(s.clientes))
+      .catch(() => undefined);
     protegerCambios(this.dialogRef, () => this.form);
   }
 
@@ -190,6 +202,14 @@ export class VentaQuesoFormDialog {
     this.cambios();
     const valores = this.form.getRawValue();
     return Number(valores.gasto_por_kilo || 0) * Number(valores.kilos || 0);
+  });
+
+  readonly clientesFiltrados = computed(() => {
+    this.cambios();
+    const texto = (this.form.getRawValue().cliente ?? '').toLowerCase().trim();
+    const todos = this.clientes();
+    const filtrados = texto ? todos.filter((n) => n.toLowerCase().includes(texto)) : todos;
+    return filtrados.slice(0, 20);
   });
 
   async guardar(): Promise<void> {
