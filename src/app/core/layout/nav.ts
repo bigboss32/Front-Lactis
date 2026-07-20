@@ -47,10 +47,19 @@ export const NAV_GROUPS: NavGroup[] = [
     title: 'Comercial',
     icon: 'storefront',
     items: [
-      { label: 'Compra y venta de queso', icon: 'swap_horiz', route: '/reventa', modulo: 'reventa' },
       { label: 'Ventas', icon: 'point_of_sale', route: '/ventas', modulo: 'ventas' },
       { label: 'Clientes', icon: 'group', route: '/clientes', modulo: 'clientes' },
       { label: 'Gastos', icon: 'receipt_long', route: '/gastos', modulo: 'gastos' },
+    ],
+  },
+  {
+    title: 'Reventa de queso',
+    icon: 'swap_horiz',
+    items: [
+      { label: 'Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
+      { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
+      { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
+      { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
     ],
   },
   {
