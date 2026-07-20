@@ -206,8 +206,8 @@ import { ResumenReventa, ReventaService } from './reventa.service';
     }
 
     .desglose {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 10px;
       margin: 4px 0 8px;
     }
@@ -216,8 +216,7 @@ import { ResumenReventa, ReventaService } from './reventa.service';
       display: flex;
       flex-direction: column;
       gap: 1px;
-      padding: 8px 14px;
-      min-width: 130px;
+      padding: 10px 14px;
       border: 1px solid var(--mat-sys-outline-variant);
       border-radius: 10px;
       background: var(--mat-sys-surface-container-low);
