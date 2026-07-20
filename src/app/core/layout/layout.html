@@ -14,18 +14,28 @@
     <mat-nav-list>
       @for (grupo of grupos(); track grupo.title) {
         @if (grupo.title) {
-          <div matSubheader>{{ grupo.title }}</div>
-        }
-        @for (item of grupo.items; track item.route) {
-          <a
-            mat-list-item
-            [routerLink]="item.route"
-            routerLinkActive="activo"
-            (click)="esMovil() && sidenav.close()"
+          <button
+            type="button"
+            class="grupo-header"
+            [attr.aria-expanded]="estaAbierto(grupo.title)"
+            (click)="toggleGrupo(grupo.title)"
           >
-            <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
-            <span matListItemTitle>{{ item.label }}</span>
-          </a>
+            <span>{{ grupo.title }}</span>
+            <mat-icon>{{ estaAbierto(grupo.title) ? 'expand_less' : 'expand_more' }}</mat-icon>
+          </button>
+        }
+        @if (!grupo.title || estaAbierto(grupo.title)) {
+          @for (item of grupo.items; track item.route) {
+            <a
+              mat-list-item
+              [routerLink]="item.route"
+              routerLinkActive="activo"
+              (click)="esMovil() && sidenav.close()"
+            >
+              <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+              <span matListItemTitle>{{ item.label }}</span>
+            </a>
+          }
         }
       }
     </mat-nav-list>

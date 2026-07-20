@@ -1,7 +1,7 @@
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
-import { Component, ElementRef, OnDestroy, OnInit, computed, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDividerModule } from '@angular/material/divider';
@@ -12,7 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSidenavModule } from '@angular/material/sidenav';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { firstValueFrom, map } from 'rxjs';
+import { filter, firstValueFrom, map } from 'rxjs';
 
 import { ApiService } from '../api.service';
 import { AuthService } from '../auth/auth.service';
@@ -58,7 +58,54 @@ export class Layout implements OnInit, OnDestroy {
     })).filter((grupo) => grupo.items.length > 0);
   });
 
+  /** Grupos del menú (acordeón) que están desplegados, por título. */
+  readonly abiertos = signal<Set<string>>(new Set());
+
+  /** URL actual, para abrir automáticamente el grupo del módulo en pantalla. */
+  private readonly urlActual = toSignal(
+    this.router.events.pipe(
+      filter((e): e is NavigationEnd => e instanceof NavigationEnd),
+      map(() => this.router.url),
+    ),
+    { initialValue: this.router.url },
+  );
+
   private pollId: ReturnType<typeof setInterval> | null = null;
+
+  constructor() {
+    // Abre el grupo del módulo actual (sin cerrar los que el usuario abrió).
+    effect(() => {
+      const grupo = this.grupoDeRuta(this.urlActual());
+      if (grupo) {
+        this.abiertos.update((s) => (s.has(grupo) ? s : new Set(s).add(grupo)));
+      }
+    });
+  }
+
+  /** Título del grupo cuyo ítem coincide con la ruta dada (null si ninguno). */
+  private grupoDeRuta(url: string): string | null {
+    const ruta = url.split('?')[0];
+    for (const grupo of NAV_GROUPS) {
+      if (!grupo.title) continue;
+      if (grupo.items.some((it) => ruta === it.route || ruta.startsWith(it.route + '/'))) {
+        return grupo.title;
+      }
+    }
+    return null;
+  }
+
+  estaAbierto(title: string): boolean {
+    return this.abiertos().has(title);
+  }
+
+  toggleGrupo(title: string): void {
+    this.abiertos.update((s) => {
+      const nuevo = new Set(s);
+      if (nuevo.has(title)) nuevo.delete(title);
+      else nuevo.add(title);
+      return nuevo;
+    });
+  }
 
   async ngOnInit(): Promise<void> {
     await this.auth.ensurePerfil();
