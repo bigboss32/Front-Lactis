@@ -118,11 +118,6 @@ import { ResumenReventa, ReventaService } from './reventa.service';
           <span class="val">{{ r.total_gastos | money }}</span>
           <span class="sub">transporte, etc.</span>
         </div>
-        <div class="dato total" [class.neg]="esNegativo(r.ganancia_estimada)">
-          <span class="etq">Ganancia neta</span>
-          <span class="val">{{ r.ganancia_estimada | money }}</span>
-          <span class="sub">vendido − comprado − gastos</span>
-        </div>
       </div>
 
       <div class="graficas">
@@ -225,18 +220,6 @@ import { ResumenReventa, ReventaService } from './reventa.service';
     .desglose .etq { font-size: 0.75rem; color: var(--mat-sys-on-surface-variant); }
     .desglose .val { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
     .desglose .sub { font-size: 0.72rem; color: var(--mat-sys-on-surface-variant); }
-
-    .desglose .dato.total { border-color: #2e7d32; }
-    .desglose .dato.total .val { color: #2e7d32; }
-    .desglose .dato.total.neg { border-color: #c62828; }
-    .desglose .dato.total.neg .val { color: #c62828; }
-
-    :host-context(html.dark) {
-      .desglose .dato.total { border-color: #81c784; }
-      .desglose .dato.total .val { color: #81c784; }
-      .desglose .dato.total.neg { border-color: #e57373; }
-      .desglose .dato.total.neg .val { color: #e57373; }
-    }
 
     .temporada {
       display: flex;
