@@ -238,7 +238,7 @@ export class VentaQuesoListTab {
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar venta',
-          mensaje: `¿Eliminar la venta a ${fila.cliente}? Esta acción no se puede deshacer.`,
+          mensaje: `¿Eliminar la venta a ${fila.cliente}? Se eliminará junto con sus abonos y saldrá de los totales. Esta acción no se puede deshacer.`,
         },
       })
       .afterClosed()

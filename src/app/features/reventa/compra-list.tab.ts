@@ -214,7 +214,7 @@ export class CompraListTab {
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar compra',
-          mensaje: `¿Eliminar la compra a ${fila.productor}? Esta acción no se puede deshacer.`,
+          mensaje: `¿Eliminar la compra a ${fila.productor}? Se eliminará junto con sus abonos y saldrá de los totales. Esta acción no se puede deshacer.`,
         },
       })
       .afterClosed()

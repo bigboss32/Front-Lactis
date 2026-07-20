@@ -116,8 +116,7 @@
         <button
           mat-icon-button
           *hasPermission="'reventa:eliminar'"
-          matTooltip="Eliminar (solo sin abonos)"
-          [disabled]="tieneAbonos(fila)"
+          matTooltip="Eliminar"
           (click)="eliminar(fila)"
         >
           <mat-icon>delete</mat-icon>
