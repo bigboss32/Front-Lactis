@@ -1,9 +1,11 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { ChartData, ChartOptions } from 'chart.js';
 import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
+import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ReventaFiltroService } from './reventa-filtro.service';
 import { ResumenReventa, ReventaService } from './reventa.service';
@@ -11,7 +13,7 @@ import { ResumenReventa, ReventaService } from './reventa.service';
 /** Tablero del negocio de reventa: indicador de temporada, tarjetas y desglose. */
 @Component({
   selector: 'app-reventa-resumen',
-  imports: [MatIconModule, MatProgressBarModule, MoneyPipe, CantidadPipe],
+  imports: [MatIconModule, MatProgressBarModule, MoneyPipe, CantidadPipe, AppChart],
   template: `
     @if (cargando()) {
       <mat-progress-bar mode="indeterminate" />
@@ -120,6 +122,24 @@ import { ResumenReventa, ReventaService } from './reventa.service';
           <span class="etq">Ganancia neta</span>
           <span class="val">{{ r.ganancia_estimada | money }}</span>
           <span class="sub">vendido − comprado − gastos</span>
+        </div>
+      </div>
+
+      <div class="graficas">
+        <div class="grafica-card">
+          <h3>¿Dónde está el queso comprado?</h3>
+          <p class="grafica-sub">Del lote comprado en el período</p>
+          @if (esPositivo(r.kilos_comprados)) {
+            <app-chart type="doughnut" [data]="quesoChart()" [options]="opcionesDoughnut" />
+          } @else {
+            <p class="sin-datos">Sin compras en el período</p>
+          }
+        </div>
+
+        <div class="grafica-card">
+          <h3>Dinero del período</h3>
+          <p class="grafica-sub">Lo que entró (ventas) vs. lo que costó</p>
+          <app-chart type="bar" [data]="dineroChart()" [options]="opcionesBar" />
         </div>
       </div>
     } @else if (!cargando()) {
@@ -266,6 +286,28 @@ import { ResumenReventa, ReventaService } from './reventa.service';
       text-align: center;
       color: var(--mat-sys-on-surface-variant);
     }
+
+    // ------------------------------------------------------- gráficas
+    .graficas {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .grafica-card {
+      border: 1px solid var(--mat-sys-outline-variant);
+      border-radius: 12px;
+      padding: 14px 16px;
+      background: var(--mat-sys-surface-container-low);
+
+      h3 { margin: 0; font-size: 0.95rem; font-weight: 500; }
+      .grafica-sub {
+        margin: 2px 0 8px;
+        font-size: 0.78rem;
+        color: var(--mat-sys-on-surface-variant);
+      }
+    }
   `,
 })
 export class ReventaResumenPage {
@@ -311,4 +353,67 @@ export class ReventaResumenPage {
       !this.esPositivo(r.por_pagar_productores)
     );
   }
+
+  /** Dona: del queso comprado en el período, cuánto se vendió y cuánto queda sin vender. */
+  readonly quesoChart = computed<ChartData>(() => {
+    const r = this.resumen();
+    const comprado = Number(r?.kilos_comprados ?? 0);
+    const vendido = Number(r?.kilos_vendidos ?? 0);
+    const sinVender = Math.max(comprado - vendido, 0);
+    return {
+      labels: ['Vendido', 'Sin vender'],
+      datasets: [{ data: [vendido, sinVender], backgroundColor: [CHART_COLORS[1], CHART_COLORS[2]] }],
+    };
+  });
+
+  /** Barra: ventas vs. compras vs. gastos del período (la diferencia es la ganancia). */
+  readonly dineroChart = computed<ChartData>(() => {
+    const r = this.resumen();
+    return {
+      labels: ['Ventas', 'Compras', 'Gastos'],
+      datasets: [
+        {
+          data: [
+            Number(r?.total_ventas ?? 0),
+            Number(r?.total_compras ?? 0),
+            Number(r?.total_gastos ?? 0),
+          ],
+          backgroundColor: [CHART_COLORS[1], CHART_COLORS[3], CHART_COLORS[2]],
+        },
+      ],
+    };
+  });
+
+  readonly opcionesDoughnut: ChartOptions = {
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: {
+        callbacks: {
+          label: (c) => `${c.label}: ${Number(c.parsed).toLocaleString('es-CO')} kg`,
+        },
+      },
+    },
+  };
+
+  private readonly pesos = new Intl.NumberFormat('es-CO', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  });
+
+  readonly opcionesBar: ChartOptions = {
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (c) => '$ ' + Number(c.parsed.y).toLocaleString('es-CO'),
+        },
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: { callback: (v) => '$ ' + this.pesos.format(Number(v)) },
+      },
+    },
+  };
 }
