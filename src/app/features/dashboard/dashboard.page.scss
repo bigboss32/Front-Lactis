@@ -151,17 +151,19 @@
 
   .kpi-tendencia {
     margin: 4px 0 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
+    display: flex;
+    align-items: flex-start;
+    gap: 3px;
     font-size: 0.75rem;
     font-weight: 500;
-    white-space: nowrap;
+    line-height: 1.3;
 
     mat-icon {
       font-size: 14px;
       width: 14px;
       height: 14px;
+      margin-top: 1px;
+      flex-shrink: 0;
     }
 
     &.sube { color: #2e7d32; }
@@ -171,14 +173,20 @@
 
   .kpi-comparativo {
     margin: 3px 0 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
+    display: flex;
+    align-items: flex-start;
+    gap: 3px;
     font-size: 0.72rem;
+    line-height: 1.3;
     color: var(--mat-sys-on-surface-variant);
-    white-space: nowrap;
 
-    mat-icon { font-size: 13px; width: 13px; height: 13px; }
+    mat-icon {
+      font-size: 13px;
+      width: 13px;
+      height: 13px;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
   }
 }
 

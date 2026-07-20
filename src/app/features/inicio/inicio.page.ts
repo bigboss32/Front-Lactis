@@ -155,6 +155,13 @@ export class InicioPage {
       tooltip: 'Abre el módulo de ventas',
     },
     {
+      titulo: 'Compra y venta de queso',
+      descripcion: 'Compra queso a productores y revéndelo',
+      icono: 'swap_horiz', color: CHART_COLORS[5],
+      link: '/reventa', permiso: 'reventa:crear',
+      tooltip: 'Abre compra y venta de queso (reventa)',
+    },
+    {
       titulo: 'Registrar gasto',
       descripcion: 'Guarda una compra o un pago del negocio',
       icono: 'receipt_long', color: CHART_COLORS[6],
