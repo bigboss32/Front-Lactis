@@ -3,13 +3,14 @@
 }
 
 .sidenav {
-  width: 250px;
+  width: 252px;
+  border-right: 1px solid var(--mat-sys-outline-variant);
 
   .brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 18px 16px 10px;
+    padding: 18px 18px 10px;
     font-size: 1.15rem;
     font-weight: 600;
     color: var(--mat-sys-primary);
@@ -21,40 +22,90 @@
     }
   }
 
+  // La lista va con un pequeño margen para que los ítems se vean "encapsulados".
+  mat-nav-list {
+    padding: 6px 8px;
+  }
+
   // Encabezado de grupo plegable (acordeón): pliega/despliega sus opciones.
   .grupo-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding: 14px 16px 4px;
+    padding: 9px 12px 9px 14px;
+    margin-top: 6px;
     border: none;
+    border-radius: 10px;
     background: transparent;
     cursor: pointer;
     font: inherit;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--mat-sys-on-surface-variant);
+    transition: background 140ms ease, color 140ms ease;
 
-    mat-icon {
+    .grupo-titulo {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .grupo-icono {
       font-size: 18px;
       width: 18px;
       height: 18px;
-      opacity: 0.7;
+      opacity: 0.85;
+    }
+
+    .chevron {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      opacity: 0.5;
+      transition: transform 200ms ease;
     }
 
     &:hover {
+      background: var(--mat-sys-surface-container-high);
       color: var(--mat-sys-on-surface);
-      mat-icon { opacity: 1; }
+      .chevron { opacity: 0.9; }
+    }
+
+    &.abierto .chevron {
+      transform: rotate(180deg);
+      opacity: 0.9;
+    }
+  }
+
+  // Ítems del menú: redondeados, con margen (inset), hover y activo limpios.
+  a.mat-mdc-list-item {
+    border-radius: 10px;
+    margin: 2px 0;
+    animation: nav-item-enter 180ms ease;
+
+    &:hover {
+      background: var(--mat-sys-surface-container-high);
     }
   }
 
   a.activo {
     background: var(--mat-sys-secondary-container);
     color: var(--mat-sys-on-secondary-container);
+    font-weight: 600;
+
+    .mat-icon,
+    [matListItemIcon] {
+      color: var(--mat-sys-on-secondary-container);
+    }
   }
+}
+
+@keyframes nav-item-enter {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
 }
 
 .toolbar {

@@ -17,11 +17,17 @@
           <button
             type="button"
             class="grupo-header"
+            [class.abierto]="estaAbierto(grupo.title)"
             [attr.aria-expanded]="estaAbierto(grupo.title)"
             (click)="toggleGrupo(grupo.title)"
           >
-            <span>{{ grupo.title }}</span>
-            <mat-icon>{{ estaAbierto(grupo.title) ? 'expand_less' : 'expand_more' }}</mat-icon>
+            <span class="grupo-titulo">
+              @if (grupo.icon) {
+                <mat-icon class="grupo-icono">{{ grupo.icon }}</mat-icon>
+              }
+              {{ grupo.title }}
+            </span>
+            <mat-icon class="chevron">expand_more</mat-icon>
           </button>
         }
         @if (!grupo.title || estaAbierto(grupo.title)) {

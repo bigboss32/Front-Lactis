@@ -10,6 +10,8 @@ export interface NavItem {
 
 export interface NavGroup {
   title: string;
+  /** Ícono del grupo en el encabezado del acordeón (Material Symbols). */
+  icon?: string;
   items: NavItem[];
 }
 
@@ -23,6 +25,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Leche',
+    icon: 'water_drop',
     items: [
       { label: 'Recepción diaria', icon: 'water_drop', route: '/recepciones', modulo: 'recepcion' },
       { label: 'Liquidaciones', icon: 'request_quote', route: '/liquidaciones', modulo: 'liquidaciones' },
@@ -34,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Operación',
+    icon: 'settings',
     items: [
       { label: 'Producción', icon: 'factory', route: '/produccion', modulo: 'produccion' },
       { label: 'Inventario', icon: 'inventory_2', route: '/inventario', modulo: 'inventario' },
@@ -41,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Comercial',
+    icon: 'storefront',
     items: [
       { label: 'Compra y venta de queso', icon: 'swap_horiz', route: '/reventa', modulo: 'reventa' },
       { label: 'Ventas', icon: 'point_of_sale', route: '/ventas', modulo: 'ventas' },
@@ -50,6 +55,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Finanzas',
+    icon: 'account_balance_wallet',
     items: [
       { label: 'Caja', icon: 'savings', route: '/caja', modulo: 'caja' },
       { label: 'Bancos', icon: 'account_balance', route: '/bancos', modulo: 'bancos' },
@@ -58,6 +64,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Administración',
+    icon: 'admin_panel_settings',
     items: [
       { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
       { label: 'Empresas', icon: 'business', route: '/empresas', modulo: 'empresas' },
