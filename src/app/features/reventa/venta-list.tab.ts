@@ -207,10 +207,15 @@ export class VentaQuesoListTab {
   }
 
   verAbonos(fila: VentaQueso): void {
-    this.dialog.open(AbonosListDialog, {
-      data: { titulo: `Abonos de ${fila.cliente}`, abonos: fila.abonos },
-      width: '560px',
-    });
+    this.dialog
+      .open(AbonosListDialog, {
+        data: { titulo: `Abonos de ${fila.cliente}`, abonos: fila.abonos, tipo: 'venta', id: fila.id },
+        width: '560px',
+      })
+      .afterClosed()
+      .subscribe((cambiado) => {
+        if (cambiado) this.notificar();
+      });
   }
 
   anular(fila: VentaQueso): void {
@@ -238,7 +243,7 @@ export class VentaQuesoListTab {
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar venta',
-          mensaje: `¿Eliminar la venta a ${fila.cliente}? Se eliminará junto con sus abonos y saldrá de los totales. Esta acción no se puede deshacer.`,
+          mensaje: `¿Eliminar la venta a ${fila.cliente}? Esta acción no se puede deshacer.`,
         },
       })
       .afterClosed()

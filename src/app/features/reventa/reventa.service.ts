@@ -169,6 +169,11 @@ export class ReventaService {
     return this.api.post<CompraQueso>(`${this.base}/compras/${id}/abonos`, payload);
   }
 
+  /** Elimina un abono mal registrado de una compra; devuelve la compra actualizada. */
+  eliminarAbonoCompra(compraId: string, abonoId: string): Observable<CompraQueso> {
+    return this.api.delete<CompraQueso>(`${this.base}/compras/${compraId}/abonos/${abonoId}`);
+  }
+
   anularCompra(id: string): Observable<CompraQueso> {
     return this.api.post<CompraQueso>(`${this.base}/compras/${id}/anular`);
   }
@@ -195,6 +200,11 @@ export class ReventaService {
 
   abonarVenta(id: string, payload: AbonoPayload): Observable<VentaQueso> {
     return this.api.post<VentaQueso>(`${this.base}/ventas/${id}/abonos`, payload);
+  }
+
+  /** Elimina un abono mal registrado de una venta; devuelve la venta actualizada. */
+  eliminarAbonoVenta(ventaId: string, abonoId: string): Observable<VentaQueso> {
+    return this.api.delete<VentaQueso>(`${this.base}/ventas/${ventaId}/abonos/${abonoId}`);
   }
 
   anularVenta(id: string): Observable<VentaQueso> {

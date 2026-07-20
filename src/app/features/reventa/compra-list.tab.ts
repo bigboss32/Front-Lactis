@@ -183,10 +183,15 @@ export class CompraListTab {
   }
 
   verAbonos(fila: CompraQueso): void {
-    this.dialog.open(AbonosListDialog, {
-      data: { titulo: `Abonos a ${fila.productor}`, abonos: fila.abonos },
-      width: '560px',
-    });
+    this.dialog
+      .open(AbonosListDialog, {
+        data: { titulo: `Abonos a ${fila.productor}`, abonos: fila.abonos, tipo: 'compra', id: fila.id },
+        width: '560px',
+      })
+      .afterClosed()
+      .subscribe((cambiado) => {
+        if (cambiado) this.notificar();
+      });
   }
 
   anular(fila: CompraQueso): void {
@@ -214,7 +219,7 @@ export class CompraListTab {
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar compra',
-          mensaje: `¿Eliminar la compra a ${fila.productor}? Se eliminará junto con sus abonos y saldrá de los totales. Esta acción no se puede deshacer.`,
+          mensaje: `¿Eliminar la compra a ${fila.productor}? Esta acción no se puede deshacer.`,
         },
       })
       .afterClosed()
