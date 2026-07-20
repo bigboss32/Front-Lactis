@@ -201,8 +201,12 @@ tr.mat-mdc-row.fila-peligro > td.mat-mdc-cell {
     }
 
     // La columna de acciones (botones) va alineada a la derecha, sin etiqueta.
+    // Se permite que los iconos envuelvan y se reduce el espacio entre ellos
+    // para que TODOS quepan (si no, el primero se recorta en pantallas angostas).
     td.mat-mdc-cell.col-acciones {
+      flex-wrap: wrap;
       justify-content: flex-end;
+      gap: 4px;
       &::before { content: none; }
     }
   }
