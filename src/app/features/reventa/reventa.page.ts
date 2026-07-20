@@ -143,6 +143,50 @@ function ultimoDiaMesDate(): Date {
       .desglose .dato.total.neg .val { color: #e57373; }
     }
 
+    // ------------------------------------------ indicador de temporada
+    .temporada {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      font-size: 0.9rem;
+
+      mat-icon { flex-shrink: 0; }
+
+      strong { font-weight: 600; }
+
+      .chip {
+        display: inline-block;
+        margin: 2px 4px 2px 0;
+        padding: 1px 9px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+    }
+
+    .temporada.al-dia {
+      background: color-mix(in srgb, #2e7d32 12%, transparent);
+      border-color: color-mix(in srgb, #2e7d32 40%, transparent);
+      color: #2e7d32;
+    }
+
+    .temporada.pendiente {
+      background: color-mix(in srgb, #b26a00 12%, transparent);
+      border-color: color-mix(in srgb, #b26a00 35%, transparent);
+      color: #b26a00;
+
+      .chip { background: color-mix(in srgb, #b26a00 20%, transparent); }
+    }
+
+    :host-context(html.dark) {
+      .temporada.al-dia { color: #81c784; border-color: color-mix(in srgb, #81c784 40%, transparent); }
+      .temporada.pendiente { color: #ffb74d; border-color: color-mix(in srgb, #ffb74d 35%, transparent); }
+    }
+
     .tab-panel { padding-top: 16px; }
   `,
 })
@@ -193,6 +237,15 @@ export class ReventaPage {
 
   esPositivo(valor: Monto): boolean {
     return Number(valor) > 0;
+  }
+
+  /** La temporada está cuadrada: sin queso disponible, ni cobros ni pagos pendientes. */
+  temporadaAlDia(r: ResumenReventa): boolean {
+    return (
+      !this.esPositivo(r.kilos_disponibles) &&
+      !this.esPositivo(r.por_cobrar_clientes) &&
+      !this.esPositivo(r.por_pagar_productores)
+    );
   }
 
   pasarABorona(): void {

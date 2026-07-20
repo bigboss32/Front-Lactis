@@ -36,6 +36,32 @@
   </div>
 
   @if (resumen(); as r) {
+    @if (temporadaAlDia(r)) {
+      <div class="temporada al-dia">
+        <mat-icon aria-hidden="true">check_circle</mat-icon>
+        <span>
+          <strong>Temporada al día.</strong>
+          Sin queso pendiente, ni cobros ni pagos: puedes arrancar una nueva.
+        </span>
+      </div>
+    } @else {
+      <div class="temporada pendiente">
+        <mat-icon aria-hidden="true">pending_actions</mat-icon>
+        <span>
+          <strong>Para cerrar la temporada falta:</strong>
+          @if (esPositivo(r.kilos_disponibles)) {
+            <span class="chip">vender o pasar a merma {{ r.kilos_disponibles | cantidad: 'kg' }}</span>
+          }
+          @if (esPositivo(r.por_cobrar_clientes)) {
+            <span class="chip">cobrar {{ r.por_cobrar_clientes | money }}</span>
+          }
+          @if (esPositivo(r.por_pagar_productores)) {
+            <span class="chip">pagar {{ r.por_pagar_productores | money }}</span>
+          }
+        </span>
+      </div>
+    }
+
     <div class="resumen-grid">
       <div class="tarjeta azul">
         <span class="icono"><mat-icon aria-hidden="true">inventory_2</mat-icon></span>
