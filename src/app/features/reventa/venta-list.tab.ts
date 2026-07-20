@@ -86,7 +86,8 @@ export class VentaQuesoListTab {
   readonly cambio = output<void>();
 
   readonly columnas = [
-    'fecha', 'cliente', 'kilos', 'precio_kilo', 'valor_total', 'gastos', 'abonado', 'saldo', 'estado', 'acciones',
+    'fecha', 'cliente', 'kilos', 'precio_kilo', 'valor_total', 'gastos', 'venta_libre',
+    'abonado', 'saldo', 'estado', 'acciones',
   ];
   readonly filas = signal<VentaQueso[]>([]);
   readonly total = signal(0);
@@ -158,6 +159,11 @@ export class VentaQuesoListTab {
 
   tieneGasto(fila: VentaQueso): boolean {
     return Number(fila.gasto_monto) > 0;
+  }
+
+  /** Venta libre = total de la venta menos los gastos de vender. */
+  ventaLibre(fila: VentaQueso): number {
+    return Number(fila.valor_total) - Number(fila.gasto_monto);
   }
 
   gastoTooltip(fila: VentaQueso): string {
