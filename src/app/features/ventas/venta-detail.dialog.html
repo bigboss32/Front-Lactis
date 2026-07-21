@@ -89,6 +89,11 @@
   }
 </mat-dialog-content>
 <mat-dialog-actions align="end">
+  @if (puedeEditar()) {
+    <button mat-button *hasPermission="'ventas:editar'" (click)="editar()">
+      <mat-icon>edit</mat-icon> Editar
+    </button>
+  }
   @if (puedeAnular()) {
     <button mat-button *hasPermission="'ventas:administrar'" (click)="anular()">
       <mat-icon>block</mat-icon> Anular

@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -15,12 +15,12 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { Cliente, Page, Producto } from '../../core/models';
+import { Cliente, Page, Producto, Venta } from '../../core/models';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { SelectBuscable } from '../../shared/select-buscable';
 import { protegerCambios } from '../../shared/proteger-cambios';
-import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { VentaPayload, VentasService } from './ventas.service';
 
 @Component({
@@ -106,6 +106,9 @@ export class VentaFormDialog {
   private readonly dialogRef = inject(MatDialogRef<VentaFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
+  readonly data = inject<{ venta?: Venta } | null>(MAT_DIALOG_DATA, { optional: true });
+  readonly esEdicion = !!this.data?.venta;
+
   readonly clientes = signal<Cliente[]>([]);
   readonly productos = signal<Producto[]>([]);
   readonly guardando = signal(false);
@@ -150,6 +153,28 @@ export class VentaFormDialog {
       this.productos.set(pagina.items.filter((p) => p.categoria === 'producto_terminado'));
     });
 
+    // Modo edición: precarga los datos y las líneas de la venta existente.
+    if (this.data?.venta) {
+      const v = this.data.venta;
+      this.form.patchValue({
+        tipo: v.tipo as 'factura' | 'remision',
+        cliente_id: v.cliente_id,
+        fecha: isoToDate(v.fecha) ?? hoyDate(),
+        descuento: Number(v.descuento),
+        observaciones: v.observaciones ?? '',
+      });
+      this.lineas.clear();
+      for (const d of v.detalles) {
+        this.lineas.push(
+          this.fb.group({
+            producto_id: [d.producto_id, Validators.required],
+            cantidad: [Number(d.cantidad), [Validators.required, Validators.min(0.01)]],
+            precio_unitario: [Number(d.precio_unitario), [Validators.required, Validators.min(0)]],
+          }),
+        );
+      }
+    }
+
     protegerCambios(this.dialogRef, () => this.form);
   }
 
@@ -178,26 +203,42 @@ export class VentaFormDialog {
     this.guardando.set(true);
     try {
       const valor = this.form.getRawValue();
-      const payload: VentaPayload = {
-        tipo: valor.tipo,
-        cliente_id: valor.cliente_id,
-        fecha: dateToIso(valor.fecha)!,
-        descuento: Number(valor.descuento || 0),
-        observaciones: valor.observaciones || null,
-        descontar_inventario: valor.descontar_inventario,
-        detalles: valor.lineas.map((linea) => ({
-          producto_id: linea.producto_id,
-          cantidad: Number(linea.cantidad),
-          precio_unitario: Number(linea.precio_unitario),
-        })),
-      };
-      await firstValueFrom(this.servicio.create(payload));
+      const detalles = valor.lineas.map((linea) => ({
+        producto_id: linea.producto_id,
+        cantidad: Number(linea.cantidad),
+        precio_unitario: Number(linea.precio_unitario),
+      }));
+      if (this.data?.venta) {
+        // Editar: no se reenvía descontar_inventario (el backend reajusta el stock).
+        await firstValueFrom(
+          this.servicio.update(this.data.venta.id, {
+            tipo: valor.tipo,
+            cliente_id: valor.cliente_id,
+            fecha: dateToIso(valor.fecha)!,
+            descuento: Number(valor.descuento || 0),
+            observaciones: valor.observaciones || null,
+            detalles,
+          }),
+        );
+      } else {
+        const payload: VentaPayload = {
+          tipo: valor.tipo,
+          cliente_id: valor.cliente_id,
+          fecha: dateToIso(valor.fecha)!,
+          descuento: Number(valor.descuento || 0),
+          observaciones: valor.observaciones || null,
+          descontar_inventario: valor.descontar_inventario,
+          detalles,
+        };
+        await firstValueFrom(this.servicio.create(payload));
+      }
       this.dialogRef.close(true);
     } catch (err) {
+      const generico = this.esEdicion
+        ? 'No fue posible guardar los cambios'
+        : 'No fue posible registrar la venta';
       const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar la venta')
-          : 'No fue posible registrar la venta';
+        err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? generico) : generico;
       this.snackbar.open(detalle, 'OK', { duration: 5000 });
     } finally {
       this.guardando.set(false);

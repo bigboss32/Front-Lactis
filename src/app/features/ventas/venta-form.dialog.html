@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Nueva venta</h2>
+<h2 mat-dialog-title>{{ esEdicion ? 'Editar venta Nº ' + data!.venta!.numero : 'Nueva venta' }}</h2>
 <mat-dialog-content>
   <form [formGroup]="form" id="form-venta" (ngSubmit)="guardar()">
     <div class="form-grid">
@@ -73,9 +73,11 @@
       </p>
     }
 
-    <mat-checkbox formControlName="descontar_inventario">
-      Descontar del inventario (valida el stock disponible)
-    </mat-checkbox>
+    @if (!esEdicion) {
+      <mat-checkbox formControlName="descontar_inventario">
+        Descontar del inventario (valida el stock disponible)
+      </mat-checkbox>
+    }
 
     <mat-form-field class="obs">
       <mat-label>Observaciones</mat-label>
@@ -91,6 +93,6 @@
     form="form-venta"
     [disabled]="form.invalid || total() < 0 || guardando()"
   >
-    Registrar venta
+    {{ esEdicion ? 'Guardar cambios' : 'Registrar venta' }}
   </button>
 </mat-dialog-actions>

@@ -21,6 +21,7 @@ import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { PagoFormDialog } from './pago-form.dialog';
+import { VentaFormDialog } from './venta-form.dialog';
 import { VentasService } from './ventas.service';
 
 @Component({
@@ -95,6 +96,8 @@ export class VentaDetailDialog {
   readonly puedeAnular = computed(
     () => this.venta().estado !== 'anulada' && Number(this.venta().pagado) === 0,
   );
+  // Editar productos/importes solo si no está anulada y aún no tiene pagos.
+  readonly puedeEditar = this.puedeAnular;
 
   constructor() {
     // Se controla el cierre manualmente para devolver siempre `huboCambios`
@@ -123,6 +126,18 @@ export class VentaDetailDialog {
     } finally {
       this.cargando.set(false);
     }
+  }
+
+  editar(): void {
+    this.dialog
+      .open(VentaFormDialog, { data: { venta: this.venta() }, width: '760px' })
+      .afterClosed()
+      .subscribe((guardado) => {
+        if (!guardado) return;
+        this.huboCambios.set(true);
+        this.snackbar.open('Venta actualizada', 'OK', { duration: 3000 });
+        this.refrescar();
+      });
   }
 
   registrarPago(): void {
