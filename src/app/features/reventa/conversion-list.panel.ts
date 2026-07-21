@@ -14,7 +14,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
-import { CantidadPipe } from '../../shared/pipes';
+import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ConversionBorona, ReventaService } from './reventa.service';
 
 /**
@@ -27,7 +27,7 @@ import { ConversionBorona, ReventaService } from './reventa.service';
   imports: [
     DatePipe, MatExpansionModule, MatTableModule, MatPaginatorModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule,
-    CantidadPipe, HasPermissionDirective,
+    CantidadPipe, MoneyPipe, HasPermissionDirective,
   ],
   template: `
     <mat-expansion-panel class="historial">
@@ -62,6 +62,17 @@ import { ConversionBorona, ReventaService } from './reventa.service';
         <ng-container matColumnDef="kilos">
           <th mat-header-cell *matHeaderCellDef class="num">Kilos</th>
           <td mat-cell *matCellDef="let fila" class="num">{{ fila.kilos | cantidad: 'kg' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="valor">
+          <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+          <td mat-cell *matCellDef="let fila" class="num">
+            @if (valorBorona(fila); as v) {
+              <span [matTooltip]="(fila.precio_kilo | cantidad) + '/kg'">{{ v | money }}</span>
+            } @else {
+              —
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="observaciones">
@@ -145,7 +156,7 @@ export class ConversionListPanel {
   /** Avisa a la página que hubo cambios para recargar el resumen. */
   readonly cambio = output<void>();
 
-  readonly columnas = ['fecha', 'destino', 'kilos', 'observaciones', 'acciones'];
+  readonly columnas = ['fecha', 'destino', 'kilos', 'valor', 'observaciones', 'acciones'];
   readonly filas = signal<ConversionBorona[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -179,6 +190,12 @@ export class ConversionListPanel {
     this.page.set(evento.pageIndex + 1);
     this.pageSize.set(evento.pageSize);
     void this.cargar();
+  }
+
+  /** Valor de una conversión a borona (kilos × precio); null en merma o sin precio. */
+  valorBorona(fila: ConversionBorona): number | null {
+    const valor = Number(fila.kilos) * Number(fila.precio_kilo);
+    return valor > 0 ? valor : null;
   }
 
   eliminar(fila: ConversionBorona): void {

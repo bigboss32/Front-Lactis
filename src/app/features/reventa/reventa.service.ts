@@ -65,6 +65,8 @@ export interface ConversionBorona extends TenantFields {
   fecha: string;
   kilos: Monto;
   destino: DestinoConversion;
+  /** Precio por kilo de la borona (0 en la merma). */
+  precio_kilo: Monto;
   observaciones: string | null;
 }
 
@@ -126,6 +128,7 @@ export interface ConversionBoronaPayload {
   fecha: string;
   kilos: number;
   destino?: DestinoConversion;
+  precio_kilo?: number;
   observaciones?: string | null;
 }
 

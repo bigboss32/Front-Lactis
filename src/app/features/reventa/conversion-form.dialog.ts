@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,7 +12,8 @@ import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
-import { CantidadPipe } from '../../shared/pipes';
+import { MilesInputDirective } from '../../shared/miles-input.directive';
+import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { DestinoConversion, ReventaService } from './reventa.service';
 
@@ -24,8 +26,9 @@ export interface ConversionDialogData {
 
 /**
  * Reduce el queso disponible de reventa. Según el destino:
- * - borona: queso devuelto o ya no vendible como entero; suma a la borona.
- * - merma: pérdida de peso (se pesó menos al vender); no suma a ningún lado.
+ * - borona: queso devuelto o ya no vendible como entero; suma a la borona y
+ *   lleva un precio por kilo (su valor).
+ * - merma: pérdida de peso (se pesó menos al vender); no suma ni tiene precio.
  * Para la merma el diálogo llega con los kilos disponibles precargados, para
  * cerrar la semana de un solo paso. El backend valida contra el disponible real.
  */
@@ -33,7 +36,7 @@ export interface ConversionDialogData {
   selector: 'app-conversion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatButtonModule, CantidadPipe,
+    MatDatepickerModule, MatButtonModule, MilesInputDirective, CantidadPipe, MoneyPipe,
   ],
   template: `
     <h2 mat-dialog-title>{{ esMerma ? 'Registrar merma' : 'Pasar queso a borona' }}</h2>
@@ -57,6 +60,14 @@ export interface ConversionDialogData {
           <span matTextSuffix>kg</span>
           <mat-hint>Disponible: {{ data.disponible | cantidad: 'kg' }}</mat-hint>
         </mat-form-field>
+        @if (!esMerma) {
+          <mat-form-field>
+            <mat-label>Precio por kilo</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" />
+            <span matTextPrefix>$&nbsp;</span>
+            <mat-hint>Valor de la borona: {{ valor() | money }}</mat-hint>
+          </mat-form-field>
+        }
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
           <textarea
@@ -81,7 +92,7 @@ export interface ConversionDialogData {
     </mat-dialog-actions>
   `,
   styles: `
-    // Espacio extra: la pista de disponible ocupa una línea adicional.
+    // Espacio extra: las pistas de disponible/valor ocupan una línea adicional.
     .form-grid { row-gap: 22px; }
     .ayuda {
       margin: 0 0 12px;
@@ -108,7 +119,17 @@ export class ConversionFormDialog {
       this.esMerma ? Number(this.data.disponible) : 0,
       [Validators.required, Validators.min(0.01)],
     ],
+    precio_kilo: [0, [Validators.min(0)]],
     observaciones: [''],
+  });
+
+  private readonly cambios = toSignal(this.form.valueChanges);
+
+  /** Valor de la borona en vivo: kilos × precio por kilo. */
+  readonly valor = computed(() => {
+    this.cambios();
+    const v = this.form.getRawValue();
+    return Number(v.kilos || 0) * Number(v.precio_kilo || 0);
   });
 
   constructor() {
@@ -125,6 +146,7 @@ export class ConversionFormDialog {
           fecha: dateToIso(valores.fecha),
           kilos: Number(valores.kilos),
           destino: this.destino,
+          precio_kilo: this.esMerma ? 0 : Number(valores.precio_kilo || 0),
           observaciones: valores.observaciones || null,
         }),
       );
