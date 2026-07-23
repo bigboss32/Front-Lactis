@@ -31,14 +31,11 @@ function toIso(fecha: Date): string {
 /** Rango ISO de una quincena: 1.ª = día 1 al 15; 2.ª = día 16 a fin de mes. */
 function rangoQuincena(anio: number, mes: number, quincena: 1 | 2): { inicio: string; fin: string } {
   if (quincena === 1) {
-    return {
-      inicio: toIso(new Date(anio, mes, 1)),
-      fin: toIso(new Date(anio, mes, 15)),
-    };
+    return { inicio: toIso(new Date(anio, mes, 1)), fin: toIso(new Date(anio, mes, 15)) };
   }
   return {
     inicio: toIso(new Date(anio, mes, 16)),
-    fin: toIso(new Date(anio, mes + 1, 0)), // día 0 del mes siguiente = fin de mes
+    fin: toIso(new Date(anio, mes + 1, 0)), // día 0 del mes siguiente = último día del mes
   };
 }
 
@@ -60,11 +57,6 @@ function partesFecha(iso: string | null | undefined): { dia: number; mes: string
   return { anio: Number(m[1]), mes: MESES[indiceMes], dia: Number(m[3]) };
 }
 
-interface PresetQuincena {
-  etiqueta: string;
-  rango: { inicio: string; fin: string };
-}
-
 @Component({
   selector: 'app-generar-quincena',
   imports: [
@@ -76,23 +68,49 @@ interface PresetQuincena {
     <h2 mat-dialog-title>Generar liquidaciones de la quincena</h2>
     <mat-dialog-content>
       <p class="ayuda">
-        Agrupa las recepciones sin liquidar del período y descuenta los anticipos pendientes.
+        1) Elige el mes y la quincena. 2) Revisa las fechas. 3) Genera. Se agrupan las
+        recepciones sin liquidar del período y se descuentan los anticipos pendientes.
       </p>
 
-      <div class="presets">
-        @for (preset of presets; track preset.etiqueta) {
-          <button
-            mat-stroked-button
-            type="button"
-            class="preset"
-            matTooltip="Rellena las fechas de inicio y fin automáticamente"
-            (click)="aplicarPreset(preset)"
-          >
-            <mat-icon>event</mat-icon> {{ preset.etiqueta }}
+      <!-- Paso 1: mes -->
+      <div class="paso">
+        <span class="paso-num">1</span>
+        <div class="selector-mes">
+          <button mat-icon-button type="button" (click)="mesAnterior()" aria-label="Mes anterior">
+            <mat-icon>chevron_left</mat-icon>
           </button>
-        }
+          <span class="mes">{{ etiquetaMes() }}</span>
+          <button mat-icon-button type="button" (click)="mesSiguiente()" aria-label="Mes siguiente">
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+        </div>
       </div>
 
+      <!-- Paso 2: quincena -->
+      <div class="quincena-botones">
+        <button
+          mat-stroked-button
+          type="button"
+          class="q-btn"
+          [class.activa]="quincenaActiva() === 1"
+          (click)="aplicarQuincena(1)"
+        >
+          <mat-icon>event</mat-icon>
+          <span>1.ª quincena<small>días {{ diasQ1() }}</small></span>
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
+          class="q-btn"
+          [class.activa]="quincenaActiva() === 2"
+          (click)="aplicarQuincena(2)"
+        >
+          <mat-icon>event</mat-icon>
+          <span>2.ª quincena<small>días {{ diasQ2() }}</small></span>
+        </button>
+      </div>
+
+      <!-- Paso 3: revisar/ajustar fechas -->
       <form [formGroup]="form" class="form-grid" id="form-generar" (ngSubmit)="generar()">
         <mat-form-field>
           <mat-label>Inicio del período</mat-label>
@@ -109,7 +127,7 @@ interface PresetQuincena {
         <mat-form-field class="full">
           <mat-label>Tipo</mat-label>
           <mat-select formControlName="tipo">
-            <mat-option value="ambos">Ambos</mat-option>
+            <mat-option value="ambos">Ambos (proveedores y transportadores)</mat-option>
             <mat-option value="proveedor">Solo proveedores</mat-option>
             <mat-option value="transportador">Solo transportadores</mat-option>
           </mat-select>
@@ -119,7 +137,7 @@ interface PresetQuincena {
       @if (resumenPeriodo()) {
         <p class="resumen-periodo">
           <mat-icon aria-hidden="true">date_range</mat-icon>
-          <span>{{ resumenPeriodo() }}</span>
+          <span>Se liquidará: <strong>{{ resumenPeriodo() }}</strong></span>
         </p>
       }
     </mat-dialog-content>
@@ -137,16 +155,52 @@ interface PresetQuincena {
   `,
   styles: `
     .ayuda {
-      margin: 0 0 12px;
+      margin: 0 0 16px;
       color: var(--mat-sys-on-surface-variant);
       font-size: 0.85rem;
     }
 
-    .presets {
+    .paso { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .paso-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      font-size: 0.75rem;
+      font-weight: 700;
+      background: var(--mat-sys-secondary-container);
+      color: var(--mat-sys-on-secondary-container);
+    }
+    .selector-mes { display: flex; align-items: center; gap: 4px; }
+    .selector-mes .mes {
+      min-width: 130px;
+      text-align: center;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .quincena-botones {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 4px 0 18px 32px;
+    }
+    .q-btn {
       display: flex;
-      flex-wrap: wrap;
+      align-items: center;
       gap: 8px;
-      margin-bottom: 16px;
+      height: auto;
+      padding: 10px 12px;
+      text-align: left;
+
+      span { display: flex; flex-direction: column; line-height: 1.2; }
+      small { color: var(--mat-sys-on-surface-variant); font-size: 0.72rem; }
+    }
+    .q-btn.activa {
+      border-color: var(--mat-sys-primary);
+      background: color-mix(in srgb, var(--mat-sys-primary) 12%, transparent);
     }
 
     .resumen-periodo {
@@ -161,6 +215,11 @@ interface PresetQuincena {
       color: var(--mat-sys-on-surface);
 
       mat-icon { color: var(--mat-sys-primary); flex-shrink: 0; }
+      strong { text-transform: capitalize; }
+    }
+
+    @media (max-width: 560px) {
+      .quincena-botones { grid-template-columns: 1fr; margin-left: 0; }
     }
   `,
 })
@@ -180,14 +239,34 @@ export class GenerarQuincenaDialog {
     tipo: ['ambos' as 'ambos' | 'proveedor' | 'transportador', Validators.required],
   });
 
-  /** Presets de quincenas más usadas, calculados a partir de la fecha de hoy. */
-  readonly presets: PresetQuincena[] = this.crearPresets();
+  /** Mes sobre el que actúan los botones de quincena (por defecto, el del período). */
+  readonly mesSel = signal<{ anio: number; mes: number }>({
+    anio: Number(this.quincena.inicio.slice(0, 4)),
+    mes: Number(this.quincena.inicio.slice(5, 7)) - 1,
+  });
+
+  readonly etiquetaMes = computed(() => `${MESES[this.mesSel().mes]} ${this.mesSel().anio}`);
+  readonly diasQ1 = computed(() => this.rangoDias(1));
+  readonly diasQ2 = computed(() => this.rangoDias(2));
 
   private readonly valores = toSignal(this.form.valueChanges, {
     initialValue: this.form.getRawValue(),
   });
 
-  /** Resumen legible del período elegido, ej. "Del 1 al 15 de julio de 2026". */
+  /** Qué quincena del mes seleccionado coincide con las fechas actuales (1, 2 o null). */
+  readonly quincenaActiva = computed(() => {
+    const v = this.valores();
+    const ini = dateToIso(v.periodo_inicio);
+    const fin = dateToIso(v.periodo_fin);
+    const { anio, mes } = this.mesSel();
+    for (const q of [1, 2] as const) {
+      const r = rangoQuincena(anio, mes, q);
+      if (r.inicio === ini && r.fin === fin) return q;
+    }
+    return null;
+  });
+
+  /** Resumen legible del período elegido, ej. "Del 16 al 31 de julio de 2026". */
   readonly resumenPeriodo = computed(() => {
     const valores = this.valores();
     const inicio = partesFecha(dateToIso(valores.periodo_inicio));
@@ -206,22 +285,30 @@ export class GenerarQuincenaDialog {
     protegerCambios(this.dialogRef, () => this.form);
   }
 
-  aplicarPreset(preset: PresetQuincena): void {
+  mesAnterior(): void {
+    const { anio, mes } = this.mesSel();
+    this.mesSel.set(mes === 0 ? { anio: anio - 1, mes: 11 } : { anio, mes: mes - 1 });
+  }
+
+  mesSiguiente(): void {
+    const { anio, mes } = this.mesSel();
+    this.mesSel.set(mes === 11 ? { anio: anio + 1, mes: 0 } : { anio, mes: mes + 1 });
+  }
+
+  aplicarQuincena(quincena: 1 | 2): void {
+    const { anio, mes } = this.mesSel();
+    const rango = rangoQuincena(anio, mes, quincena);
     this.form.patchValue({
-      periodo_inicio: isoToDate(preset.rango.inicio)!,
-      periodo_fin: isoToDate(preset.rango.fin)!,
+      periodo_inicio: isoToDate(rango.inicio)!,
+      periodo_fin: isoToDate(rango.fin)!,
     });
   }
 
-  private crearPresets(): PresetQuincena[] {
-    const hoy = new Date();
-    const anio = hoy.getFullYear();
-    const mes = hoy.getMonth();
-    return [
-      { etiqueta: '1.ª quincena de este mes', rango: rangoQuincena(anio, mes, 1) },
-      { etiqueta: '2.ª quincena del mes pasado', rango: rangoQuincena(anio, mes - 1, 2) },
-      { etiqueta: '1.ª quincena del mes pasado', rango: rangoQuincena(anio, mes - 1, 1) },
-    ];
+  /** Días de la quincena del mes seleccionado, ej. "16 al 31". */
+  private rangoDias(quincena: 1 | 2): string {
+    const { anio, mes } = this.mesSel();
+    const r = rangoQuincena(anio, mes, quincena);
+    return `${Number(r.inicio.slice(8, 10))} al ${Number(r.fin.slice(8, 10))}`;
   }
 
   async generar(): Promise<void> {
