@@ -41,6 +41,8 @@ export interface CeldaGrilla {
   recepcion_id: string;
   litros: Monto;
   liquidada: boolean;
+  /** True si la recepción tiene transportador asignado. */
+  con_transporte: boolean;
 }
 
 export interface FilaGrilla {

@@ -216,6 +216,15 @@ function quincenaDeHoy(): Quincena {
     }
     :host-context(html.dark) .celda-contenido.liquidada { color: #81c784; }
 
+    /* Ícono de "tiene transporte asignado" dentro de la celda */
+    .carrito {
+      font-size: 13px;
+      width: 13px;
+      height: 13px;
+      color: var(--mat-sys-primary);
+      flex-shrink: 0;
+    }
+
     /* Columnas de totales por proveedor */
     .col-total {
       padding: 8px 12px;

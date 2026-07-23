@@ -107,6 +107,9 @@
                           matTooltip="Liquidada — no editable"
                         >
                           {{ celda.litros | cantidad }}
+                          @if (celda.con_transporte) {
+                            <mat-icon class="carrito" matTooltip="Con transporte">local_shipping</mat-icon>
+                          }
                           <mat-icon class="candado">lock</mat-icon>
                         </span>
                       } @else if (puedeEditar()) {
@@ -121,9 +124,17 @@
                           (click)="clickCelda(fila, dia.iso)"
                         >
                           {{ celda.litros | cantidad }}
+                          @if (celda.con_transporte) {
+                            <mat-icon class="carrito" matTooltip="Con transporte">local_shipping</mat-icon>
+                          }
                         </button>
                       } @else {
-                        <span class="celda-contenido">{{ celda.litros | cantidad }}</span>
+                        <span class="celda-contenido">
+                          {{ celda.litros | cantidad }}
+                          @if (celda.con_transporte) {
+                            <mat-icon class="carrito" matTooltip="Con transporte">local_shipping</mat-icon>
+                          }
+                        </span>
                       }
                     } @else {
                       @if (puedeCrear()) {
