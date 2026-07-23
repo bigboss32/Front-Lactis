@@ -362,6 +362,9 @@ export interface Gasto extends TenantFields {
   categoria_nombre: string | null;
   concepto: string;
   proveedor: string | null;
+  /** Opcional: gastos por unidad (ej. flete por kilo). */
+  cantidad: Monto | null;
+  precio_unitario: Monto | null;
   valor: Monto;
   numero_factura: string | null;
   observaciones: string | null;

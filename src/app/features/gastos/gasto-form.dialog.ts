@@ -1,4 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -8,7 +9,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { HttpErrorResponse } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, merge } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
@@ -46,9 +47,22 @@ import { SelectBuscable } from '../../shared/select-buscable';
             <input matInput formControlName="proveedor" />
           </mat-form-field>
           <mat-form-field>
+            <mat-label>Cantidad (kg)</mat-label>
+            <input matInput type="number" min="0" step="0.1" formControlName="cantidad" />
+            <mat-hint>Opcional (ej. flete por kilo)</mat-hint>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Precio por kilo</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_unitario" />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+          <mat-form-field class="full">
             <mat-label>Valor</mat-label>
             <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
             <span matTextPrefix>$&nbsp;</span>
+            @if (form.controls.valor.disabled) {
+              <mat-hint>Calculado: cantidad × precio por kilo</mat-hint>
+            }
           </mat-form-field>
           <mat-form-field>
             <mat-label>Nº factura</mat-label>
@@ -115,6 +129,8 @@ export class GastoFormDialog {
     categoria_id: [this.data?.item?.categoria_id ?? '', Validators.required],
     concepto: [this.data?.item?.concepto ?? '', [Validators.required, Validators.minLength(2)]],
     proveedor: [this.data?.item?.proveedor ?? ''],
+    cantidad: [Number(this.data?.item?.cantidad ?? 0), [Validators.min(0)]],
+    precio_unitario: [Number(this.data?.item?.precio_unitario ?? 0), [Validators.min(0)]],
     valor: [Number(this.data?.item?.valor ?? 0), [Validators.required, Validators.min(1)]],
     numero_factura: [this.data?.item?.numero_factura ?? ''],
     observaciones: [this.data?.item?.observaciones ?? ''],
@@ -124,7 +140,29 @@ export class GastoFormDialog {
     firstValueFrom(
       this.api.get<Page<CategoriaGasto>>('/categorias-gasto', { page_size: 100, estado: 'activo' }),
     ).then((pagina) => this.categorias.set(pagina.items));
+
+    // Si hay cantidad y precio por kilo, el valor se calcula solo y se bloquea.
+    merge(
+      this.form.controls.cantidad.valueChanges,
+      this.form.controls.precio_unitario.valueChanges,
+    )
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.recalcularValor());
+    this.recalcularValor();
+
     protegerCambios(this.dialogRef, () => this.form);
+  }
+
+  /** Flete por kilo: valor = cantidad × precio. Si no hay ambos, el valor es manual. */
+  private recalcularValor(): void {
+    const cantidad = Number(this.form.controls.cantidad.value || 0);
+    const precio = Number(this.form.controls.precio_unitario.value || 0);
+    if (cantidad > 0 && precio > 0) {
+      this.form.controls.valor.setValue(Math.round(cantidad * precio * 100) / 100, { emitEvent: false });
+      this.form.controls.valor.disable({ emitEvent: false });
+    } else if (this.form.controls.valor.disabled) {
+      this.form.controls.valor.enable({ emitEvent: false });
+    }
   }
 
   async guardar(): Promise<void> {
@@ -132,7 +170,13 @@ export class GastoFormDialog {
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
-      const payload = { ...valores, fecha: dateToIso(valores.fecha)! };
+      const payload = {
+        ...valores,
+        fecha: dateToIso(valores.fecha)!,
+        // Solo se envían si se usó el cálculo por kilo; si no, van en null.
+        cantidad: valores.cantidad > 0 ? valores.cantidad : null,
+        precio_unitario: valores.precio_unitario > 0 ? valores.precio_unitario : null,
+      };
       let guardado: Gasto;
       if (this.data?.item) {
         guardado = await firstValueFrom(this.servicio.update(this.data.item.id, payload));
