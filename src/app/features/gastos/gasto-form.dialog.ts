@@ -1,5 +1,5 @@
-import { Component, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -46,16 +46,18 @@ import { SelectBuscable } from '../../shared/select-buscable';
             <mat-label>Proveedor</mat-label>
             <input matInput formControlName="proveedor" />
           </mat-form-field>
-          <mat-form-field>
-            <mat-label>Cantidad (kg)</mat-label>
-            <input matInput type="number" min="0" step="0.1" formControlName="cantidad" />
-            <mat-hint>Opcional (ej. flete por kilo)</mat-hint>
-          </mat-form-field>
-          <mat-form-field>
-            <mat-label>Precio por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_unitario" />
-            <span matTextPrefix>$&nbsp;</span>
-          </mat-form-field>
+          @if (esPorKilo()) {
+            <mat-form-field>
+              <mat-label>Cantidad (kg)</mat-label>
+              <input matInput type="number" min="0" step="0.1" formControlName="cantidad" />
+              <mat-hint>Se cobra por kilo</mat-hint>
+            </mat-form-field>
+            <mat-form-field>
+              <mat-label>Precio por kilo</mat-label>
+              <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_unitario" />
+              <span matTextPrefix>$&nbsp;</span>
+            </mat-form-field>
+          }
           <mat-form-field class="full">
             <mat-label>Valor</mat-label>
             <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
@@ -136,6 +138,12 @@ export class GastoFormDialog {
     observaciones: [this.data?.item?.observaciones ?? ''],
   });
 
+  /** Categoría seleccionada; el formulario cambia si se cobra por kilo (fletes). */
+  private readonly categoriaId = toSignal(this.form.controls.categoria_id.valueChanges, {
+    initialValue: this.form.controls.categoria_id.value,
+  });
+  readonly esPorKilo = computed(() => this.categoriaPorKilo(this.categoriaId()));
+
   constructor() {
     firstValueFrom(
       this.api.get<Page<CategoriaGasto>>('/categorias-gasto', { page_size: 100, estado: 'activo' }),
@@ -148,9 +156,25 @@ export class GastoFormDialog {
     )
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.recalcularValor());
-    this.recalcularValor();
 
+    // Al cambiar de categoría: si no es por kilo, se limpian esos campos.
+    this.form.controls.categoria_id.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((id) => {
+        if (!this.categoriaPorKilo(id)) {
+          this.form.patchValue({ cantidad: 0, precio_unitario: 0 }, { emitEvent: false });
+        }
+        this.recalcularValor();
+      });
+
+    this.recalcularValor();
     protegerCambios(this.dialogRef, () => this.form);
+  }
+
+  /** Una categoría se cobra por kilo si su nombre incluye "flete". */
+  private categoriaPorKilo(id: string | null): boolean {
+    const cat = this.categorias().find((c) => c.id === id);
+    return !!cat && /flete/i.test(cat.nombre);
   }
 
   /** Flete por kilo: valor = cantidad × precio. Si no hay ambos, el valor es manual. */
