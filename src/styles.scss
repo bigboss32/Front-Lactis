@@ -29,6 +29,14 @@ body {
   color: var(--mat-sys-on-surface);
 }
 
+// El scroll de la página no vive en el documento sino dentro de
+// mat-sidenav-content. En iOS eso pierde el desplazamiento con inercia si no se
+// pide explícitamente, y la página se siente "pegada" al arrastrar el dedo.
+mat-sidenav-content {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
 // ---------------------------------------------------------------- utilidades
 .spacer { flex: 1 1 auto; }
 

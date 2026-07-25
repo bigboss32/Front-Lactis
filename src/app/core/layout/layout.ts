@@ -42,8 +42,20 @@ export class Layout implements OnInit, OnDestroy {
   readonly theme = inject(ThemeService);
   readonly notificaciones = inject(NotificacionesService);
 
+  /**
+   * Pantallas donde el menú se pliega (modo "over" y cerrado al entrar).
+   *
+   * Incluye Medium (960–1279px) a propósito: ahí caen las TABLETS. Con el menú
+   * fijo se comía 267px de 1024 (un 26% de la pantalla), dejando el contenido en
+   * 757px pero con el diseño de escritorio, porque toda la CSS responsive del
+   * proyecto arranca en 900px. Y como ese menú no tenía nada que desplazar, la
+   * franja quedaba como zona muerta para el dedo: pasar el dedo por ahí no
+   * movía la página.
+   */
   readonly esMovil = toSignal(
-    this.breakpoints.observe([Breakpoints.Small, Breakpoints.XSmall]).pipe(map((r) => r.matches)),
+    this.breakpoints
+      .observe([Breakpoints.Medium, Breakpoints.Small, Breakpoints.XSmall])
+      .pipe(map((r) => r.matches)),
     { initialValue: false },
   );
   readonly empresas = signal<Empresa[]>([]);
@@ -142,17 +154,51 @@ export class Layout implements OnInit, OnDestroy {
    * cursor esté sobre el menú, evitando la "zona muerta" de scroll.
    */
   reenviarRueda(evento: WheelEvent): void {
-    const host = evento.currentTarget as HTMLElement;
+    this.desplazarContenido(evento.currentTarget as HTMLElement, evento.deltaY, evento);
+  }
+
+  /** Y del último toque, para calcular cuánto se arrastró el dedo. */
+  private toqueY: number | null = null;
+
+  onToqueInicio(evento: TouchEvent): void {
+    this.toqueY = evento.touches[0]?.clientY ?? null;
+  }
+
+  /**
+   * Mismo problema que la rueda pero con el dedo: en pantallas grandes con táctil
+   * (una tablet apaisada de 1280px o más) el menú queda fijo y, si no tiene nada
+   * que desplazar, arrastrar el dedo sobre él no movía nada. Aquí ese arrastre se
+   * reenvía al contenido para que no haya zona muerta.
+   */
+  onToqueMover(evento: TouchEvent): void {
+    const y = evento.touches[0]?.clientY;
+    if (y == null || this.toqueY == null) return;
+    const delta = this.toqueY - y;
+    this.toqueY = y;
+    this.desplazarContenido(evento.currentTarget as HTMLElement, delta, evento);
+  }
+
+  onToqueFin(): void {
+    this.toqueY = null;
+  }
+
+  /**
+   * Desplaza el contenido de la página cuando el menú no puede desplazarse (o ya
+   * llegó a su tope), para que la página se mueva aunque el gesto empiece sobre
+   * el menú y no quede una "zona muerta" de scroll.
+   */
+  private desplazarContenido(host: HTMLElement, delta: number, evento: Event): void {
+    if (!delta) return;
     // El scroll del menú vive en el contenedor interno de Material.
     const nav = (host.querySelector('.mat-drawer-inner-container') as HTMLElement | null) ?? host;
     const enTope =
-      (evento.deltaY < 0 && nav.scrollTop <= 0) ||
-      (evento.deltaY > 0 && nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1);
+      (delta < 0 && nav.scrollTop <= 0) ||
+      (delta > 0 && nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1);
     if (nav.scrollHeight <= nav.clientHeight + 1 || enTope) {
       const cont = this.contenido()?.nativeElement;
       if (cont) {
-        cont.scrollTop += evento.deltaY;
-        evento.preventDefault();
+        cont.scrollTop += delta;
+        if (evento.cancelable) evento.preventDefault();
       }
     }
   }
