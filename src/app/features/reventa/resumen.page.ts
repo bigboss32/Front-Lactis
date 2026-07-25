@@ -8,7 +8,12 @@ import { Monto } from '../../core/models';
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ReventaFiltroService } from './reventa-filtro.service';
-import { ResumenReventa, ReventaService } from './reventa.service';
+import {
+  GananciaProducto,
+  GananciaProductor,
+  ResumenReventa,
+  ReventaService,
+} from './reventa.service';
 
 /** Tablero del negocio de reventa: indicador de temporada, tarjetas y desglose. */
 @Component({
@@ -74,7 +79,9 @@ import { ResumenReventa, ReventaService } from './reventa.service';
           <span class="textos">
             <span class="cifra">{{ r.ganancia_estimada | money }}</span>
             <span class="titulo">Ganancia neta del período</span>
-            <span class="detalle">{{ r.margen_por_kilo | money }}/kg · ya con compra, merma y gastos</span>
+            <span class="detalle">
+              {{ r.margen_por_kilo | money }}/kg vendido · ya con compra, merma y gastos
+            </span>
           </span>
         </div>
 
@@ -106,11 +113,18 @@ import { ResumenReventa, ReventaService } from './reventa.service';
           <span class="val">{{ r.kilos_vendidos | cantidad: 'kg' }} · {{ r.total_ventas | money }}</span>
           <span class="sub">{{ r.precio_promedio_venta | money }}/kg promedio</span>
         </div>
-        @if (esPositivo(r.merma_estimada)) {
+        @if (esPositivo(r.kilos_a_borona)) {
           <div class="dato">
-            <span class="etq">Merma aprox.</span>
-            <span class="val">{{ r.merma_estimada | cantidad: 'kg' }}</span>
-            <span class="sub">comprado − vendido</span>
+            <span class="etq">Pasado a borona</span>
+            <span class="val">{{ r.kilos_a_borona | cantidad: 'kg' }}</span>
+            <span class="sub">ajustes del período</span>
+          </div>
+        }
+        @if (esPositivo(r.kilos_merma)) {
+          <div class="dato">
+            <span class="etq">Merma</span>
+            <span class="val">{{ r.kilos_merma | cantidad: 'kg' }}</span>
+            <span class="sub">pérdida registrada</span>
           </div>
         }
         <div class="dato">
@@ -123,11 +137,17 @@ import { ResumenReventa, ReventaService } from './reventa.service';
       <div class="graficas">
         <div class="grafica-card">
           <h3>¿Dónde está el queso comprado?</h3>
-          <p class="grafica-sub">Del lote comprado en el período</p>
-          @if (esPositivo(r.kilos_comprados)) {
+          <p class="grafica-sub">
+            @if (kilosDeAntes() > 0) {
+              Incluye {{ kilosDeAntes() | cantidad: 'kg' }} que venían de temporadas anteriores
+            } @else {
+              Del lote comprado en el período
+            }
+          </p>
+          @if (filasDona().length > 0) {
             <app-chart type="doughnut" [data]="quesoChart()" [options]="opcionesDoughnut" />
           } @else {
-            <p class="sin-datos">Sin compras en el período</p>
+            <p class="sin-datos">Sin movimientos en el período</p>
           }
         </div>
 
@@ -136,6 +156,123 @@ import { ResumenReventa, ReventaService } from './reventa.service';
           <p class="grafica-sub">Lo que entró (ventas) vs. lo que costó</p>
           <app-chart type="bar" [data]="dineroChart()" [options]="opcionesBar" />
         </div>
+      </div>
+
+      <div class="graficas">
+        <div class="grafica-card">
+          <h3>¿A quién le compras mejor?</h3>
+          <p class="grafica-sub">Ganancia estimada por productor</p>
+          @if (productores().length > 0) {
+            <app-chart type="bar" [data]="productoresChart()" [options]="opcionesBarrasProductor" />
+          } @else {
+            <p class="sin-datos">Sin compras en el período</p>
+          }
+        </div>
+
+        <div class="grafica-card">
+          <h3>Ganancia por producto</h3>
+          <p class="grafica-sub">Del lote comprado en el período</p>
+          @if (filasProducto().length > 0) {
+            <div class="tabla-scroll">
+              <table class="tabla-datos">
+                <caption class="solo-lectores">Ganancia por producto del período</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Producto</th>
+                    <th scope="col">Kilos</th>
+                    <th scope="col">Venta $/kg</th>
+                    <th scope="col">Compra $/kg</th>
+                    <th scope="col">Gastos</th>
+                    <th scope="col">Ganancia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (fila of filasProducto(); track fila.producto) {
+                    <tr>
+                      <td>
+                        <span class="nombre">{{ fila.etiqueta }}</span>
+                        <span class="nota">{{ fila.nota }}</span>
+                      </td>
+                      <td>
+                        {{ fila.kilos | cantidad: 'kg' }}
+                        @if (vendidosDistintos(fila)) {
+                          <span class="nota">vendidos: {{ fila.kilos_vendidos | cantidad: 'kg' }}</span>
+                        }
+                      </td>
+                      <td>{{ sinVenta(fila, fila.precio_venta_kilo) ? '—' : (fila.precio_venta_kilo | money) }}</td>
+                      <td>{{ costoKilo(fila) === null ? '—' : (costoKilo(fila) | money) }}</td>
+                      <td>{{ sinVenta(fila, fila.gastos) ? '—' : (fila.gastos | money) }}</td>
+                      <td [class.positivo]="esPositivo(fila.ganancia)" [class.negativo]="esNegativo(fila.ganancia)">
+                        {{ fila.ganancia | money }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5">Total</td>
+                    <td
+                      [class.positivo]="esPositivo(r.ganancia_estimada)"
+                      [class.negativo]="esNegativo(r.ganancia_estimada)"
+                    >
+                      {{ r.ganancia_estimada | money }}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          } @else {
+            <p class="sin-datos">Sin movimientos en el período</p>
+          }
+        </div>
+      </div>
+
+      <div class="grafica-card tarjeta-ancha">
+        <h3>Detalle por productor</h3>
+        <p class="grafica-sub">
+          Estimado: de cada kilo comprado en el período entraron
+          {{ r.valor_realizado_kilo | money }} netos (ventas − gastos). Se reparte entre los kilos
+          de cada productor, así que la suma cuadra con la ganancia neta de arriba.
+        </p>
+        @if (productores().length > 0) {
+          <div class="tabla-scroll">
+            <table class="tabla-datos">
+              <caption class="solo-lectores">Detalle de ganancia estimada por productor</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Productor</th>
+                  <th scope="col">Compras</th>
+                  <th scope="col">Kilos</th>
+                  <th scope="col">Comprado</th>
+                  <th scope="col">$/kg comprado</th>
+                  <th scope="col">Margen $/kg</th>
+                  <th scope="col">Ganancia estimada</th>
+                  <th scope="col">Se le debe</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (fila of productores(); track fila.productor) {
+                  <tr>
+                    <td><span class="nombre">{{ fila.productor }}</span></td>
+                    <td>{{ fila.compras }}</td>
+                    <td>{{ fila.kilos | cantidad: 'kg' }}</td>
+                    <td>{{ fila.total_comprado | money }}</td>
+                    <td>{{ fila.precio_promedio | money }}</td>
+                    <td [class.positivo]="esPositivo(fila.margen_por_kilo)" [class.negativo]="esNegativo(fila.margen_por_kilo)">
+                      {{ fila.margen_por_kilo | money }}
+                    </td>
+                    <td [class.positivo]="esPositivo(fila.ganancia_estimada)" [class.negativo]="esNegativo(fila.ganancia_estimada)">
+                      {{ fila.ganancia_estimada | money }}
+                    </td>
+                    <td>{{ fila.por_pagar | money }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <p class="sin-datos">Sin compras en el período</p>
+        }
       </div>
     } @else if (!cargando()) {
       <div class="sin-datos">No fue posible cargar el resumen del período.</div>
@@ -290,6 +427,66 @@ import { ResumenReventa, ReventaService } from './reventa.service';
         color: var(--mat-sys-on-surface-variant);
       }
     }
+
+    .grafica-card.tarjeta-ancha { margin-top: 12px; }
+
+    // ------------------------------------------------------- tablas de detalle
+    // Scroll horizontal dentro de la tarjeta: en pantallas angostas no desborda la página.
+    .tabla-scroll { overflow-x: auto; }
+
+    // Título de tabla solo para lectores de pantalla (no se ve).
+    .solo-lectores {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .tabla-datos {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+
+      th, td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--mat-sys-outline-variant);
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      th {
+        font-weight: 500;
+        color: var(--mat-sys-on-surface-variant);
+      }
+
+      // La primera columna es el nombre: va a la izquierda.
+      th:first-child, td:first-child { text-align: left; font-variant-numeric: normal; }
+
+      .nombre { display: block; font-weight: 500; }
+      .nota {
+        display: block;
+        font-size: 0.72rem;
+        color: var(--mat-sys-on-surface-variant);
+      }
+
+      tfoot td {
+        border-top: 1px solid var(--mat-sys-outline);
+        border-bottom: none;
+        font-weight: 600;
+      }
+    }
+
+    .tabla-datos .positivo { color: #2e7d32; font-weight: 600; }
+    .tabla-datos .negativo { color: #c62828; font-weight: 600; }
+
+    :host-context(html.dark) {
+      .tabla-datos .positivo { color: #81c784; }
+      .tabla-datos .negativo { color: #e57373; }
+    }
   `,
 })
 export class ReventaResumenPage {
@@ -309,14 +506,20 @@ export class ReventaResumenPage {
     });
   }
 
+  /** Contador de peticiones: si el usuario cambia el rango dos veces seguidas, la
+   * respuesta de la primera ya no debe pisar la de la última. */
+  private peticion = 0;
+
   private async cargar(desde: string, hasta: string): Promise<void> {
+    const mia = ++this.peticion;
     this.cargando.set(true);
     try {
-      this.resumen.set(await firstValueFrom(this.servicio.resumen(desde, hasta)));
+      const datos = await firstValueFrom(this.servicio.resumen(desde, hasta));
+      if (mia === this.peticion) this.resumen.set(datos);
     } catch {
-      this.resumen.set(null);
+      if (mia === this.peticion) this.resumen.set(null);
     } finally {
-      this.cargando.set(false);
+      if (mia === this.peticion) this.cargando.set(false);
     }
   }
 
@@ -336,17 +539,93 @@ export class ReventaResumenPage {
     );
   }
 
-  /** Dona: del queso comprado en el período, cuánto se vendió y cuánto queda sin vender. */
+  /**
+   * Color de cada destino del queso en la dona: verde, ámbar, rojo y azul.
+   * Solo el color: la etiqueta la manda el backend en `fila.etiqueta`, para que
+   * la leyenda de la dona y la tabla nunca digan nombres distintos.
+   */
+  private readonly COLOR_DESTINO: Record<string, string> = {
+    queso: CHART_COLORS[1],
+    borona: CHART_COLORS[2],
+    merma: CHART_COLORS[3],
+    pendiente: CHART_COLORS[0],
+    anterior: CHART_COLORS[5],
+  };
+
+  /**
+   * Destinos del queso comprado en el período, tomados de por_producto (única
+   * fuente de verdad). Se incluye 'anterior' cuando aplica: es un destino real
+   * de kilos y sin él las tajadas no explicarían el total que se muestra.
+   */
+  readonly filasDona = computed<GananciaProducto[]>(() =>
+    (this.resumen()?.por_producto ?? []).filter((fila) => Number(fila.kilos) > 0),
+  );
+
+  /** Kilos que salieron de inventario de temporadas anteriores (0 si no hubo). */
+  readonly kilosDeAntes = computed<number>(() => {
+    const fila = (this.resumen()?.por_producto ?? []).find((f) => f.producto === 'anterior');
+    return fila ? Number(fila.kilos) : 0;
+  });
+
+  /** Dona: a dónde fue el queso (vendido, pasado a borona, merma o aún en inventario). */
   readonly quesoChart = computed<ChartData>(() => {
-    const r = this.resumen();
-    const comprado = Number(r?.kilos_comprados ?? 0);
-    const vendido = Number(r?.kilos_vendidos ?? 0);
-    const sinVender = Math.max(comprado - vendido, 0);
+    const filas = this.filasDona();
     return {
-      labels: ['Vendido', 'Sin vender'],
-      datasets: [{ data: [vendido, sinVender], backgroundColor: [CHART_COLORS[1], CHART_COLORS[2]] }],
+      labels: filas.map((fila) => fila.etiqueta),
+      datasets: [
+        {
+          data: filas.map((fila) => Number(fila.kilos)),
+          backgroundColor: filas.map(
+            (fila) => this.COLOR_DESTINO[fila.producto] ?? CHART_COLORS[4],
+          ),
+        },
+      ],
     };
   });
+
+  /** Filas del desglose por producto, sin las despreciables (ni kilos ni plata que mostrar). */
+  readonly filasProducto = computed<GananciaProducto[]>(() =>
+    (this.resumen()?.por_producto ?? []).filter(
+      (fila) => Number(fila.kilos) !== 0 || Math.abs(Number(fila.ganancia)) >= 1,
+    ),
+  );
+
+  /** Productores del período; ya vienen ordenados por ganancia estimada (mayor a menor). */
+  readonly productores = computed<GananciaProductor[]>(() => this.resumen()?.por_productor ?? []);
+
+  /** Barras horizontales: ganancia estimada de los 8 productores que más dejaron. */
+  readonly productoresChart = computed<ChartData>(() => {
+    const filas = this.productores().slice(0, 8);
+    const valores = filas.map((fila) => Number(fila.ganancia_estimada));
+    return {
+      labels: filas.map((fila) => fila.productor),
+      datasets: [
+        {
+          data: valores,
+          backgroundColor: valores.map((valor) => (valor < 0 ? CHART_COLORS[3] : CHART_COLORS[1])),
+        },
+      ],
+    };
+  });
+
+  /** En merma, pendiente y anterior no hay venta ni gastos: se muestra un guion en vez de $ 0. */
+  sinVenta(fila: GananciaProducto, valor: Monto): boolean {
+    return Number(valor) === 0 && fila.producto !== 'queso' && fila.producto !== 'borona';
+  }
+
+  /**
+   * Costo por kilo de la fila. En 'anterior' el costo total es un crédito (se
+   * pagó en otro período), así que mostrar el precio de compra en positivo haría
+   * que Kilos × $/kg no cuadrara con la ganancia: ahí se muestra un guion.
+   */
+  costoKilo(fila: GananciaProducto): Monto | null {
+    return fila.producto === 'anterior' ? null : fila.costo_kilo;
+  }
+
+  /** Kilos vendidos de esa fila, cuando difieren de los kilos del lote (borona). */
+  vendidosDistintos(fila: GananciaProducto): boolean {
+    return Number(fila.kilos_vendidos) !== Number(fila.kilos);
+  }
 
   /** Barra: ventas vs. compras vs. gastos del período (la diferencia es la ganancia). */
   readonly dineroChart = computed<ChartData>(() => {
@@ -393,6 +672,25 @@ export class ReventaResumenPage {
     },
     scales: {
       y: {
+        beginAtZero: true,
+        ticks: { callback: (v) => '$ ' + this.pesos.format(Number(v)) },
+      },
+    },
+  };
+
+  /** Barras horizontales (indexAxis 'y'): el valor va en el eje X. */
+  readonly opcionesBarrasProductor: ChartOptions = {
+    indexAxis: 'y',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (c) => '$ ' + Number(c.parsed.x).toLocaleString('es-CO'),
+        },
+      },
+    },
+    scales: {
+      x: {
         beginAtZero: true,
         ticks: { callback: (v) => '$ ' + this.pesos.format(Number(v)) },
       },

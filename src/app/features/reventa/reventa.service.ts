@@ -70,6 +70,42 @@ export interface ConversionBorona extends TenantFields {
   observaciones: string | null;
 }
 
+/**
+ * A dónde fue a parar el queso comprado en el período.
+ * Las tres primeras son salidas reales; 'pendiente' y 'anterior' son el residuo con signo.
+ */
+export type ProductoGanancia = 'queso' | 'borona' | 'merma' | 'pendiente' | 'anterior';
+
+/** Fila del desglose de ganancia por producto (siempre llegan 4: queso, borona, merma y residuo). */
+export interface GananciaProducto {
+  producto: ProductoGanancia;
+  etiqueta: string; // texto listo para mostrar en la UI
+  nota: string; // sub-texto explicativo corto
+  /** Kilos DEL LOTE COMPRADO que fueron a este destino (siempre >= 0). */
+  kilos: Monto;
+  /** Kilos realmente vendidos. Solo difiere de `kilos` en la borona. */
+  kilos_vendidos: Monto;
+  ingreso: Monto;
+  costo: Monto; // negativo solo en la fila 'anterior': se pagó en otra temporada
+  gastos: Monto;
+  ganancia: Monto; // ingreso - costo - gastos
+  precio_venta_kilo: Monto; // ingreso / kilos_vendidos (0 si no se vendió)
+  costo_kilo: Monto; // = precio_promedio_compra
+}
+
+/** Ganancia estimada de lo que se le compró a cada productor en el período. */
+export interface GananciaProductor {
+  productor: string;
+  compras: number; // cuántas compras en el período
+  kilos: Monto;
+  /** Valor de sus compras. NO es lo que se le ha pagado (eso es el abonado). */
+  total_comprado: Monto;
+  precio_promedio: Monto; // total_comprado / kilos
+  por_pagar: Monto; // lo que se le debe hoy (histórico, no solo del período)
+  margen_por_kilo: Monto; // valor_realizado_kilo - precio_promedio
+  ganancia_estimada: Monto; // estimación: reparte la venta neta entre sus kilos
+}
+
 export interface ResumenReventa {
   desde: string;
   hasta: string;
@@ -81,12 +117,25 @@ export interface ResumenReventa {
   precio_promedio_compra: Monto;
   precio_promedio_venta: Monto; // solo queso
   total_gastos: Monto; // gastos de venta del período
-  merma_estimada: Monto; // kilos comprados - vendidos (queso) del período
-  ganancia_estimada: Monto; // ventas - costo - gastos (neta)
-  margen_por_kilo: Monto; // ganancia neta por kilo de queso vendido
+  ganancia_estimada: Monto; // ventas - compras del período - gastos (neta)
+  margen_por_kilo: Monto; // ganancia neta por kilo vendido (queso + borona)
   // Del período (borona)
   kilos_borona_vendidos: Monto;
   total_ventas_borona: Monto;
+  // Ajustes del período que bajan el queso disponible
+  kilos_a_borona: Monto; // conversiones con destino 'borona'
+  kilos_merma: Monto; // conversiones con destino 'merma': la merma real
+  /**
+   * Residuo CON SIGNO del lote comprado: comprado − vendido como queso −
+   * pasado a borona − merma. Negativo = salió de inventario anterior.
+   */
+  kilos_pendientes: Monto;
+  /** (ventas − gastos) / kilos COMPRADOS: lo neto que dejó cada kilo comprado. */
+  valor_realizado_kilo: Monto;
+  /** Desglose de la ganancia por producto: queso, borona, merma y el residuo. */
+  por_producto: GananciaProducto[];
+  /** Ganancia estimada por productor, ordenada de mayor a menor. */
+  por_productor: GananciaProductor[];
   // Acumulados (histórico, sin filtro de fechas)
   kilos_disponibles: Monto;
   borona_disponible: Monto; // de compras + conversiones - vendida
