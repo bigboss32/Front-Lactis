@@ -149,6 +149,53 @@ export interface SugerenciasReventa {
   clientes: string[];
 }
 
+// ------------------------------------------------- estado de cuenta (cliente)
+// ESTE bloque se le entrega AL CLIENTE (vista previa y PDF), así que NO trae ni
+// puede traer datos internos de la quesera: gastos de la venta, venta libre,
+// costos de compra, margen, ganancia ni nombres de productores.
+
+/** Una compra del cliente dentro de su estado de cuenta. */
+export interface EstadoCuentaVenta {
+  fecha: string;
+  tipo: TipoVenta;
+  /** Nombre del producto listo para mostrar: 'Queso' o 'Borona'. */
+  producto: string;
+  kilos: Monto;
+  precio_kilo: Monto;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+  estado: string; // pendiente | parcial | pagada
+}
+
+/**
+ * Un pago recibido del cliente (abono de cualquiera de sus ventas).
+ *
+ * NO trae `observaciones` a propósito: la observación del abono es la nota
+ * INTERNA de la quesera ("le rebajé el flete", "al productor le pagamos tanto")
+ * y este bloque se le entrega al cliente. El backend ya no la envía.
+ */
+export interface EstadoCuentaPago {
+  fecha: string;
+  valor: Monto;
+}
+
+/** Cómo va la cuenta de un cliente: sus compras, sus pagos y el saldo. */
+export interface EstadoCuentaCliente {
+  cliente: string;
+  /** Null en los dos si el estado de cuenta cubre todo el histórico. */
+  desde: string | null;
+  hasta: string | null;
+  emitido: string; // fecha de generación
+  compras: number; // cuántas ventas se le hicieron
+  total_kilos: Monto;
+  total_facturado: Monto;
+  total_abonado: Monto;
+  saldo: Monto; // total_facturado - total_abonado
+  ventas: EstadoCuentaVenta[];
+  pagos: EstadoCuentaPago[];
+}
+
 // ------------------------------------------------------------------ payloads
 export interface CompraQuesoPayload {
   fecha: string;
@@ -272,6 +319,71 @@ export class ReventaService {
 
   anularVenta(id: string): Observable<VentaQueso> {
     return this.api.post<VentaQueso>(`${this.base}/ventas/${id}/anular`);
+  }
+
+  // --------------------------------------------------------- estado de cuenta
+  /**
+   * Estado de cuenta de un cliente. Sin `desde`/`hasta` cubre todo el histórico
+   * (el saldo real que debe); con rango se limita a ese período.
+   */
+  estadoCuenta(
+    cliente: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): Observable<EstadoCuentaCliente> {
+    return this.api.get<EstadoCuentaCliente>(
+      `${this.base}/estado-cuenta`,
+      this.paramsEstadoCuenta(cliente, desde, hasta),
+    );
+  }
+
+  /** PDF del estado de cuenta como Blob, para compartirlo por WhatsApp. */
+  estadoCuentaPdfBlob(
+    cliente: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): Observable<Blob> {
+    return this.api.getBlob(
+      `${this.base}/estado-cuenta/pdf`,
+      this.paramsEstadoCuenta(cliente, desde, hasta),
+    );
+  }
+
+  /**
+   * Descarga el PDF del estado de cuenta en el navegador.
+   *
+   * `nombreArchivo` es el nombre de RESPALDO, que se usa cuando el navegador no
+   * puede leer la cabecera Content-Disposition (petición cross-origin). Tiene que
+   * llevar el nombre del cliente: con el genérico 'estado_cuenta.pdf' todas las
+   * carteras se guardan igual y es fácil mandarle a un cliente la de otro.
+   */
+  descargarEstadoCuenta(
+    cliente: string,
+    desde?: string | null,
+    hasta?: string | null,
+    nombreArchivo?: string,
+  ): Observable<void> {
+    return this.api.download(
+      `${this.base}/estado-cuenta/pdf`,
+      nombreArchivo || 'estado_cuenta.pdf',
+      this.paramsEstadoCuenta(cliente, desde, hasta),
+    );
+  }
+
+  /**
+   * Query del estado de cuenta: `desde`/`hasta` solo viajan si tienen valor, para
+   * que el backend entienda "todo el histórico" (además `toHttpParams` descarta
+   * null, undefined y cadena vacía, nunca manda el texto "null").
+   */
+  private paramsEstadoCuenta(
+    cliente: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): QueryParams {
+    const params: QueryParams = { cliente };
+    if (desde) params['desde'] = desde;
+    if (hasta) params['hasta'] = hasta;
+    return params;
   }
 
   // ------------------------------------------------------------ conversiones

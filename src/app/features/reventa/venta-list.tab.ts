@@ -24,6 +24,7 @@ import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
+import { ReventaEstadoCuentaDialog } from './estado-cuenta.dialog';
 import { ReventaService, VentaQueso } from './reventa.service';
 import { VentaQuesoFormDialog } from './venta-form.dialog';
 
@@ -40,7 +41,16 @@ import { VentaQuesoFormDialog } from './venta-form.dialog';
   styles: `
     .spacer { flex: 1; }
 
-    .table-card .col-acciones { width: 230px; }
+    // Seis iconos en la fila (estado de cuenta, abonar, ver abonos, editar,
+    // anular, eliminar): el ancho tiene que alcanzar para todos.
+    .table-card .col-acciones { width: 275px; }
+
+    // En celular la tabla se vuelve tarjetas y los iconos envuelven: la celda
+    // toma el ancho de la tarjeta. Con un ancho fijo mayor que la pantalla el
+    // primer icono quedaría recortado (ya pasó con el icono de abonos).
+    @media (max-width: 700px) {
+      .table-card.tarjetas .col-acciones { width: auto; }
+    }
 
     .badge-saldo {
       display: inline-block;
@@ -210,6 +220,18 @@ export class VentaQuesoListTab {
         this.snackbar.open('Abono registrado', 'OK', { duration: 3000 });
         this.notificar();
       });
+  }
+
+  /**
+   * Estado de cuenta del cliente de la fila: junta TODAS sus ventas (no solo
+   * esta) para poder compartírselo en PDF o por WhatsApp.
+   */
+  estadoCuenta(fila: VentaQueso): void {
+    this.dialog.open(ReventaEstadoCuentaDialog, {
+      data: { cliente: fila.cliente, desde: this.desde(), hasta: this.hasta() },
+      width: '720px',
+      maxWidth: '95vw',
+    });
   }
 
   verAbonos(fila: VentaQueso): void {
