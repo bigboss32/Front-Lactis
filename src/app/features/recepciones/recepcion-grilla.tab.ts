@@ -1,6 +1,17 @@
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, OnInit, computed, inject, output, signal } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  ElementRef,
+  OnInit,
+  computed,
+  inject,
+  output,
+  signal,
+  viewChild,
+  viewChildren,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -42,9 +53,14 @@ function toIso(fecha: Date): string {
   return `${fecha.getFullYear()}-${mes}-${dia}`;
 }
 
+/** Quincena a la que pertenece una fecha ISO (YYYY-MM-DD). */
+function quincenaDeIso(iso: string): Quincena {
+  const [anio, mes, dia] = iso.split('-').map(Number);
+  return { anio, mes: mes - 1, mitad: dia <= 15 ? 1 : 2 };
+}
+
 function quincenaDeHoy(): Quincena {
-  const hoy = new Date();
-  return { anio: hoy.getFullYear(), mes: hoy.getMonth(), mitad: hoy.getDate() <= 15 ? 1 : 2 };
+  return quincenaDeIso(toIso(new Date()));
 }
 
 /**
@@ -79,6 +95,12 @@ function quincenaDeHoy(): Quincena {
       font-size: 0.8rem;
       font-weight: 400;
       color: var(--mat-sys-on-surface-variant);
+    }
+    /* Botón "Hoy": vuelve a la quincena actual y centra la columna del día. */
+    .btn-hoy {
+      flex-shrink: 0;
+      padding: 0 12px;
+      min-width: 0;
     }
 
     /* --------------------------------------------------- filtros de la grilla */
@@ -202,6 +224,12 @@ function quincenaDeHoy(): Quincena {
     }
     .celda-btn.vacia:hover .mas,
     .celda-btn.vacia:focus-visible .mas { opacity: 1; }
+    /* En pantallas táctiles no existe el hover: si el "+" queda invisible, las celdas
+       vacías parecen cuadros en blanco y no se ve dónde anotar. Se deja insinuado
+       siempre (sin ensuciar la grilla del PC, que sigue reaccionando al mouse). */
+    @media (hover: none) {
+      .celda-btn.vacia .mas { opacity: 0.35; }
+    }
 
     /* Celda liquidada: tinte verde + candado */
     .celda-contenido.liquidada {
@@ -291,6 +319,11 @@ function quincenaDeHoy(): Quincena {
     /* La grilla sigue siendo cuadrícula en móvil: se desplaza en horizontal y la
        columna del proveedor queda fija; solo se compacta para que quepan más días. */
     @media (max-width: 700px) {
+      /* El título de la quincena cede ancho para que quepan las flechas y "Hoy". */
+      .selector-quincena { gap: 4px; }
+      .etiqueta-quincena { min-width: 0; flex: 1 1 auto; font-size: 1.05rem; }
+      .btn-hoy { padding: 0 10px; }
+
       table.grilla { font-size: 0.8rem; }
       .col-proveedor { min-width: 122px; max-width: 150px; padding: 6px 8px; }
       .prov-nombre { font-size: 0.82rem; }
@@ -315,7 +348,15 @@ export class RecepcionGrillaTab implements OnInit {
   /** Se emite tras guardar desde la grilla, para que el listado se recargue. */
   readonly cambio = output<void>();
 
-  readonly hoy = toIso(new Date());
+  /**
+   * Día de hoy en ISO. Es un SIGNAL y no una constante fijada al construir el
+   * componente: la tablet de la oficina se queda encendida toda la noche (uso
+   * normal) y con un valor fijo, al día siguiente, el botón "Hoy" centraba la
+   * columna de AYER y —cruzando del 15 al 16— enQuincenaActual() seguía
+   * afirmando que la pantalla ya estaba en la quincena nueva. Se refresca al
+   * inicio de cada cargar().
+   */
+  readonly hoy = signal(toIso(new Date()));
   readonly quincena = signal<Quincena>(quincenaDeHoy());
   readonly grilla = signal<GrillaQuincena | null>(null);
   readonly cargando = signal(false);
@@ -323,6 +364,18 @@ export class RecepcionGrillaTab implements OnInit {
 
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly rutaId = new FormControl<string | null>(null);
+
+  /** Contenedor de la grilla que se desplaza en horizontal. */
+  private readonly scrollGrilla = viewChild<ElementRef<HTMLElement>>('scrollGrilla');
+  /** Encabezados de día, en el mismo orden que dias(). */
+  private readonly encabezadosDia = viewChildren<ElementRef<HTMLElement>>('encabezadoDia');
+  /**
+   * Encabezado de la columna de proveedor: es position: sticky, así que su ancho
+   * es la parte del contenedor que NO queda libre para el contenido desplazado.
+   */
+  private readonly encabezadoProveedor = viewChild<ElementRef<HTMLElement>>('encabezadoProveedor');
+  /** Queda pendiente centrar la columna de hoy cuando termine la carga en curso. */
+  private centrarPendiente = true;
 
   readonly puedeCrear = computed(() => this.auth.hasPermission('recepcion', 'crear'));
   readonly puedeEditar = computed(() => this.auth.hasPermission('recepcion', 'editar'));
@@ -340,6 +393,20 @@ export class RecepcionGrillaTab implements OnInit {
     return `${q.mitad === 1 ? '1ª' : '2ª'} quincena de ${MESES[q.mes]} ${q.anio}`;
   });
 
+  /**
+   * Quincena que contiene el día de hoy. Se deriva del signal `hoy()` —y no de
+   * un new Date() dentro del computed— para que se recalcule cuando el día
+   * cambia con la pantalla abierta.
+   */
+  private readonly quincenaActual = computed(() => quincenaDeIso(this.hoy()));
+
+  /** Verdadero si la quincena mostrada es la que contiene el día de hoy. */
+  readonly enQuincenaActual = computed(() => {
+    const q = this.quincena();
+    const actual = this.quincenaActual();
+    return q.anio === actual.anio && q.mes === actual.mes && q.mitad === actual.mitad;
+  });
+
   /** Encabezados de columna: día del mes + abreviatura del día de semana. */
   readonly dias = computed(() => {
     const g = this.grilla();
@@ -348,6 +415,20 @@ export class RecepcionGrillaTab implements OnInit {
       const [anio, mes, dia] = iso.split('-').map(Number);
       return { iso, dia, abrev: DIAS_SEMANA[new Date(anio, mes - 1, dia).getDay()] };
     });
+  });
+
+  /** Posición de la columna de hoy dentro de dias(); -1 si la quincena no la incluye. */
+  private readonly indiceHoy = computed(() => this.dias().findIndex((d) => d.iso === this.hoy()));
+
+  /**
+   * El botón "Hoy" tiene algo que hacer si se está en otra quincena (volver a la
+   * actual) o si la columna de hoy está en la grilla (recentrarla tras arrastrarla).
+   */
+  readonly puedeIrAHoy = computed(() => {
+    if (!this.enQuincenaActual()) return true;
+    // Ya se está en la quincena de hoy: el botón solo sirve para recentrar, así que
+    // hace falta que haya tabla en pantalla (sin filas se muestra el estado vacío).
+    return (this.grilla()?.filas.length ?? 0) > 0 && this.indiceHoy() >= 0;
   });
 
   /** Total pagado a un proveedor en la quincena: leche (valor neto) + transporte. */
@@ -388,6 +469,7 @@ export class RecepcionGrillaTab implements OnInit {
     } else {
       this.quincena.set({ anio: q.anio, mes: q.mes - 1, mitad: 2 });
     }
+    this.centrarPendiente = true;
     this.cargar();
   }
 
@@ -400,10 +482,31 @@ export class RecepcionGrillaTab implements OnInit {
     } else {
       this.quincena.set({ anio: q.anio, mes: q.mes + 1, mitad: 1 });
     }
+    this.centrarPendiente = true;
+    this.cargar();
+  }
+
+  /**
+   * Botón "Hoy": si se está en otra quincena vuelve a la del día de hoy; si ya se
+   * está en ella solo recentra la columna (útil si el usuario arrastró la grilla).
+   */
+  irAHoy(): void {
+    // Se refresca antes de decidir: si la pantalla pasó la noche abierta, "hoy"
+    // ya no es el día con el que se construyó el componente.
+    this.refrescarHoy();
+    if (this.enQuincenaActual()) {
+      this.centrarColumnaHoy();
+      return;
+    }
+    this.quincena.set(this.quincenaActual());
+    this.centrarPendiente = true;
     this.cargar();
   }
 
   async cargar(): Promise<void> {
+    // Cada carga vuelve a mirar el reloj, así enQuincenaActual(), indiceHoy() y el
+    // resaltado de la columna se recalculan si de por medio pasó la medianoche.
+    this.refrescarHoy();
     this.cargando.set(true);
     try {
       const { desde, hasta } = this.rango();
@@ -417,7 +520,64 @@ export class RecepcionGrillaTab implements OnInit {
       this.mostrarError(err, 'No fue posible cargar la grilla');
     } finally {
       this.cargando.set(false);
+      if (this.centrarPendiente) this.programarCentradoHoy();
     }
+  }
+
+  /** Pone al día el signal `hoy` (solo escribe si de verdad cambió el día). */
+  private refrescarHoy(): void {
+    const iso = toIso(new Date());
+    if (iso !== this.hoy()) this.hoy.set(iso);
+  }
+
+  /**
+   * Centra la columna de hoy una sola vez por carga y solo si la quincena mostrada
+   * la incluye: si el usuario navegó a una quincena vieja se respeta su posición.
+   */
+  private programarCentradoHoy(): void {
+    if (!this.enQuincenaActual()) return;
+    // La tabla se pinta después de esta vuelta del ciclo, por eso se espera un turno.
+    setTimeout(() => {
+      if (this.centrarPendiente && this.centrarColumnaHoy()) this.centrarPendiente = false;
+    }, 0);
+  }
+
+  /**
+   * Desplaza el contenedor de la grilla para dejar la columna de hoy al centro.
+   * El scrollLeft se calcula a mano (y no con scrollIntoView) porque scrollIntoView
+   * también arrastra el scroll vertical de la página. Devuelve false si todavía no
+   * hay tabla en pantalla (grilla vacía o sin cargar).
+   *
+   * Se centra sobre el área REALMENTE visible, descontando el ancho de la columna
+   * de proveedor: esa columna es position: sticky y flota ENCIMA del contenido
+   * desplazado, así que centrar sobre el ancho completo del contenedor dejaba la
+   * columna de hoy debajo de ella. Medido en un celular de 360px (contenedor de
+   * 336px), con un nombre de proveedor de 21-23 caracteres quedaban tapados 22 de
+   * los 54px de la columna: casi la mitad, justo AL CARGAR, que es lo que este
+   * centrado promete evitar. Con los nombres cortos de los datos de prueba no se
+   * notaba.
+   */
+  private centrarColumnaHoy(): boolean {
+    const contenedor = this.scrollGrilla()?.nativeElement;
+    const indice = this.indiceHoy();
+    const columna = indice >= 0 ? this.encabezadosDia()[indice]?.nativeElement : undefined;
+    if (!contenedor || !columna) return false;
+    const cajaContenedor = contenedor.getBoundingClientRect();
+    const cajaColumna = columna.getBoundingClientRect();
+    // Se toma del DOM (y no de una constante) porque el ancho de la columna
+    // congelada depende del nombre del proveedor y del breakpoint.
+    const anchoSticky =
+      this.encabezadoProveedor()?.nativeElement.getBoundingClientRect().width ?? 0;
+    // El área útil empieza donde termina la columna congelada y mide
+    // clientWidth − anchoSticky: es sobre ella que se centra.
+    const desfase =
+      cajaColumna.left -
+      cajaContenedor.left -
+      anchoSticky -
+      (contenedor.clientWidth - anchoSticky - cajaColumna.width) / 2;
+    // El navegador recorta el valor a los límites reales del contenedor.
+    contenedor.scrollLeft += desfase;
+    return true;
   }
 
   /**

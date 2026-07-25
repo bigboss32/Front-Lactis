@@ -161,6 +161,57 @@ mat-sidenav-content {
   .mat-expansion-panel-body { overflow-x: auto; }
 }
 
+// ------------------------------------ diálogos de formulario en celular
+// En el celular, un diálogo centrado sin alto acotado deja las acciones
+// (Guardar/Cancelar) por debajo del teclado y no hay manera de llegar a ellas.
+// Se acota el alto del diálogo con dvh (que sí descuenta la barra del navegador
+// y, junto con interactive-widget=resizes-content de index.html, también el
+// teclado), el contenido pasa a ser lo único que se desplaza y las acciones
+// quedan pegadas al pie del propio diálogo. Solo aplica a los diálogos con
+// formulario: los de confirmación y los de detalle son cortos y no lo necesitan.
+@media (max-width: 700px) {
+  .cdk-overlay-pane.mat-mdc-dialog-panel:has(form) {
+    // Ancho completo. Casi todos los diálogos se abren con un width en píxeles
+    // (640px, 560px…) que gana por ser estilo en línea: lo que de verdad los
+    // recorta al ancho de la pantalla es el max-width.
+    width: 100vw;
+    max-width: 100vw;
+    // Sin el margen que dejaba el 96vw global, las esquinas redondeadas de
+    // Material (28px) dejan ver el fondo oscurecido por cuatro arcos en los
+    // bordes de la pantalla y parece que el diálogo quedó mal pintado. A ancho
+    // completo se cuadran las esquinas, que es el patrón de Material para el
+    // diálogo a pantalla completa.
+    --mat-dialog-container-shape: 0;
+    // El alto acotado se hereda hasta la superficie porque Material usa
+    // max-height: inherit en toda la cadena (contenedor y superficie).
+    max-height: 90dvh;
+
+    // El contenido es el único que se desplaza. min-height: 0 es imprescindible:
+    // sin él no encoge dentro del flex vertical de la superficie y empuja las
+    // acciones fuera de la pantalla.
+    .mat-mdc-dialog-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+    }
+
+    // Acciones siempre visibles. El fondo es el mismo de la superficie del
+    // diálogo (--mat-sys-surface, el valor que Material usa en
+    // --mat-dialog-container-color), así que sigue al tema claro/oscuro y el
+    // contenido no se transparenta por detrás al desplazarse.
+    .mat-mdc-dialog-actions {
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      background: var(--mat-sys-surface);
+      border-top: 1px solid var(--mat-sys-outline-variant);
+    }
+  }
+}
+
 // ---------------------------------------------- alertas visuales en las filas
 // Resaltan condiciones de negocio directamente en los listados.
 tr.mat-mdc-row.fila-alerta > td.mat-mdc-cell {

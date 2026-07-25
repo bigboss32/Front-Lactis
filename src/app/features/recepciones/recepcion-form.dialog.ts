@@ -56,7 +56,8 @@ export interface RecepcionDialogData {
         <app-select-buscable formControlName="transportador_id" [opciones]="transportadores()" label="Transportador" />
         <mat-form-field>
           <mat-label>Cantidad de litros</mat-label>
-          <input matInput type="number" min="0" formControlName="cantidad_litros" required />
+          <!-- cdkFocusInitial: el foco arranca en los litros, no en la fecha (que se llena con el calendario). -->
+          <input matInput type="number" min="0" formControlName="cantidad_litros" required cdkFocusInitial />
           <span matTextSuffix>L</span>
         </mat-form-field>
         <mat-form-field>

@@ -43,7 +43,8 @@ export interface AbonoDialogData {
         </mat-form-field>
         <mat-form-field>
           <mat-label>Valor</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
+          <!-- cdkFocusInitial: el foco arranca en el valor, no en la fecha (que se llena con el calendario). -->
+          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required cdkFocusInitial />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Saldo pendiente: {{ data.saldo | money }}</mat-hint>
         </mat-form-field>

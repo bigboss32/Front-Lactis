@@ -12,6 +12,15 @@ ng serve
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
 
+### Proxy hacia el backend (`proxy.conf.json`)
+
+Los targets del proxy apuntan a `http://127.0.0.1:8080` y **no** a `http://localhost:8080`
+a propósito. En Windows `localhost` resuelve primero a `::1`, donde suelen estar
+escuchando `wslrelay` y `com.docker.backend`; el backend de Lactis escucha en
+`127.0.0.1:8080`. Con `localhost` el dev server termina hablándole al servicio
+equivocado y el login responde `403 Forbidden: origin not allowed`. `proxy.conf.json`
+lo lee el Angular CLI y JSON no admite comentarios, por eso queda anotado aquí.
+
 ## Code scaffolding
 
 Angular CLI includes powerful code scaffolding tools. To generate a new component, run:

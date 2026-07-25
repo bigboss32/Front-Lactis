@@ -40,7 +40,10 @@ import { SelectBuscable } from '../../shared/select-buscable';
           <app-select-buscable formControlName="categoria_id" [opciones]="categorias()" label="Categoría" />
           <mat-form-field class="full">
             <mat-label>Concepto</mat-label>
-            <input matInput formControlName="concepto" required />
+            <!-- cdkFocusInitial: el foco arranca en el concepto, no en la fecha (que se llena con
+                 el calendario). Se elige el concepto y no el valor porque el valor se bloquea
+                 cuando lo calcula el flete por kilo, y un campo bloqueado no recibe el foco. -->
+            <input matInput formControlName="concepto" required cdkFocusInitial />
           </mat-form-field>
           <mat-form-field>
             <mat-label>Proveedor</mat-label>

@@ -93,10 +93,13 @@
     >
       <mat-icon>add</mat-icon> Registrar movimiento
     </button>
+    <!-- Deshabilitado mientras el refresco esté en curso: el arqueo decide sobre
+         el saldo y el cierre no se puede reabrir. -->
     <button
       mat-flat-button
       type="button"
       *hasPermission="'caja:administrar'"
+      [disabled]="cargando()"
       (click)="cerrarCaja()"
     >
       <mat-icon>point_of_sale</mat-icon> Cerrar caja (arqueo)

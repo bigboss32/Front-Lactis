@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -70,6 +71,14 @@ export class CajaDetalleDialog implements OnInit {
     this.cargando.set(true);
     try {
       this.caja.set(await firstValueFrom(this.servicio.getById(this.data.cajaId)));
+    } catch (err) {
+      // Antes fallaba en silencio: el diálogo se quedaba vacío (o con los datos
+      // viejos) sin decir que el refresco no llegó.
+      const detalle =
+        err instanceof HttpErrorResponse
+          ? (err.error?.error?.detail ?? 'No fue posible cargar la caja')
+          : 'No fue posible cargar la caja';
+      this.snackbar.open(detalle, 'OK', { duration: 5000 });
     } finally {
       this.cargando.set(false);
     }
@@ -79,16 +88,24 @@ export class CajaDetalleDialog implements OnInit {
     this.dialog
       .open(MovimientoCajaFormDialog, { data: { cajaId: this.data.cajaId }, width: '560px' })
       .afterClosed()
-      .subscribe((guardado) => {
+      .subscribe(async (guardado) => {
         if (guardado) {
           this.cambios.set(true);
           this.snackbar.open('Movimiento registrado', 'OK', { duration: 3000 });
-          this.cargar();
+          // Se espera el refresco: mientras esté en curso, cargando() mantiene
+          // deshabilitado el botón del arqueo.
+          await this.cargar();
         }
       });
   }
 
   cerrarCaja(): void {
+    // Sin caja o con un refresco en curso no se abre el arqueo (el botón ya está
+    // deshabilitado, pero la guarda cubre el clic disparado por teclado).
+    if (!this.caja() || this.cargando()) return;
+    // Se le pasa SOLO el id: el diálogo de arqueo pide la caja él mismo, porque
+    // decide sobre el saldo (diferencia y nota obligatoria) y el cierre no se
+    // puede reabrir; una foto tomada aquí puede estar vieja.
     this.dialog
       .open(CerrarCajaDialog, { data: { cajaId: this.data.cajaId }, width: '480px' })
       .afterClosed()

@@ -22,6 +22,23 @@
   >
     <mat-icon>chevron_right</mat-icon>
   </button>
+  <!-- Vuelve a la quincena de hoy y deja el día de hoy centrado en la grilla -->
+  <button
+    mat-stroked-button
+    type="button"
+    class="btn-hoy"
+    [disabled]="!puedeIrAHoy()"
+    [matTooltip]="
+      enQuincenaActual() ? 'Centrar el día de hoy en la grilla' : 'Ir a la quincena de hoy'
+    "
+    [attr.aria-label]="
+      enQuincenaActual() ? 'Centrar el día de hoy en la grilla' : 'Ir a la quincena de hoy'
+    "
+    (click)="irAHoy()"
+  >
+    <mat-icon>today</mat-icon>
+    Hoy
+  </button>
 </div>
 
 <!-- Filtros de la grilla: por nombre de proveedor y por ruta -->
@@ -60,13 +77,15 @@
         <p>No hay recepciones registradas en esta quincena</p>
       </div>
     } @else {
-      <div class="grilla-scroll">
+      <div class="grilla-scroll" #scrollGrilla>
         <table class="grilla">
           <thead>
             <tr>
-              <th class="col-proveedor" scope="col">Proveedor</th>
+              <!-- #encabezadoProveedor: de su ancho depende el centrado del día de
+                   hoy (esta columna es sticky y tapa el contenido desplazado). -->
+              <th class="col-proveedor" #encabezadoProveedor scope="col">Proveedor</th>
               @for (dia of dias(); track dia.iso) {
-                <th class="col-dia" [class.hoy]="dia.iso === hoy" scope="col">
+                <th class="col-dia" #encabezadoDia [class.hoy]="dia.iso === hoy()" scope="col">
                   <span class="num-dia">{{ dia.dia }}</span>
                   <span class="abrev-dia">{{ dia.abrev }}</span>
                 </th>
@@ -99,7 +118,7 @@
                 </td>
 
                 @for (dia of dias(); track dia.iso) {
-                  <td class="celda" [class.hoy]="dia.iso === hoy">
+                  <td class="celda" [class.hoy]="dia.iso === hoy()">
                     @if (fila.celdas[dia.iso]; as celda) {
                       @if (celda.liquidada) {
                         <span
@@ -169,7 +188,7 @@
             <tr class="fila-total">
               <td class="col-proveedor">TOTAL DÍA</td>
               @for (dia of dias(); track dia.iso) {
-                <td [class.hoy]="dia.iso === hoy">
+                <td [class.hoy]="dia.iso === hoy()">
                   {{ g.totales_dia[dia.iso] | cantidad }}
                 </td>
               }
