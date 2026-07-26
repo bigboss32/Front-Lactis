@@ -90,7 +90,13 @@
                   <span class="abrev-dia">{{ dia.abrev }}</span>
                 </th>
               }
-              <th class="col-total" scope="col">Litros</th>
+              <!-- .col-total-litros: columna congelada contra el borde derecho, para
+                   que el total de litros del proveedor no se pierda de vista al
+                   arrastrar la quincena (ver estilos del componente).
+                   #encabezadoTotalLitros: su ancho es el que reserva por la derecha,
+                   igual que el de proveedor por la izquierda, y de ambos depende el
+                   centrado del día de hoy. -->
+              <th class="col-total col-total-litros" #encabezadoTotalLitros scope="col">Litros</th>
               <th class="col-total" scope="col">Valor neto</th>
               <th class="col-total" scope="col">Transporte</th>
               <th class="col-total col-total-final" scope="col">Total</th>
@@ -176,7 +182,7 @@
                   </td>
                 }
 
-                <td class="col-total">{{ fila.total_litros | cantidad: 'L' }}</td>
+                <td class="col-total col-total-litros">{{ fila.total_litros | cantidad: 'L' }}</td>
                 <td class="col-total">{{ fila.valor_neto | money }}</td>
                 <td class="col-total">{{ fila.valor_transporte | money }}</td>
                 <td class="col-total col-total-final">{{ totalFila(fila) | money }}</td>
@@ -188,11 +194,16 @@
             <tr class="fila-total">
               <td class="col-proveedor">TOTAL DÍA</td>
               @for (dia of dias(); track dia.iso) {
-                <td [class.hoy]="dia.iso === hoy()">
+                <!-- .celda-dia-total: el total del pie es el número MÁS ANCHO de la
+                     columna del día, así que tiene que entrar en la misma regla de
+                     ancho acotado que el encabezado y las celdas; sin la clase, esta
+                     era la única celda de la columna sin restringir y un total de 5
+                     cifras la ensanchaba sola, dejando la cuadrícula despareja. -->
+                <td class="celda-dia-total" [class.hoy]="dia.iso === hoy()">
                   {{ g.totales_dia[dia.iso] | cantidad }}
                 </td>
               }
-              <td class="col-total">{{ g.total_litros | cantidad: 'L' }}</td>
+              <td class="col-total col-total-litros">{{ g.total_litros | cantidad: 'L' }}</td>
               <td class="col-total">{{ g.total_valor_neto | money }}</td>
               <td class="col-total">{{ g.total_transporte | money }}</td>
               <td class="col-total col-total-final">{{ totalGrilla(g) | money }}</td>

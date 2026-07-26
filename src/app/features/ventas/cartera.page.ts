@@ -30,7 +30,7 @@ import { VentasService } from './ventas.service';
         </button>
       </app-page-header>
 
-      <mat-card class="table-card tarjetas">
+      <mat-card class="table-card tarjetas alto-limitado">
         @if (cargando()) {
           <mat-progress-bar mode="indeterminate" />
         }
@@ -39,47 +39,52 @@ import { VentasService } from './ventas.service';
              encabezado se lee igual que "no hay nada", que es justo lo que hay
              que evitar aquí. -->
         @if (!errorCarga()) {
-          <table mat-table [dataSource]="filas()">
-            <ng-container matColumnDef="cliente">
-              <th mat-header-cell *matHeaderCellDef>Cliente</th>
-              <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cliente'">{{ fila.cliente_nombre }}</td>
-              <td mat-footer-cell *matFooterCellDef>Total</td>
-            </ng-container>
+          <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita
+               un antecesor con scroll al que pegarse, y el paginador queda fuera de
+               este div para no irse de vista al bajar. -->
+          <div class="zona-tabla">
+            <table mat-table [dataSource]="filas()">
+              <ng-container matColumnDef="cliente">
+                <th mat-header-cell *matHeaderCellDef>Cliente</th>
+                <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cliente'">{{ fila.cliente_nombre }}</td>
+                <td mat-footer-cell *matFooterCellDef>Total</td>
+              </ng-container>
 
-            <ng-container matColumnDef="ventas_pendientes">
-              <th mat-header-cell *matHeaderCellDef class="num">Ventas pendientes</th>
-              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Ventas pendientes'">{{ fila.ventas_pendientes }}</td>
-              <td mat-footer-cell *matFooterCellDef></td>
-            </ng-container>
+              <ng-container matColumnDef="ventas_pendientes">
+                <th mat-header-cell *matHeaderCellDef class="num">Ventas pendientes</th>
+                <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Ventas pendientes'">{{ fila.ventas_pendientes }}</td>
+                <td mat-footer-cell *matFooterCellDef></td>
+              </ng-container>
 
-            <ng-container matColumnDef="total_facturado">
-              <th mat-header-cell *matHeaderCellDef class="num">Facturado</th>
-              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Facturado'">{{ fila.total_facturado | money }}</td>
-              <td mat-footer-cell *matFooterCellDef></td>
-            </ng-container>
+              <ng-container matColumnDef="total_facturado">
+                <th mat-header-cell *matHeaderCellDef class="num">Facturado</th>
+                <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Facturado'">{{ fila.total_facturado | money }}</td>
+                <td mat-footer-cell *matFooterCellDef></td>
+              </ng-container>
 
-            <ng-container matColumnDef="total_pagado">
-              <th mat-header-cell *matHeaderCellDef class="num">Pagado</th>
-              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Pagado'">{{ fila.total_pagado | money }}</td>
-              <td mat-footer-cell *matFooterCellDef></td>
-            </ng-container>
+              <ng-container matColumnDef="total_pagado">
+                <th mat-header-cell *matHeaderCellDef class="num">Pagado</th>
+                <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Pagado'">{{ fila.total_pagado | money }}</td>
+                <td mat-footer-cell *matFooterCellDef></td>
+              </ng-container>
 
-            <ng-container matColumnDef="saldo">
-              <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
-              <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">{{ fila.saldo | money }}</td>
-              <td mat-footer-cell *matFooterCellDef class="num">{{ totalSaldo() | money }}</td>
-            </ng-container>
+              <ng-container matColumnDef="saldo">
+                <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+                <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">{{ fila.saldo | money }}</td>
+                <td mat-footer-cell *matFooterCellDef class="num">{{ totalSaldo() | money }}</td>
+              </ng-container>
 
-            <tr mat-header-row *matHeaderRowDef="columnas"></tr>
-            <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
-            <!-- El pie va SIEMPRE presente, nunca dentro de un @if: MatTable
-                 registra las definiciones de fila en el primer render y no
-                 vuelve a pintar el <tfoot> si la definición aparece después,
-                 así que el "Total" no se pintaba jamás y el dueño tenía que
-                 sumar de cabeza. Cuando no hay filas se oculta con [hidden]
-                 (CSS), que no toca el registro de la definición. -->
-            <tr mat-footer-row *matFooterRowDef="columnas" [hidden]="filas().length === 0"></tr>
-          </table>
+              <tr mat-header-row *matHeaderRowDef="columnas; sticky: true"></tr>
+              <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+              <!-- El pie va SIEMPRE presente, nunca dentro de un @if: MatTable
+                   registra las definiciones de fila en el primer render y no
+                   vuelve a pintar el <tfoot> si la definición aparece después,
+                   así que el "Total" no se pintaba jamás y el dueño tenía que
+                   sumar de cabeza. Cuando no hay filas se oculta con [hidden]
+                   (CSS), que no toca el registro de la definición. -->
+              <tr mat-footer-row *matFooterRowDef="columnas; sticky: true" [hidden]="filas().length === 0"></tr>
+            </table>
+          </div>
         }
 
         @if (errorCarga(); as error) {

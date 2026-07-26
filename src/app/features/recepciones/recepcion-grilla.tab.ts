@@ -113,8 +113,61 @@ function quincenaDeHoy(): Quincena {
     .filtros-grilla mat-form-field { min-width: 220px; }
 
     /* --------------------------------------------------------------- grilla */
-    .grilla-card { padding: 0; overflow: hidden; }
-    .grilla-scroll { overflow-x: auto; max-width: 100%; }
+    /*
+     * La tarjeta es el CONTENEDOR DE CONSULTA de la grilla: la compactación de más
+     * abajo se decide sobre su ancho (el ancho real disponible para la tabla) y no
+     * sobre el de la ventana. Ver el bloque "cuadrícula compacta" para el motivo.
+     *
+     * El container-type va en la tarjeta y no en .grilla-scroll porque una regla
+     * @container no puede dar estilo al propio contenedor, y .grilla-scroll sí
+     * necesita cambiar con el ancho (el scroll-padding de la columna congelada).
+     * La tarjeta no lleva padding, así que su caja de contenido mide exactamente
+     * lo mismo que .grilla-scroll.
+     */
+    .grilla-card {
+      padding: 0;
+      overflow: hidden;
+      container-name: grilla-lactis;
+      container-type: inline-size;
+    }
+    .grilla-scroll {
+      overflow-x: auto;
+      max-width: 100%;
+      /*
+       * Ancho de las dos columnas congeladas (proveedor a la izquierda, litros a la
+       * derecha) y de una columna de día. Se declaran como variables porque cambian
+       * con la compactación y porque el scroll-padding de abajo tiene que ir en el
+       * propio .grilla-scroll. Los valores son los medidos: 170px de contenido + 24
+       * de padding + 1 de borde = 195px la de proveedor, y 82px la de litros con
+       * "1.446 L".
+       */
+      --ancho-col-prov: 195px;
+      --ancho-col-litros: 82px;
+      --ancho-col-dia: 68px;
+      /*
+       * Al tabular por los botones de las celdas, el navegador desplaza esta zona
+       * para mostrar lo que recibe el foco; sin el scroll-padding lo daba por
+       * visible aunque quedara DEBAJO de una columna congelada (son sticky: flotan
+       * encima del contenido desplazado, no lo empujan). Medido a 768x1024 con
+       * scrollLeft en 0: los botones 12 a 16 de la primera fila recibían el foco
+       * tapados por la columna de litros —el 14, el 15 y el 16 ni siquiera estaban
+       * en pantalla— y el scrollLeft se quedaba en 0, así que el anillo de foco
+       * desaparecía y un Enter abría el diálogo de una celda que no se veía. Es el
+       * mismo remedio que scroll-padding-top en las tablas con encabezado fijo.
+       *
+       * Se suma UNA COLUMNA DE DÍA al ancho de cada columna congelada, y no es
+       * adorno: al mover el foco, el navegador solo corrige el desplazamiento si el
+       * elemento queda COMPLETAMENTE fuera de la zona útil (y entonces lo centra);
+       * si queda a medias sobre el borde, lo deja quieto. Medido: con el padding
+       * exacto (71px) el botón 13 se centraba bien, pero el 12 se quedaba con 16 de
+       * sus 46px debajo de la columna de litros. Con un día de más, cualquier botón
+       * que quede a medias sobre el borde de la zona termina, en el peor caso, justo
+       * al lado de la columna congelada, nunca debajo.
+       */
+      scroll-padding-inline:
+        calc(var(--ancho-col-prov) + var(--ancho-col-dia))
+        calc(var(--ancho-col-litros) + var(--ancho-col-dia));
+    }
 
     table.grilla {
       width: max-content;
@@ -135,18 +188,37 @@ function quincenaDeHoy(): Quincena {
     }
 
     /* Primera columna fija (proveedor) */
+    /*
+     * width Y max-width con box-sizing: border-box, no min-width + max-width: en una
+     * tabla de layout automático el max-width de una celda es solo una sugerencia y
+     * el navegador ensancha la columna hasta el MÍNIMO DE CONTENIDO del nombre más
+     * largo. Con los nombres reales de una quesera ("Asociación de Productores El
+     * Roble", 34 caracteres) la columna se iba muy por encima de los 240px de tope y
+     * empujaba los días fuera de la pantalla. 195px = los mismos 170 de contenido +
+     * 24 de padding + 1 de borde que ya medía con nombres cortos: en el PC no cambia
+     * nada de lo que se ve hoy, solo deja de crecer con nombres largos.
+     */
     .col-proveedor {
       position: sticky;
       left: 0;
       z-index: 2;
-      min-width: 170px;
-      max-width: 240px;
+      box-sizing: border-box;
+      width: 195px;
+      max-width: 195px;
       padding: 8px 12px;
       text-align: left;
       background: var(--mat-sys-surface-container-low);
       border-right: 1px solid var(--mat-sys-outline-variant);
     }
     .prov { display: flex; flex-direction: column; white-space: normal; }
+    /*
+     * overflow-wrap: anywhere es lo que hace que el ancho de arriba se respete: baja
+     * el mínimo de contenido de la celda al de un carácter, así un nombre largo parte
+     * línea dentro de la columna en vez de ensancharla. Sin esto, width y max-width
+     * son letra muerta.
+     */
+    .prov-nombre,
+    .prov-detalle { overflow-wrap: anywhere; }
     .prov-nombre { font-weight: 700; line-height: 1.2; }
     .prov-detalle {
       font-size: 0.75rem;
@@ -156,6 +228,9 @@ function quincenaDeHoy(): Quincena {
 
     /* Proveedor retirado/eliminado: se conserva (para liquidar) pero se resalta */
     tr.fila-retirado td { background: color-mix(in srgb, #c62828 8%, transparent); }
+    /* La columna congelada repite el tinte con fondo OPACO: el color de la fila es
+       semitransparente y por debajo de una celda fija se vería el contenido que se
+       desplaza. */
     tr.fila-retirado .col-proveedor {
       background: color-mix(in srgb, #c62828 12%, var(--mat-sys-surface-container-low));
     }
@@ -263,6 +338,49 @@ function quincenaDeHoy(): Quincena {
     }
     th.col-total { vertical-align: bottom; border-left: 1px solid var(--mat-sys-outline-variant); }
 
+    /*
+     * Total de litros: columna FIJA pegada al borde derecho, el espejo de la
+     * columna de proveedor. Así, al arrastrar la quincena, nunca se pierde de vista
+     * de quién es la fila (izquierda) ni cuántos litros lleva (derecha).
+     *
+     * Se congela SOLO esta de las cuatro columnas de totales: las tres de pesos
+     * suman 255px más y una columna fija RESERVA su ancho contra el borde derecho,
+     * así que congelarlas dejaría el área de días en menos de 500px —por debajo de
+     * los 736px que ocupa la quincena— y volvería a no caber. Las de pesos quedan a
+     * un arrastre corto (240px en la tablet apaisada).
+     *
+     * Desde 701px, o sea de tablet en adelante y NO en el celular: en 360px de
+     * pantalla esos ~70px reservados son un quinto del ancho y se comerían dos de
+     * los cuatro días que hoy se alcanzan a ver. En el celular la grilla se
+     * arrastra exactamente igual que antes.
+     *
+     * OJO, ESTÁ MEDIDO: en la tablet APAISADA esta columna NO llega a congelarse.
+     * right: 0 en sticky solo empuja el elemento cuando su posición natural se
+     * saldría por el borde derecho del contenedor, y a 1024px la tabla desborda
+     * apenas 240px: la columna se mueve con el contenido (medido a 1024x768: x=899
+     * con scrollLeft 0 y x=659 con scrollLeft 240). A 768x1024 sí se pega. No hace
+     * daño —en apaisada la quincena entera cabe, así que no hay nada que perder de
+     * vista—, pero que nadie apoye una decisión futura en "en apaisada está
+     * congelada". El centrado del día de hoy ya lo tiene en cuenta: ver
+     * anchoTotalCongelado().
+     */
+    @media (min-width: 701px) {
+      .col-total-litros {
+        position: sticky;
+        right: 0;
+        /* Por debajo de la columna de proveedor (z-index: 2), que es la que debe
+           mandar si en una pantalla angosta las dos llegaran a tocarse. */
+        z-index: 1;
+        /* Fondo opaco obligatorio: una celda fija transparente deja ver por debajo
+           las columnas de pesos al desplazar. Es el mismo fondo de la tarjeta, así
+           que no se nota como una columna aparte (y sigue al tema claro/oscuro). */
+        background: var(--mat-sys-surface-container-low);
+      }
+      tr.fila-retirado .col-total-litros {
+        background: color-mix(in srgb, #c62828 12%, var(--mat-sys-surface-container-low));
+      }
+    }
+
     /* Columna "Total" (leche + transporte): se resalta en color primario */
     .col-total-final { color: var(--mat-sys-primary); }
     th.col-total-final { font-weight: 700; }
@@ -315,17 +433,59 @@ function quincenaDeHoy(): Quincena {
 
     .empty-state { padding: 48px 16px; }
 
-    /* ----------------------------------------- cuadrícula adaptada al celular */
-    /* La grilla sigue siendo cuadrícula en móvil: se desplaza en horizontal y la
-       columna del proveedor queda fija; solo se compacta para que quepan más días. */
-    @media (max-width: 700px) {
-      /* El título de la quincena cede ancho para que quepan las flechas y "Hoy". */
-      .selector-quincena { gap: 4px; }
-      .etiqueta-quincena { min-width: 0; flex: 1 1 auto; font-size: 1.05rem; }
-      .btn-hoy { padding: 0 10px; }
-
+    /* ------------------------------ cuadrícula compacta (por ancho de contenido) */
+    /*
+     * La grilla sigue siendo cuadrícula: se desplaza en horizontal y la columna de
+     * proveedor queda fija (la de litros también, pero solo de tablet en adelante);
+     * lo único que cambia es que se compacta para que quepan más días de una mirada.
+     *
+     * SE DECIDE POR EL ANCHO DEL CONTENEDOR (container query), no por el de la
+     * ventana. Con una @media de 1279px el PC se quedaba sin la mejora aunque la
+     * necesitara igual: desde 1280px vuelve el menú lateral fijo (252px medidos), así
+     * que el ancho útil a 1280px es prácticamente el mismo que en la tablet apaisada
+     * con el menú plegado. Medido antes de este arreglo: 1024x768 → franja de 961px,
+     * día de 46px, 16 de 16 días; 1280x800 → franja de 965px (4px MÁS) pero día de
+     * 68px y solo 9 de 16 días. El dueño veía la quincena completa en la tablet y
+     * recortada en el computador, con más pantalla.
+     *
+     * Se eligió la container query (opción a) y no estirar la @media a ~1546px porque
+     * no hay que saber cuánto mide el menú: la pregunta que importa es "¿cuánto ancho
+     * le queda a la tabla?", y eso es exactamente lo que mide el contenedor. Sirve
+     * igual si mañana el menú cambia de ancho, si se pliega a mano o si la grilla se
+     * mete en un panel más estrecho.
+     *
+     * 1364px = el ancho de contenido a partir del cual la quincena YA cabe sin
+     * compactar, así que por encima no se compacta y la tabla no queda comprimida sin
+     * necesidad: 195px de la columna de proveedor + 16 días de 68px (1088px) + 82px
+     * de la columna de litros congelada = 1365px. Medido a 1920x1080 (contenedor de
+     * 1400px): 16 de 16 días visibles sin compactar.
+     */
+    @container grilla-lactis (max-width: 1364px) {
       table.grilla { font-size: 0.8rem; }
-      .col-proveedor { min-width: 122px; max-width: 150px; padding: 6px 8px; }
+      /*
+       * Ancho DE VERDAD (width, no min-width): ver el comentario de .col-proveedor
+       * más arriba. Medido a 1024x768 sustituyendo solo el nombre del productor:
+       * antes, "Productor 1" (11 caracteres) daba 139px y la quincena cabía, pero
+       * "Hacienda Santa Bárbara" (22) daba 159px y "Asociación de Productores El
+       * Roble" (34) daba 167px, y con eso ya NO cabía. O sea: la mejora se sostenía
+       * solo con los nombres de los datos de prueba. Con width: 122px la columna se
+       * queda en 122px con cualquier nombre: el de 34 caracteres parte en tres
+       * líneas ("Asociación de" / "Productores El" / "Roble", siempre por los
+       * espacios, nunca a mitad de palabra) y su fila pasa de 43 a 75px de alto.
+       */
+      .col-proveedor {
+        box-sizing: border-box;
+        width: 122px;
+        max-width: 122px;
+        padding: 6px 8px;
+      }
+      /* Las franjas congeladas y los días miden menos: el desplazamiento del foco
+         al tabular se ajusta solo. */
+      .grilla-scroll {
+        --ancho-col-prov: 122px;
+        --ancho-col-litros: 71px;
+        --ancho-col-dia: 46px;
+      }
       .prov-nombre { font-size: 0.82rem; }
       .prov-detalle { font-size: 0.7rem; }
       th.col-dia { min-width: 42px; }
@@ -333,6 +493,88 @@ function quincenaDeHoy(): Quincena {
       .celda-btn,
       .celda-contenido { min-height: 42px; padding: 4px; }
       .col-total { padding: 6px 8px; }
+    }
+
+    /* ------------------------------------- ancho de los días de tablet en adelante */
+    /*
+     * Desde 701px de VENTANA (o sea de tablet en adelante, nunca en el celular: allí
+     * la geometría no se toca) y solo cuando el CONTENIDO obliga a compactar.
+     *
+     * box-sizing: border-box es la clave: las celdas de tabla son content-box por
+     * omisión, así que el min-width se SUMABA a los 12px de padding del encabezado
+     * y cada día terminaba midiendo 54px en vez de los 42px que aparentaba la regla
+     * de arriba. 16 días eran 864px y no cabían en los 751px libres de la tablet
+     * apaisada. Con border-box el min-width ya es el ancho real de la columna.
+     *
+     * 46px y no 42px porque el contenido más ancho de la columna es el total del pie
+     * ("1.446" = 33px + 12px de padding = 45px): por debajo de eso el navegador
+     * ensancha solo las columnas con datos y los días quedan desparejos. Con 46px
+     * las 16 columnas miden igual y suman 736px, que sí caben.
+     *
+     * Las celdas de día del PIE (.celda-dia-total) van en la misma regla: son las que
+     * llevan el número más ancho de la columna —el que justifica los 46px— y eran
+     * justo las que se habían quedado sin restringir. Medido a 1024x768 sustituyendo
+     * solo el total del pie de un día: con "1.446" todas medían 46px, pero con
+     * "12.345" esa sola columna se iba a 52,4px y con "1.446,5" a 55,6px, y la
+     * cuadrícula quedaba despareja.
+     *
+     * Cuentas del pie, medidas con la fuente real (Roboto 700, cifras tabulares):
+     * a 0,8rem "12.345" mide 40,4px y "123.456" 47,8px, así que bajar el padding
+     * horizontal a 1px (44px libres de los 46) alcanza para 5 cifras y hasta para
+     * "1.446,5" (43,6px), pero NO para 6 cifras. Por eso el total del pie baja
+     * además a 0,7rem —el mismo tamaño que la abreviatura del día del encabezado,
+     * y en negrita— con lo que "123.456" mide 41,8px y sobran 2,2px. Es el precio de
+     * que la cuadrícula quede pareja con cualquier total: un solo número más ancho
+     * desparejaba las 16 columnas.
+     *
+     * COSTE ASUMIDO: el objetivo táctil de la celda del día baja de 68x46 a 46x42px,
+     * por debajo del mínimo de 48px que recomienda Material, y es el control que se
+     * pulsa unas 180 veces por quincena (12 productores x 15 días). Es un canje
+     * deliberado a cambio de que la quincena entera entre en pantalla y no haya que
+     * arrastrar la franja para cerrarla.
+     *
+     * Y no basta con los 46px de ancho VISIBLE que sobran en apaisada: a 48px la
+     * fila entera (122 de proveedor + 16x48 = 768 + 71 de litros) mide 961px, o sea
+     * EXACTAMENTE el contenedor de la tablet apaisada, y con eso la columna de litros
+     * empieza a pegarse al borde derecho y a tapar el último día —justo lo que
+     * describe el comentario de .col-total-litros—. Con 46px la fila mide 929px y
+     * quedan 32px de margen, que es lo que aguanta que la columna de litros crezca
+     * con totales de 5 cifras ("12.345 L") sin que se pegue. Subir a 48px pide antes
+     * recortar por otro lado (por ejemplo, mover una de las tres columnas de pesos).
+     */
+    @media (min-width: 701px) {
+      @container grilla-lactis (max-width: 1364px) {
+        th.col-dia,
+        td.celda,
+        td.celda-dia-total { box-sizing: border-box; min-width: 46px; }
+        tfoot .fila-total td.celda-dia-total {
+          padding-left: 1px;
+          padding-right: 1px;
+          font-size: 0.7rem;
+        }
+      }
+    }
+
+    /* En el celular la columna de litros no se congela (ver .col-total-litros), así
+       que por la derecha no hay nada que tape el foco al tabular; queda solo el día
+       de margen, que sirve para que un botón cortado por el borde del contenedor
+       entre completo en pantalla al recibir el foco. El día mide 54px porque aquí no
+       se aplica la regla de los 46px (esa es de tablet en adelante). */
+    @media (max-width: 700px) {
+      .grilla-scroll {
+        --ancho-col-litros: 0px;
+        --ancho-col-dia: 54px;
+      }
+    }
+
+    /* ------------------------------------- encabezado adaptado al celular */
+    /* Solo celular: el título de la quincena cede ancho para que quepan las flechas
+       y el botón "Hoy" en 360px. En la tablet NO se aplica —ahí sobra sitio y
+       encogerlo se vería mal. */
+    @media (max-width: 700px) {
+      .selector-quincena { gap: 4px; }
+      .etiqueta-quincena { min-width: 0; flex: 1 1 auto; font-size: 1.05rem; }
+      .btn-hoy { padding: 0 10px; }
     }
   `,
 })
@@ -374,6 +616,13 @@ export class RecepcionGrillaTab implements OnInit {
    * es la parte del contenedor que NO queda libre para el contenido desplazado.
    */
   private readonly encabezadoProveedor = viewChild<ElementRef<HTMLElement>>('encabezadoProveedor');
+  /**
+   * Encabezado del total de litros: de tablet en adelante es position: sticky
+   * contra el borde derecho, así que reserva su ancho igual que la columna de
+   * proveedor reserva el suyo por la izquierda.
+   */
+  private readonly encabezadoTotalLitros =
+    viewChild<ElementRef<HTMLElement>>('encabezadoTotalLitros');
   /** Queda pendiente centrar la columna de hoy cuando termine la carga en curso. */
   private centrarPendiente = true;
 
@@ -548,10 +797,10 @@ export class RecepcionGrillaTab implements OnInit {
    * también arrastra el scroll vertical de la página. Devuelve false si todavía no
    * hay tabla en pantalla (grilla vacía o sin cargar).
    *
-   * Se centra sobre el área REALMENTE visible, descontando el ancho de la columna
-   * de proveedor: esa columna es position: sticky y flota ENCIMA del contenido
+   * Se centra sobre el área REALMENTE visible, descontando el ancho de las dos
+   * columnas congeladas: son position: sticky y flotan ENCIMA del contenido
    * desplazado, así que centrar sobre el ancho completo del contenedor dejaba la
-   * columna de hoy debajo de ella. Medido en un celular de 360px (contenedor de
+   * columna de hoy debajo de ellas. Medido en un celular de 360px (contenedor de
    * 336px), con un nombre de proveedor de 21-23 caracteres quedaban tapados 22 de
    * los 54px de la columna: casi la mitad, justo AL CARGAR, que es lo que este
    * centrado promete evitar. Con los nombres cortos de los datos de prueba no se
@@ -564,20 +813,67 @@ export class RecepcionGrillaTab implements OnInit {
     if (!contenedor || !columna) return false;
     const cajaContenedor = contenedor.getBoundingClientRect();
     const cajaColumna = columna.getBoundingClientRect();
-    // Se toma del DOM (y no de una constante) porque el ancho de la columna
-    // congelada depende del nombre del proveedor y del breakpoint.
+    // Se toman del DOM (y no de constantes) porque el ancho de las columnas
+    // congeladas depende del nombre del proveedor, de las cifras y del breakpoint.
     const anchoSticky =
       this.encabezadoProveedor()?.nativeElement.getBoundingClientRect().width ?? 0;
-    // El área útil empieza donde termina la columna congelada y mide
-    // clientWidth − anchoSticky: es sobre ella que se centra.
+    const anchoTotalFijo = this.anchoTotalCongelado();
+    // El área útil es la franja entre las dos columnas congeladas: es sobre ella
+    // que se centra.
+    const areaUtil = contenedor.clientWidth - anchoSticky - anchoTotalFijo;
+    // En la tablet la quincena completa cabe en esa franja: ahí no hay nada que
+    // centrar y desplazarla solo esconde los primeros días debajo de la columna de
+    // proveedor. Se deja al comienzo, con los 15 o 16 días a la vista.
+    if (this.anchoColumnasDia() <= areaUtil) {
+      contenedor.scrollLeft = 0;
+      return true;
+    }
     const desfase =
-      cajaColumna.left -
-      cajaContenedor.left -
-      anchoSticky -
-      (contenedor.clientWidth - anchoSticky - cajaColumna.width) / 2;
+      cajaColumna.left - cajaContenedor.left - anchoSticky - (areaUtil - cajaColumna.width) / 2;
     // El navegador recorta el valor a los límites reales del contenedor.
     contenedor.scrollLeft += desfase;
     return true;
+  }
+
+  /**
+   * Ancho que le quita al área útil la columna de total de litros congelada contra
+   * el borde derecho. Devuelve 0 si no le quita nada, y hay DOS casos:
+   *
+   * - en el celular no es sticky (ver los estilos): el área útil llega hasta el
+   *   borde del contenedor;
+   * - de tablet en adelante es sticky pero puede no estar PEGADA: right: 0 solo
+   *   empuja el elemento cuando su posición natural se saldría por el borde derecho,
+   *   y en la tablet apaisada la tabla desborda tan poco que la columna se mueve con
+   *   el contenido. Mientras no esté pegada no tapa ninguna columna de día, así que
+   *   descontar su ancho era regalar ~70px de holgura justo donde hacen falta: con
+   *   ellos, a 1024x768 la quincena cabe en la franja y el centrado la deja quieta
+   *   al comienzo en vez de desplazarla.
+   *
+   * Se mira si está pegada comparando su borde derecho con el borde derecho ÚTIL del
+   * contenedor (clientWidth, que ya descuenta una barra de desplazamiento). Pegarse
+   * exige un scrollLeft MENOR que el de ahora, así que si no está pegada en esta
+   * posición no puede quedar pegada al desplazar la franja hacia la derecha, que es
+   * lo único que hace el centrado.
+   */
+  private anchoTotalCongelado(): number {
+    const encabezado = this.encabezadoTotalLitros()?.nativeElement;
+    const contenedor = this.scrollGrilla()?.nativeElement;
+    if (!encabezado || !contenedor) return 0;
+    if (getComputedStyle(encabezado).position !== 'sticky') return 0;
+    const caja = encabezado.getBoundingClientRect();
+    const bordeUtil = contenedor.getBoundingClientRect().left + contenedor.clientWidth;
+    // 1px de tolerancia: los anchos de columna salen fraccionarios.
+    const pegada = caja.right >= bordeUtil - 1;
+    return pegada ? caja.width : 0;
+  }
+
+  /** Ancho que ocupan juntas todas las columnas de día. */
+  private anchoColumnasDia(): number {
+    const encabezados = this.encabezadosDia();
+    if (encabezados.length === 0) return 0;
+    const primero = encabezados[0].nativeElement.getBoundingClientRect();
+    const ultimo = encabezados[encabezados.length - 1].nativeElement.getBoundingClientRect();
+    return ultimo.right - primero.left;
   }
 
   /**

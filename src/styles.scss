@@ -264,6 +264,98 @@ tr.mat-mdc-row.fila-peligro > td.mat-mdc-cell {
   background: color-mix(in srgb, #c62828 13%, transparent);
 }
 
+// ------------------------------------------- encabezado fijo en tablas largas
+// Opt-in por tabla: la tarjeta se marca con .table-card.alto-limitado, el
+// <table> se envuelve en <div class="zona-tabla"> y el matHeaderRowDef lleva
+// sticky. Al bajar por un listado largo los títulos de las columnas dejan de
+// perderse: en una pantalla de plata, "Valor total", "Anticipos" y "Saldo" sin
+// encabezado son tres cifras iguales y se lee la columna equivocada.
+//
+// Poner sticky en el encabezado NO basta por sí solo: una celda sticky se pega
+// al borde de su ANTECESOR DESPLAZABLE, y .table-card tiene overflow: auto pero
+// sin alto acotado, así que nunca desborda en vertical (el que se desplaza es la
+// página). Por eso hay que acotar el alto de la zona de la tabla: el scroll
+// vertical pasa a ocurrir DENTRO y el encabezado ya tiene a qué pegarse.
+//
+// El paginador va FUERA de .zona-tabla (hermano, no hijo): dentro se saldría de
+// vista al bajar, y el "1 – 20 de 240" y los botones de página se necesitan
+// justo cuando se está al final del listado.
+//
+// NO usar en tablas cortas ni en las que viven dentro de un diálogo: ahí acotar
+// el alto solo estorba.
+.table-card.alto-limitado {
+  // La tarjeta deja de ser la que se desplaza (y sigue recortando sus esquinas
+  // redondeadas); el desplazamiento, vertical y horizontal, pasa a la zona
+  // interior. Gana por especificidad al overflow-x de la @media de 900px.
+  overflow: hidden;
+
+  .zona-tabla {
+    overflow: auto;
+    // Sin esto no encoge dentro del flex vertical de la tarjeta y el alto
+    // máximo no llega a aplicarse (mismo motivo que en los diálogos).
+    min-height: 0;
+    // Desplazamiento con inercia en tablet/iPad, igual que mat-sidenav-content.
+    -webkit-overflow-scrolling: touch;
+    // Al tabular por los botones de las filas el navegador desplaza la zona para
+    // mostrar lo que recibe el foco; sin esto lo dejaría justo debajo del
+    // encabezado fijo, o sea tapado. 56px = alto de la fila de encabezado.
+    scroll-padding-top: 56px;
+  }
+
+  // Fondo OPACO del encabezado: es el mismo color que pinta el propio <table>
+  // de Material (--mat-table-background-color, o sea --mat-sys-surface), así que
+  // se ve idéntico a hoy; si quedara transparente, las filas se verían por
+  // debajo al desplazarse. La variable del tema ya sigue a claro/oscuro porque
+  // html.dark cambia color-scheme, así que no hace falta regla aparte.
+  th.mat-mdc-header-cell {
+    background: var(--mat-sys-surface);
+    // Línea de separación garantizada: con las celdas en position: sticky el
+    // border-bottom de la tabla puede dejar de pintarse y el encabezado se
+    // confundiría con la primera fila.
+    box-shadow: inset 0 -1px 0 var(--mat-sys-outline-variant);
+  }
+
+  // Mismo trato para la fila de totales cuando la tabla la tiene (cartera): con
+  // el pie también pegado, la cifra grande no se va de vista al desplazarse.
+  td.mat-mdc-footer-cell {
+    background: var(--mat-sys-surface);
+    box-shadow: inset 0 1px 0 var(--mat-sys-outline-variant);
+  }
+}
+
+// El alto acotado solo donde vale la pena:
+// - min-width: 701px  → por encima del modo "tabla como tarjetas" del celular.
+//   Ahí el thead está oculto (no hay encabezado que fijar) y meter una zona con
+//   scroll propio dentro de la página solo estorba al arrastrar el dedo.
+// - min-height: 800px → antes eran 640px, y entre 640 y 800 el remedio era peor
+//   que la enfermedad. El umbral se había calculado contando solo la caja de la
+//   tabla (62dvh + paginador + barra) y NO los ~300-350px de encabezado de página,
+//   barra de filtros y rango de fechas que van ENCIMA de la tarjeta. Medido en
+//   /reventa/compras con 12 filas: a 1024x768 la zona arranca en y=348, mide
+//   476px y deja 7 filas al cargar (8 dentro de la zona) con el paginador en
+//   y=824, o sea fuera de la pantalla; a 1366x768 —el portátil más común— arranca
+//   en y=296 y deja 8 de 12 filas, con el paginador en y=772. Se ganaba el
+//   encabezado fijo y se perdía un tercio de las filas de un vistazo más un
+//   SEGUNDO desplazamiento que administrar (el de dentro de la zona). Por debajo
+//   de 800px de alto no se acota nada: la página se desplaza como siempre, con un
+//   solo arrastre se ven las 12 filas y el paginador se alcanza.
+// dvh y no vh: descuenta la barra del navegador en móvil y tablet.
+@media (min-width: 701px) and (min-height: 800px) {
+  .table-card.alto-limitado .zona-tabla {
+    // No 62dvh a ciegas: se acota contra el espacio que DE VERDAD sobra. Los 260px
+    // son lo que la zona no puede ocupar: ~200px de encabezado de página y barra de
+    // filtros por encima de la tarjeta más los 56px del paginador por debajo.
+    //
+    // El piso va con max() y NO con min-height: un min-height ESTIRA la zona, así
+    // que una tabla de 3 filas quedaría con media pantalla en blanco. Sobre el
+    // max-height, el piso solo levanta el TOPE: la zona sigue midiendo lo que mida
+    // la tabla y, si la tabla no llega a llenarlo, no se acota ni aparece barra de
+    // desplazamiento. 36rem = 576px = el encabezado fijo (56px) + 10 filas de 52px,
+    // el mínimo para que acotar el alto siga valiendo la pena.
+    max-height: max(36rem, calc(100dvh - 260px));
+  }
+}
+
 // ------------------------------------------------ tablas como tarjetas (móvil)
 // Opt-in: la tabla se marca con .table-card.tarjetas y cada celda lleva
 // [attr.data-label]. En celular la tabla deja de desplazarse en horizontal y
