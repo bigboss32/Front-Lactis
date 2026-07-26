@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,14 +10,16 @@ import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 
 @Component({
   selector: 'app-abrir-caja-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
-    MatDatepickerModule, MilesInputDirective,
+    MatDatepickerModule, MilesInputDirective, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Abrir caja</h2>
@@ -45,7 +46,11 @@ import { protegerCambios } from '../../shared/proteger-cambios';
         form="form-abrir-caja"
         [disabled]="form.invalid || guardando()"
       >
-        Abrir caja
+        @if (guardando()) {
+          <app-spinner-boton /> Abriendo caja…
+        } @else {
+          Abrir caja
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -77,11 +82,7 @@ export class AbrirCajaDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible abrir la caja')
-          : 'No fue posible abrir la caja';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible abrir la caja');
     } finally {
       this.guardando.set(false);
     }

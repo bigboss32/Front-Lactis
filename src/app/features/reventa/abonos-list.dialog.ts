@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -11,6 +10,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MoneyPipe } from '../../shared/pipes';
 import { AbonoReventa, ReventaService } from './reventa.service';
 
@@ -125,11 +125,7 @@ export class AbonosListDialog {
           this.cambiado = true;
           this.snackbar.open('Abono eliminado', 'OK', { duration: 3000 });
         } catch (err) {
-          const detalle =
-            err instanceof HttpErrorResponse
-              ? (err.error?.error?.detail ?? 'No fue posible eliminar el abono')
-              : 'No fue posible eliminar el abono';
-          this.snackbar.open(detalle, 'OK', { duration: 5000 });
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible eliminar el abono');
         } finally {
           this.eliminando.set(false);
         }

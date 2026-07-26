@@ -7,10 +7,10 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Empresa } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EmpresasService } from './empresas.service';
 
 /**
@@ -110,11 +110,7 @@ export class ReiniciarEmpresaDialog {
       this.snackbar.open('Datos reiniciados', 'OK', { duration: 3000 });
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible reiniciar')
-          : 'No fue posible reiniciar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible reiniciar');
     } finally {
       this.guardando.set(false);
     }

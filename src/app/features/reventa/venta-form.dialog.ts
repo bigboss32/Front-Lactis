@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -16,7 +15,9 @@ import { firstValueFrom } from 'rxjs';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
 
 /** Precio de venta de queso sugerido por kilo (del cuaderno del dueño). */
@@ -32,7 +33,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatCheckboxModule, MatDatepickerModule, MoneyPipe,
-    MilesInputDirective, MatAutocompleteModule,
+    MilesInputDirective, MatAutocompleteModule, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar venta' : 'Nueva venta de queso' }}</h2>
@@ -116,7 +117,11 @@ const PRECIO_VENTA_SUGERIDO = 19500;
         form="form-venta-queso"
         [disabled]="form.invalid || guardando()"
       >
-        Guardar
+        @if (guardando()) {
+          <app-spinner-boton /> Guardando…
+        } @else {
+          Guardar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -237,11 +242,7 @@ export class VentaQuesoFormDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar la venta')
-          : 'No fue posible guardar la venta';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar la venta');
     } finally {
       this.guardando.set(false);
     }

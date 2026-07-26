@@ -1,6 +1,5 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -12,9 +11,11 @@ import { firstValueFrom } from 'rxjs';
 
 import { Venta } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { VentasService } from './ventas.service';
 
 @Component({
@@ -22,7 +23,7 @@ import { VentasService } from './ventas.service';
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MoneyPipe,
-    MilesInputDirective,
+    MilesInputDirective, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Registrar pago — venta Nº {{ data.venta.numero }}</h2>
@@ -66,7 +67,11 @@ import { VentasService } from './ventas.service';
         form="form-pago"
         [disabled]="form.invalid || guardando()"
       >
-        Registrar pago
+        @if (guardando()) {
+          <app-spinner-boton /> Registrando pago…
+        } @else {
+          Registrar pago
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -110,11 +115,9 @@ export class PagoFormDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar el pago')
-          : 'No fue posible registrar el pago';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      // Igual que en el abono: si el resultado quedó en duda, el aviso se queda
+      // en pantalla hasta que el usuario lo cierre.
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible registrar el pago');
     } finally {
       this.guardando.set(false);
     }

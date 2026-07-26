@@ -1,4 +1,4 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -97,7 +97,21 @@ export class AuthService {
   }
 
   // ---------------------------------------------------------------- refresh
-  /** Renueva el access token; comparte una única petición entre llamadas concurrentes. */
+  /**
+   * Renueva el access token; comparte una única petición entre llamadas concurrentes.
+   *
+   * Devuelve `null` SOLO cuando la sesión de verdad se acabó (el servidor
+   * rechazó el refresh token). Si el fallo fue de RED, RECHAZA con ese error en
+   * vez de devolver null, y deja los tokens donde estaban.
+   *
+   * Por qué importa la diferencia: antes cualquier fallo borraba qe.access y
+   * qe.refresh. Con el token vencido de la noche a la mañana y Render
+   * arrancando en frío (~45 s contra un límite de 30 s), la primera acción del
+   * día —registrar un abono— acababa así: 401 -> refresh -> tiempo agotado ->
+   * sesión borrada -> navegación a /login -> el diálogo del abono se cierra
+   * (MatDialog usa closeOnNavigation) y el dueño pierde lo que había escrito,
+   * sin que hubiera nada malo con su sesión.
+   */
   refrescar(): Promise<string | null> {
     const refresh = this.refreshToken;
     if (!refresh) return Promise.resolve(null);
@@ -108,14 +122,30 @@ export class AuthService {
         this.guardarTokens(tokens);
         return tokens.access_token;
       })
-      .catch(() => {
-        this.limpiarSesion();
-        return null;
+      .catch((error: unknown) => {
+        // Solo un rechazo de credenciales prueba que la sesión ya no sirve.
+        if (this.esRechazoDeCredenciales(error)) {
+          this.limpiarSesion();
+          return null;
+        }
+        // Fallo de red: el refresh token sigue siendo bueno, así que no se toca
+        // nada. Se propaga para que el interceptor lo traduzca a "sin conexión"
+        // en vez de mandar al login.
+        throw error;
       })
       .finally(() => {
         this.refreshPromise = null;
       });
     return this.refreshPromise;
+  }
+
+  /**
+   * ¿El servidor rechazó las credenciales? Es lo único que justifica cerrar la
+   * sesión. Un status 0, un TimeoutError o un 5xx significan que no hubo
+   * respuesta, no que el refresh token esté vencido.
+   */
+  private esRechazoDeCredenciales(error: unknown): boolean {
+    return error instanceof HttpErrorResponse && (error.status === 401 || error.status === 403);
   }
 
   // ---------------------------------------------------------------- empresa

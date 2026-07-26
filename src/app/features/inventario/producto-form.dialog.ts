@@ -6,11 +6,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Producto } from '../../core/models';
 import { CATEGORIAS_PRODUCTO, ProductosService } from './inventario.service';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 
@@ -106,11 +106,7 @@ export class ProductoFormDialog {
       }
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar')
-          : 'No fue posible guardar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar');
     } finally {
       this.guardando.set(false);
     }

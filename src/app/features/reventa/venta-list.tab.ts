@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -22,6 +21,7 @@ import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
 import { ReventaEstadoCuentaDialog } from './estado-cuenta.dialog';
@@ -102,6 +102,12 @@ export class VentaQuesoListTab {
   readonly filas = signal<VentaQueso[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
+  /**
+   * Mensaje de la consulta fallida. Mientras esté puesto NO se muestra el estado
+   * vacío: si el listado no cargó después de registrar un abono, decir que no
+   * hay ventas hace que el abono se registre otra vez.
+   */
+  readonly errorCarga = signal<string | null>(null);
   readonly page = signal(1);
   readonly pageSize = signal(20);
 
@@ -135,6 +141,7 @@ export class VentaQuesoListTab {
 
   async cargar(): Promise<void> {
     this.cargando.set(true);
+    this.errorCarga.set(null);
     try {
       const respuesta = await firstValueFrom(
         this.servicio.listarVentas({
@@ -148,6 +155,17 @@ export class VentaQuesoListTab {
       );
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
+    } catch (err) {
+      // Se limpia lo anterior: si la consulta falló, los saldos que quedaran en
+      // pantalla ya no se pueden confirmar y se leerían como si fueran de hoy.
+      this.filas.set([]);
+      this.total.set(0);
+      this.errorCarga.set(
+        detalleDeError(
+          err,
+          'No se pudieron cargar las ventas. Revise la conexión e intente de nuevo.',
+        ),
+      );
     } finally {
       this.cargando.set(false);
     }
@@ -300,9 +318,9 @@ export class VentaQuesoListTab {
       this.snackbar.open(mensaje, 'OK', { duration: 3000 });
       this.notificar();
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? porDefecto) : porDefecto;
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      // Anular/registrar SÍ guardan: si el resultado quedó en duda, el aviso se
+      // queda hasta que el usuario lo cierre (ver shared/errores-ui.ts).
+      avisarErrorAlGuardar(this.snackbar, err, porDefecto);
     }
   }
 }

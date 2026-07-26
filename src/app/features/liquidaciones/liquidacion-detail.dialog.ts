@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -14,6 +13,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Liquidacion } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
@@ -114,8 +114,13 @@ export class LiquidacionDetailDialog {
     this.descargando.set(true);
     try {
       await firstValueFrom(this.servicio.descargarPdf(this.liq().id));
-    } catch {
-      this.snackbar.open('No fue posible descargar el PDF', 'OK', { duration: 5000 });
+    } catch (err) {
+      // Con `catch {` se perdía el mensaje que el interceptor sí había generado
+      // ("Sin conexión…", "El servidor tardó demasiado…") y quedaba un texto fijo
+      // que no dice qué pasó ni qué hacer.
+      this.snackbar.open(detalleDeError(err, 'No fue posible descargar el PDF'), 'OK', {
+        duration: 5000,
+      });
     } finally {
       this.descargando.set(false);
     }
@@ -139,8 +144,10 @@ export class LiquidacionDetailDialog {
           { duration: 4000 },
         );
       }
-    } catch {
-      this.snackbar.open('No fue posible compartir el recibo', 'OK', { duration: 5000 });
+    } catch (err) {
+      this.snackbar.open(detalleDeError(err, 'No fue posible compartir el recibo'), 'OK', {
+        duration: 5000,
+      });
     } finally {
       this.compartiendo.set(false);
     }
@@ -170,11 +177,9 @@ export class LiquidacionDetailDialog {
       this.liq.set(actualizada);
       this.snackbar.open(mensaje, 'OK', { duration: 3000 });
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible completar la acción')
-          : 'No fue posible completar la acción';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      // Aprobar/pagar/anular SÍ guardan: si el resultado quedó en duda, el aviso
+      // se queda hasta que el usuario lo cierre.
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible completar la acción');
     } finally {
       this.procesando.set(false);
     }

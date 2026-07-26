@@ -1,7 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import {
   MAT_DIALOG_DATA,
@@ -18,6 +17,7 @@ import { firstValueFrom } from 'rxjs';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Pago, Venta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { PagoFormDialog } from './pago-form.dialog';
@@ -171,11 +171,7 @@ export class VentaDetailDialog {
           this.snackbar.open('Venta anulada', 'OK', { duration: 3000 });
           this.refrescar();
         } catch (err) {
-          const detalle =
-            err instanceof HttpErrorResponse
-              ? (err.error?.error?.detail ?? 'No fue posible anular la venta')
-              : 'No fue posible anular la venta';
-          this.snackbar.open(detalle, 'OK', { duration: 5000 });
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible anular la venta');
         }
       });
   }

@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -18,8 +17,10 @@ import { firstValueFrom } from 'rxjs';
 import { Empleado, PagoEmpleado } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { NominaService } from './nomina.service';
 
 @Component({
@@ -27,7 +28,7 @@ import { NominaService } from './nomina.service';
   imports: [
     ReactiveFormsModule, DatePipe, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatTooltipModule, MatDatepickerModule, MatTableModule,
-    MatProgressBarModule, MatSnackBarModule, MoneyPipe, MilesInputDirective,
+    MatProgressBarModule, MatSnackBarModule, MoneyPipe, MilesInputDirective, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Pagos de {{ data.empleado.nombre }} {{ data.empleado.apellido }}</h2>
@@ -70,7 +71,14 @@ import { NominaService } from './nomina.service';
           form="form-pago"
           [disabled]="form.invalid || guardando()"
         >
-          <mat-icon>add</mat-icon> Registrar pago
+          <!-- El icono/spinner va SOLO en su rama: si comparte raíz con el texto,
+               MatButton no lo proyecta en su ranura de icono (NG8011). -->
+          @if (guardando()) {
+            <app-spinner-boton />
+          } @else {
+            <mat-icon>add</mat-icon>
+          }
+          {{ guardando() ? 'Registrando pago…' : 'Registrar pago' }}
         </button>
       </div>
 
@@ -232,11 +240,7 @@ export class PagosEmpleadoDialog {
       this.form.markAsPristine();
       await this.cargar();
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar el pago')
-          : 'No fue posible registrar el pago';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible registrar el pago');
     } finally {
       this.guardando.set(false);
     }

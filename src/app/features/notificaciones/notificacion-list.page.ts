@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -16,6 +15,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Notificacion } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 import { NotificacionesService } from './notificaciones.service';
 
@@ -118,7 +118,7 @@ export class NotificacionListPage implements OnInit {
       await firstValueFrom(this.servicio.marcarLeida(item.id));
       this.cargar();
     } catch (err) {
-      this.snackbar.open(this.detalleError(err), 'OK', { duration: 5000 });
+      this.avisarError(err);
     }
   }
 
@@ -134,7 +134,7 @@ export class NotificacionListPage implements OnInit {
       );
       this.cargar();
     } catch (err) {
-      this.snackbar.open(this.detalleError(err), 'OK', { duration: 5000 });
+      this.avisarError(err);
     }
   }
 
@@ -157,15 +157,14 @@ export class NotificacionListPage implements OnInit {
       }
       this.cargar();
     } catch (err) {
-      this.snackbar.open(this.detalleError(err), 'OK', { duration: 5000 });
+      this.avisarError(err);
     } finally {
       this.generando.set(false);
     }
   }
 
-  private detalleError(err: unknown): string {
-    return err instanceof HttpErrorResponse
-      ? (err.error?.error?.detail ?? 'No fue posible completar la operación')
-      : 'No fue posible completar la operación';
+  /** Marcar y generar alertas SÍ guardan: si el resultado quedó en duda, el aviso se queda. */
+  private avisarError(err: unknown): void {
+    avisarErrorAlGuardar(this.snackbar, err, 'No fue posible completar la operación');
   }
 }

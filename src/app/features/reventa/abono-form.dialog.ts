@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,9 +9,11 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { ReventaService } from './reventa.service';
 
@@ -30,6 +31,7 @@ export interface AbonoDialogData {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatButtonModule, MoneyPipe, MilesInputDirective,
+    SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data.titulo }}</h2>
@@ -62,7 +64,11 @@ export interface AbonoDialogData {
         form="form-abono"
         [disabled]="form.invalid || guardando()"
       >
-        Registrar abono
+        @if (guardando()) {
+          <app-spinner-boton /> Registrando abono…
+        } @else {
+          Registrar abono
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -106,11 +112,10 @@ export class AbonoFormDialog {
       }
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar el abono')
-          : 'No fue posible registrar el abono';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      // Cuando no se sabe si el abono entró (tiempo agotado, 5xx, señal caída
+      // con el celular en línea) el aviso dura mucho más y hay que cerrarlo a
+      // mano: es el mensaje que evita que el dueño lo registre dos veces.
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible registrar el abono');
     } finally {
       this.guardando.set(false);
     }

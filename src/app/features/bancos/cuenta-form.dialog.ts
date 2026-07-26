@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -11,6 +10,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { CuentaBancaria } from '../../core/models';
 import { CuentaPayload, CuentasBancariasService } from './bancos.service';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 
@@ -110,11 +110,7 @@ export class CuentaFormDialog {
       }
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar')
-          : 'No fue posible guardar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar');
     } finally {
       this.guardando.set(false);
     }

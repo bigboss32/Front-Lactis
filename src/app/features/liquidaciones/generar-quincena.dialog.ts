@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -14,7 +13,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionesService } from './liquidaciones.service';
 
 const MESES = [
@@ -62,7 +63,7 @@ function partesFecha(iso: string | null | undefined): { dia: number; mes: string
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatTooltipModule,
-    MatDatepickerModule,
+    MatDatepickerModule, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Generar liquidaciones de la quincena</h2>
@@ -149,7 +150,11 @@ function partesFecha(iso: string | null | undefined): { dia: number; mes: string
         form="form-generar"
         [disabled]="form.invalid || generando()"
       >
-        Generar
+        @if (generando()) {
+          <app-spinner-boton /> Generando…
+        } @else {
+          Generar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -325,11 +330,7 @@ export class GenerarQuincenaDialog {
       );
       this.dialogRef.close(generadas.length);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible generar las liquidaciones')
-          : 'No fue posible generar las liquidaciones';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible generar las liquidaciones');
     } finally {
       this.generando.set(false);
     }

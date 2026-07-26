@@ -105,6 +105,49 @@ mat-sidenav-content {
   }
 }
 
+// Hermano de .empty-state para cuando el listado NO se pudo consultar.
+// Son dos cosas distintas y nunca se muestran juntas: el estado vacío AFIRMA
+// algo sobre la plata ("no hay cartera pendiente de cobro"); este solo dice que
+// la consulta no llegó. Mostrar el vacío ante un fallo de red hacía que el
+// usuario decidiera cobros sobre información falsa.
+.error-state {
+  text-align: center;
+  padding: 48px 16px;
+  color: var(--mat-sys-on-surface-variant);
+
+  // Mismo molde que el estado vacío, pero con el color de error del tema, que
+  // ya sigue a claro/oscuro (nada de colores fijos).
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 8px;
+    color: var(--mat-sys-error);
+  }
+
+  p { margin: 0; }
+
+  // Aclaración de que la lista no está vacía: solo no se pudo consultar.
+  .aclara {
+    margin-top: 4px;
+    font-size: 0.85rem;
+  }
+
+  // El icono del botón "Reintentar" NO es el icono grande de arriba: vuelve al
+  // tamaño normal de un icono dentro de un botón de Material.
+  button {
+    margin-top: 16px;
+
+    mat-icon {
+      font-size: 1.125rem;
+      width: 1.125rem;
+      height: 1.125rem;
+      margin-bottom: 0;
+      color: inherit;
+    }
+  }
+}
+
 // ------------------------------------------------------------- responsive
 // Los diálogos nunca exceden el ancho de la pantalla (clave en celular).
 .cdk-overlay-pane:has(.mat-mdc-dialog-container) { max-width: 96vw; }

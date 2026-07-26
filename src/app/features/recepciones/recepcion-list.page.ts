@@ -1,5 +1,4 @@
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, OnInit, computed, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -24,6 +23,7 @@ import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
@@ -275,11 +275,7 @@ export class RecepcionListPage implements OnInit {
           this.cargarResumen();
           this.grillaTab()?.cargar();
         } catch (err) {
-          const detalle =
-            err instanceof HttpErrorResponse
-              ? (err.error?.error?.detail ?? 'No fue posible eliminar')
-              : 'No fue posible eliminar';
-          this.snackbar.open(detalle, 'OK', { duration: 5000 });
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible eliminar');
         }
       });
   }

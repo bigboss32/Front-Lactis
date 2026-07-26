@@ -5,10 +5,10 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Usuario } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { UsuariosService } from './usuarios.service';
 
@@ -88,11 +88,7 @@ export class RestablecerPasswordDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible restablecer la contraseña')
-          : 'No fue posible restablecer la contraseña';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible restablecer la contraseña');
     } finally {
       this.guardando.set(false);
     }

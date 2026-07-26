@@ -2,10 +2,10 @@ import { Component, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { Rol } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { PermisosMatriz } from './permisos-matriz';
 import { RolesService } from './roles.service';
 
@@ -65,11 +65,7 @@ export class RolPermisosDialog {
       await firstValueFrom(this.servicio.asignarPermisos(this.data.item.id, this.permisoIds()));
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar los permisos')
-          : 'No fue posible guardar los permisos';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar los permisos');
     } finally {
       this.guardando.set(false);
     }

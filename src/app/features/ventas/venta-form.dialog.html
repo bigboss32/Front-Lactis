@@ -93,6 +93,10 @@
     form="form-venta"
     [disabled]="form.invalid || total() < 0 || guardando()"
   >
-    {{ esEdicion ? 'Guardar cambios' : 'Registrar venta' }}
+    @if (guardando()) {
+      <app-spinner-boton /> {{ esEdicion ? 'Guardando…' : 'Registrando venta…' }}
+    } @else {
+      {{ esEdicion ? 'Guardar cambios' : 'Registrar venta' }}
+    }
   </button>
 </mat-dialog-actions>

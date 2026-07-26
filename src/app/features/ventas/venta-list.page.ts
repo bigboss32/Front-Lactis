@@ -27,6 +27,7 @@ import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { VentaDetailDialog } from './venta-detail.dialog';
@@ -70,6 +71,11 @@ export class VentaListPage implements OnInit {
   );
   readonly total = signal(0);
   readonly cargando = signal(false);
+  /**
+   * Mensaje de la consulta fallida. Mientras esté puesto NO se muestra el estado
+   * vacío: un fallo de red no es lo mismo que no tener ventas registradas.
+   */
+  readonly errorCarga = signal<string | null>(null);
   readonly clientes = signal<Cliente[]>([]);
   readonly page = signal(1);
   readonly pageSize = signal(20);
@@ -112,6 +118,7 @@ export class VentaListPage implements OnInit {
 
   async cargar(): Promise<void> {
     this.cargando.set(true);
+    this.errorCarga.set(null);
     try {
       const respuesta = await firstValueFrom(
         this.servicio.list({
@@ -126,6 +133,17 @@ export class VentaListPage implements OnInit {
       );
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
+    } catch (err) {
+      // Se limpia lo anterior: si la consulta falló, los saldos que quedaran en
+      // pantalla ya no se pueden confirmar y se leerían como si fueran de hoy.
+      this.filas.set([]);
+      this.total.set(0);
+      this.errorCarga.set(
+        detalleDeError(
+          err,
+          'No se pudieron cargar las ventas. Revise la conexión e intente de nuevo.',
+        ),
+      );
     } finally {
       this.cargando.set(false);
     }
@@ -157,5 +175,4 @@ export class VentaListPage implements OnInit {
         if (huboCambios) this.cargar();
       });
   }
-
 }

@@ -13,6 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
+import { detalleDeError } from '../../shared/errores-ui';
 import { EstadoCuentaCliente, ReventaService } from './reventa.service';
 
 /**
@@ -471,8 +472,12 @@ export class ReventaEstadoCuentaDialog {
       await firstValueFrom(
         this.servicio.descargarEstadoCuenta(this.data.cliente, desde, hasta, nombre),
       );
-    } catch {
-      this.snackbar.open('No fue posible descargar el PDF', 'OK', { duration: 5000 });
+    } catch (err) {
+      // Con `catch {` se perdía el mensaje que el interceptor sí había generado
+      // ("Sin conexión…", "El servidor tardó demasiado…").
+      this.snackbar.open(detalleDeError(err, 'No fue posible descargar el PDF'), 'OK', {
+        duration: 5000,
+      });
     } finally {
       this.descargando.set(false);
     }
@@ -499,8 +504,12 @@ export class ReventaEstadoCuentaDialog {
           { duration: 4000 },
         );
       }
-    } catch {
-      this.snackbar.open('No fue posible compartir el estado de cuenta', 'OK', { duration: 5000 });
+    } catch (err) {
+      this.snackbar.open(
+        detalleDeError(err, 'No fue posible compartir el estado de cuenta'),
+        'OK',
+        { duration: 5000 },
+      );
     } finally {
       this.compartiendo.set(false);
     }
@@ -554,7 +563,12 @@ export class ReventaEstadoCuentaDialog {
         return err.error?.error?.detail ?? 'El cliente no tiene ventas registradas';
       }
       if (err.status === 0) {
-        return 'No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.';
+        // El detalle del interceptor va primero: distingue "sin señal" de "se
+        // perdió la conexión a mitad", que no son lo mismo.
+        return (
+          err.error?.error?.detail ??
+          'No hay conexión con el servidor. Revisa tu internet e intenta de nuevo.'
+        );
       }
       return err.error?.error?.detail ?? 'No fue posible cargar el estado de cuenta';
     }

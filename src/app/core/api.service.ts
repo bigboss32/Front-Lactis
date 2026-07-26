@@ -1,8 +1,15 @@
-import { HttpClient, HttpParams } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpContext,
+  HttpEventType,
+  HttpParams,
+  HttpResponse,
+} from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, map } from 'rxjs';
+import { Observable, filter, map } from 'rxjs';
 
 import { environment } from '../../environments/environment';
+import { SOLO_LECTURA } from './errores-red';
 import { Page } from './models';
 
 export const API_BASE = environment.apiBase;
@@ -29,6 +36,22 @@ function toHttpParams(params?: QueryParams): HttpParams {
   return httpParams;
 }
 
+/** Ajustes que cambian cómo trata el interceptor esta petición. */
+export interface OpcionesPeticion {
+  /**
+   * Este POST CONSULTA, no guarda (previsualizaciones, cálculos con cuerpo).
+   * Sin esto, el interceptor deduce "escritura" del verbo y muestra mensajes de
+   * plata ("revisa si el registro quedó guardado") en pantallas que no guardan
+   * nada. Ver SOLO_LECTURA en core/errores-red.ts.
+   */
+  soloLectura?: boolean;
+}
+
+/** El contexto viaja solo dentro de Angular; nunca sale por la red. */
+function contextoDe(opciones?: OpcionesPeticion): HttpContext {
+  return new HttpContext().set(SOLO_LECTURA, opciones?.soloLectura ?? false);
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
@@ -37,8 +60,16 @@ export class ApiService {
     return this.http.get<T>(`${API_BASE}${path}`, { params: toHttpParams(params) });
   }
 
-  post<T>(path: string, body?: unknown, params?: QueryParams): Observable<T> {
-    return this.http.post<T>(`${API_BASE}${path}`, body ?? {}, { params: toHttpParams(params) });
+  post<T>(
+    path: string,
+    body?: unknown,
+    params?: QueryParams,
+    opciones?: OpcionesPeticion,
+  ): Observable<T> {
+    return this.http.post<T>(`${API_BASE}${path}`, body ?? {}, {
+      params: toHttpParams(params),
+      context: contextoDe(opciones),
+    });
   }
 
   put<T>(path: string, body: unknown): Observable<T> {
@@ -49,10 +80,29 @@ export class ApiService {
     return this.http.delete<T>(`${API_BASE}${path}`);
   }
 
+  /**
+   * Sube un archivo (adjunto de un gasto). Es la petición más larga de la app:
+   * una foto de recibo pesa varios MB y desde la finca tarda minutos.
+   *
+   * `reportProgress` no está para pintar una barra —hoy no la hay— sino para que
+   * el observable EMITA mientras sube. El operador `timeout` de rxjs reinicia su
+   * reloj en cada emisión, así que con eventos de progreso el límite pasa a
+   * significar "la subida se congeló" en vez de "la subida es grande" (sin esto,
+   * HttpClient no emite nada hasta terminar y el plazo se aplicaba al total).
+   *
+   * Como `reportProgress` obliga a `observe: 'events'`, aquí se vuelve a dejar
+   * solo la respuesta final: quien llama sigue recibiendo un `Observable<T>` con
+   * un único valor, exactamente como antes.
+   */
   upload<T>(path: string, file: File): Observable<T> {
     const form = new FormData();
     form.append('file', file);
-    return this.http.post<T>(`${API_BASE}${path}`, form);
+    return this.http
+      .post<T>(`${API_BASE}${path}`, form, { reportProgress: true, observe: 'events' })
+      .pipe(
+        filter((evento): evento is HttpResponse<T> => evento.type === HttpEventType.Response),
+        map((respuesta) => respuesta.body as T),
+      );
   }
 
   /** GET de un binario (PDF/Excel) como Blob, para compartir o previsualizar. */
@@ -64,8 +114,11 @@ export class ApiService {
   }
 
   /** POST que devuelve un binario (PDF) como Blob. */
-  postBlob(path: string, body?: unknown): Observable<Blob> {
-    return this.http.post(`${API_BASE}${path}`, body ?? {}, { responseType: 'blob' });
+  postBlob(path: string, body?: unknown, opciones?: OpcionesPeticion): Observable<Blob> {
+    return this.http.post(`${API_BASE}${path}`, body ?? {}, {
+      responseType: 'blob',
+      context: contextoDe(opciones),
+    });
   }
 
   /** Descarga un binario (PDF/Excel) y dispara el guardado en el navegador. */

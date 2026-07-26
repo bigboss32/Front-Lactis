@@ -1,6 +1,5 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -21,6 +20,7 @@ import { firstValueFrom } from 'rxjs';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { CuentaBancaria, MovimientoBancario } from '../../core/models';
 import { dateToIso } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { MoneyPipe } from '../../shared/pipes';
@@ -178,11 +178,7 @@ export class MovimientoBancarioListTab implements OnInit {
       );
       this.cargar();
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible conciliar los movimientos')
-          : 'No fue posible conciliar los movimientos';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible conciliar los movimientos');
     } finally {
       this.conciliando.set(false);
     }

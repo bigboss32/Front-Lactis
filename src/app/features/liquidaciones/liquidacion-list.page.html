@@ -102,89 +102,110 @@
       <mat-progress-bar mode="indeterminate" />
     }
 
-    <table mat-table [dataSource]="filasOrdenadas()" matSort (matSortChange)="orden.set($event)">
-      <ng-container matColumnDef="tipo">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Tipo</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo'">{{ fila.tipo === 'proveedor' ? 'Proveedor' : 'Transportador' }}</td>
-      </ng-container>
+    <!-- La tabla se oculta si la consulta falló: una tabla con solo el
+         encabezado se lee igual que "no hay nada". -->
+    @if (!errorCarga()) {
+      <table mat-table [dataSource]="filasOrdenadas()" matSort (matSortChange)="orden.set($event)">
+        <ng-container matColumnDef="tipo">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Tipo</th>
+          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo'">{{ fila.tipo === 'proveedor' ? 'Proveedor' : 'Transportador' }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="tercero">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Tercero</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tercero'">
-          {{ fila.proveedor_nombre ?? fila.transportador_nombre ?? '—' }}
-        </td>
-      </ng-container>
+        <ng-container matColumnDef="tercero">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Tercero</th>
+          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tercero'">
+            {{ fila.proveedor_nombre ?? fila.transportador_nombre ?? '—' }}
+          </td>
+        </ng-container>
 
-      <ng-container matColumnDef="periodo">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Período</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Período'">
-          {{ fila.periodo_inicio | date: 'dd/MM/yyyy' }} – {{ fila.periodo_fin | date: 'dd/MM/yyyy' }}
-        </td>
-      </ng-container>
+        <ng-container matColumnDef="periodo">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Período</th>
+          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Período'">
+            {{ fila.periodo_inicio | date: 'dd/MM/yyyy' }} – {{ fila.periodo_fin | date: 'dd/MM/yyyy' }}
+          </td>
+        </ng-container>
 
-      <ng-container matColumnDef="litros">
-        <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Litros</th>
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Litros'">{{ fila.total_litros | cantidad: 'L' }}</td>
-      </ng-container>
+        <ng-container matColumnDef="litros">
+          <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Litros</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Litros'">{{ fila.total_litros | cantidad: 'L' }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="valor_total">
-        <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Valor total</th>
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor total'">{{ fila.valor_total | money }}</td>
-      </ng-container>
+        <ng-container matColumnDef="valor_total">
+          <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Valor total</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor total'">{{ fila.valor_total | money }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="anticipos">
-        <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Anticipos</th>
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Anticipos'">{{ fila.anticipos | money }}</td>
-      </ng-container>
+        <ng-container matColumnDef="anticipos">
+          <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Anticipos</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Anticipos'">{{ fila.anticipos | money }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="saldo">
-        <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Saldo</th>
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
-          {{ fila.saldo | money }}
-          @if (esPorPagar(fila)) {
-            <span class="badge-por-pagar" matTooltip="Liquidación aprobada con saldo pendiente de pago">
-              por pagar
-            </span>
-          }
-        </td>
-      </ng-container>
+        <ng-container matColumnDef="saldo">
+          <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Saldo</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
+            {{ fila.saldo | money }}
+            @if (esPorPagar(fila)) {
+              <span class="badge-por-pagar" matTooltip="Liquidación aprobada con saldo pendiente de pago">
+                por pagar
+              </span>
+            }
+          </td>
+        </ng-container>
 
-      <ng-container matColumnDef="estado">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Estado</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
-      </ng-container>
+        <ng-container matColumnDef="estado">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Estado</th>
+          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
+        </ng-container>
 
-      <ng-container matColumnDef="acciones">
-        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
-        <td mat-cell *matCellDef="let fila" class="col-acciones">
-          <button mat-icon-button matTooltip="Ver detalle" (click)="verDetalle(fila)">
-            <mat-icon>visibility</mat-icon>
-          </button>
-        </td>
-      </ng-container>
+        <ng-container matColumnDef="acciones">
+          <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+          <td mat-cell *matCellDef="let fila" class="col-acciones">
+            <button mat-icon-button matTooltip="Ver detalle" (click)="verDetalle(fila)">
+              <mat-icon>visibility</mat-icon>
+            </button>
+          </td>
+        </ng-container>
 
-      <tr mat-header-row *matHeaderRowDef="columnas"></tr>
-      <tr
-        mat-row
-        *matRowDef="let fila; columns: columnas"
-        [class]="'fila-' + fila.estado + (esPorPagar(fila) ? ' fila-alerta' : '')"
-      ></tr>
-    </table>
+        <tr mat-header-row *matHeaderRowDef="columnas"></tr>
+        <tr
+          mat-row
+          *matRowDef="let fila; columns: columnas"
+          [class]="'fila-' + fila.estado + (esPorPagar(fila) ? ' fila-alerta' : '')"
+        ></tr>
+      </table>
+    }
 
-    @if (!cargando() && filas().length === 0) {
+    @if (errorCarga(); as error) {
+      <div class="error-state" role="alert">
+        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <p>{{ error }}</p>
+        <p class="aclara">
+          Esto no quiere decir que no haya liquidaciones por pagar: la consulta no alcanzó a llegar.
+        </p>
+        <button mat-stroked-button type="button" (click)="reintentar()">
+          <mat-icon>refresh</mat-icon> Reintentar
+        </button>
+      </div>
+    }
+
+    <!-- El estado vacío solo cuando de verdad se consultó y no había nada. -->
+    @if (!cargando() && !errorCarga() && filas().length === 0) {
       <div class="empty-state">
         <mat-icon>receipt_long</mat-icon>
         <p>No hay liquidaciones para los filtros seleccionados</p>
       </div>
     }
 
-    <mat-paginator
-      [length]="total()"
-      [pageIndex]="page() - 1"
-      [pageSize]="pageSize()"
-      [pageSizeOptions]="[10, 20, 50, 100]"
-      (page)="cambiarPagina($event)"
-      showFirstLastButtons
-    />
+    <!-- Sin consulta no hay conteo: el paginador diría "0 de 0". -->
+    @if (!errorCarga()) {
+      <mat-paginator
+        [length]="total()"
+        [pageIndex]="page() - 1"
+        [pageSize]="pageSize()"
+        [pageSizeOptions]="[10, 20, 50, 100]"
+        (page)="cambiarPagina($event)"
+        showFirstLastButtons
+      />
+    }
   </mat-card>
 </div>

@@ -1,5 +1,4 @@
 import { Component, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -10,14 +9,16 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { CajaService } from './caja.service';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 
 @Component({
   selector: 'app-movimiento-caja-form-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MilesInputDirective,
+    MatSelectModule, MatButtonModule, MilesInputDirective, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento de caja</h2>
@@ -53,7 +54,11 @@ import { protegerCambios } from '../../shared/proteger-cambios';
         form="form-mov-caja"
         [disabled]="form.invalid || guardando()"
       >
-        Registrar
+        @if (guardando()) {
+          <app-spinner-boton /> Registrando…
+        } @else {
+          Registrar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -94,11 +99,7 @@ export class MovimientoCajaFormDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar el movimiento')
-          : 'No fue posible registrar el movimiento';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible registrar el movimiento');
     } finally {
       this.guardando.set(false);
     }

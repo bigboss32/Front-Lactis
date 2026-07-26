@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -12,9 +11,11 @@ import { firstValueFrom } from 'rxjs';
 
 import { Monto } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { DestinoConversion, ReventaService } from './reventa.service';
 
 export interface ConversionDialogData {
@@ -37,6 +38,7 @@ export interface ConversionDialogData {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatButtonModule, MilesInputDirective, CantidadPipe, MoneyPipe,
+    SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ esMerma ? 'Registrar merma' : 'Pasar queso a borona' }}</h2>
@@ -87,7 +89,11 @@ export interface ConversionDialogData {
         form="form-conversion"
         [disabled]="form.invalid || guardando()"
       >
-        {{ esMerma ? 'Registrar merma' : 'Pasar a borona' }}
+        @if (guardando()) {
+          <app-spinner-boton /> {{ esMerma ? 'Registrando merma…' : 'Pasando a borona…' }}
+        } @else {
+          {{ esMerma ? 'Registrar merma' : 'Pasar a borona' }}
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -155,9 +161,7 @@ export class ConversionFormDialog {
       const generico = this.esMerma
         ? 'No fue posible registrar la merma'
         : 'No fue posible pasar el queso a borona';
-      const detalle =
-        err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? generico) : generico;
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, generico);
     } finally {
       this.guardando.set(false);
     }

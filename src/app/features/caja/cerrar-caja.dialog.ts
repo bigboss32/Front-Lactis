@@ -1,5 +1,4 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -13,7 +12,9 @@ import { firstValueFrom } from 'rxjs';
 import { CajaDiaria } from '../../core/models';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
+import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { CajaService } from './caja.service';
 
 /**
@@ -53,7 +54,7 @@ const TOLERANCIA_ARQUEO = 1;
   selector: 'app-cerrar-caja-dialog',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MilesInputDirective, MoneyPipe,
+    MatIconModule, MatProgressBarModule, MilesInputDirective, MoneyPipe, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Cerrar caja (arqueo)</h2>
@@ -164,7 +165,11 @@ const TOLERANCIA_ARQUEO = 1;
         form="form-cerrar-caja"
         [disabled]="!caja() || form.invalid || guardando()"
       >
-        Cerrar caja
+        @if (guardando()) {
+          <app-spinner-boton /> Cerrando caja…
+        } @else {
+          Cerrar caja
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -392,7 +397,7 @@ export class CerrarCajaDialog implements OnInit {
       if (this.diferencia() !== null) this.recalcularDiferencia();
     } catch (err) {
       this.caja.set(null);
-      this.errorCarga.set(this.detalleDeError(err, 'No fue posible cargar el saldo de la caja'));
+      this.errorCarga.set(detalleDeError(err, 'No fue posible cargar el saldo de la caja'));
     } finally {
       this.cargando.set(false);
     }
@@ -431,9 +436,9 @@ export class CerrarCajaDialog implements OnInit {
       // Devuelve la caja actualizada para que el detalle muestre la diferencia.
       this.dialogRef.close(caja);
     } catch (err) {
-      this.snackbar.open(this.detalleDeError(err, 'No fue posible cerrar la caja'), 'OK', {
-        duration: 5000,
-      });
+      // Cerrar la caja es una escritura con plata: si no se sabe si quedó
+      // cerrada, el aviso dura hasta que el usuario lo cierre.
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible cerrar la caja');
     } finally {
       this.guardando.set(false);
     }
@@ -443,11 +448,6 @@ export class CerrarCajaDialog implements OnInit {
     const contado = this.form.controls.efectivo_contado.value;
     this.diferencia.set(contado === null ? null : Number(contado) - this.saldoEsperado());
     this.sincronizarValidadorObservaciones();
-  }
-
-  /** Detalle que manda el backend, o el texto de respaldo si no vino ninguno. */
-  private detalleDeError(err: unknown, respaldo: string): string {
-    return err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? respaldo) : respaldo;
   }
 
   /** Observaciones obligatorias mientras la caja no cuadre; opcionales si cuadra. */

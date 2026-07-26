@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -14,9 +13,11 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Anticipo, Empleado, Page, Proveedor, Transportador } from '../../core/models';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { AnticipoCreatePayload, AnticiposService } from './anticipos.service';
 
 type TipoAnticipo = 'proveedor' | 'transportador' | 'empleado';
@@ -30,7 +31,7 @@ interface Beneficiario {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
-    SelectBuscable,
+    SelectBuscable, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar anticipo' : 'Nuevo anticipo' }}</h2>
@@ -74,7 +75,11 @@ interface Beneficiario {
         form="form-anticipo"
         [disabled]="form.invalid || guardando()"
       >
-        Guardar
+        @if (guardando()) {
+          <app-spinner-boton /> Guardando…
+        } @else {
+          Guardar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -185,11 +190,7 @@ export class AnticipoFormDialog {
       }
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar')
-          : 'No fue posible guardar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar');
     } finally {
       this.guardando.set(false);
     }

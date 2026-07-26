@@ -11,14 +11,15 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Cliente, Page, Producto, Venta } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { VentaPayload, VentasService } from './ventas.service';
@@ -29,7 +30,7 @@ import { VentaPayload, VentasService } from './ventas.service';
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatCheckboxModule,
     MatTooltipModule, MatDatepickerModule, MoneyPipe, MilesInputDirective,
-    SelectBuscable,
+    SelectBuscable, SpinnerBoton,
   ],
   templateUrl: './venta-form.dialog.html',
   styles: `
@@ -237,9 +238,7 @@ export class VentaFormDialog {
       const generico = this.esEdicion
         ? 'No fue posible guardar los cambios'
         : 'No fue posible registrar la venta';
-      const detalle =
-        err instanceof HttpErrorResponse ? (err.error?.error?.detail ?? generico) : generico;
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, generico);
     } finally {
       this.guardando.set(false);
     }

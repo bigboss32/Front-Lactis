@@ -6,11 +6,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth/auth.service';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 
 @Component({
@@ -93,11 +93,7 @@ export class PerfilPage {
       this.snackbar.open('Contraseña actualizada', 'OK', { duration: 4000 });
       this.form.reset();
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible actualizar')
-          : 'No fue posible actualizar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible actualizar');
     } finally {
       this.guardando.set(false);
     }

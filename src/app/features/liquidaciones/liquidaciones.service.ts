@@ -84,13 +84,22 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
     return this.api.getBlob(`${this.base}/${id}/pdf`);
   }
 
-  /** Calcula cómo va un tercero en el período, sin generar la liquidación. */
+  /**
+   * Calcula cómo va un tercero en el período, sin generar la liquidación.
+   *
+   * `soloLectura`: usa POST porque el filtro va en el cuerpo, pero NO GUARDA
+   * NADA (el propio diálogo lo dice). Sin la marca, un fallo de red aquí
+   * mostraba "revisa en la lista si el registro quedó guardado" y, sin señal,
+   * "vuelve a tocar Guardar" en una pantalla que no tiene botón Guardar.
+   */
   previsualizar(payload: PrevisualizarPayload): Observable<PreLiquidacion[]> {
-    return this.api.post<PreLiquidacion[]>(`${this.base}/previsualizar`, payload);
+    return this.api.post<PreLiquidacion[]>(`${this.base}/previsualizar`, payload, undefined, {
+      soloLectura: true,
+    });
   }
 
-  /** PDF preliminar (no oficial) de una pre-liquidación, como Blob. */
+  /** PDF preliminar (no oficial) de una pre-liquidación, como Blob. Tampoco guarda nada. */
   previsualizarPdfBlob(payload: PrevisualizarPayload): Observable<Blob> {
-    return this.api.postBlob(`${this.base}/previsualizar/pdf`, payload);
+    return this.api.postBlob(`${this.base}/previsualizar/pdf`, payload, { soloLectura: true });
   }
 }

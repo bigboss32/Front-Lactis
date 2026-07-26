@@ -1,5 +1,4 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -12,9 +11,11 @@ import { firstValueFrom } from 'rxjs';
 
 import { CuentaBancaria } from '../../core/models';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { CuentasBancariasService, MovimientosBancariosService } from './bancos.service';
 
 @Component({
@@ -22,7 +23,7 @@ import { CuentasBancariasService, MovimientosBancariosService } from './bancos.s
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatDatepickerModule, MilesInputDirective,
-    SelectBuscable,
+    SelectBuscable, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>Registrar movimiento bancario</h2>
@@ -65,7 +66,11 @@ import { CuentasBancariasService, MovimientosBancariosService } from './bancos.s
         form="form-mov-bancario"
         [disabled]="form.invalid || guardando()"
       >
-        Registrar
+        @if (guardando()) {
+          <app-spinner-boton /> Registrando…
+        } @else {
+          Registrar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -116,11 +121,7 @@ export class MovimientoBancarioFormDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible registrar el movimiento')
-          : 'No fue posible registrar el movimiento';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible registrar el movimiento');
     } finally {
       this.guardando.set(false);
     }

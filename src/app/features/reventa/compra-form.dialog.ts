@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -12,9 +11,11 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { CompraQueso, ReventaService } from './reventa.service';
 
 /**
@@ -27,6 +28,7 @@ import { CompraQueso, ReventaService } from './reventa.service';
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatDatepickerModule, MatButtonModule, MatAutocompleteModule, MoneyPipe, MilesInputDirective,
+    SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar compra' : 'Nueva compra de queso' }}</h2>
@@ -76,7 +78,11 @@ import { CompraQueso, ReventaService } from './reventa.service';
         form="form-compra"
         [disabled]="form.invalid || guardando()"
       >
-        Guardar
+        @if (guardando()) {
+          <app-spinner-boton /> Guardando…
+        } @else {
+          Guardar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -160,11 +166,7 @@ export class CompraFormDialog {
       );
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar la compra')
-          : 'No fue posible guardar la compra';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar la compra');
     } finally {
       this.guardando.set(false);
     }

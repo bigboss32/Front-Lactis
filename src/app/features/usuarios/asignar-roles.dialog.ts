@@ -5,11 +5,11 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Rol, Usuario } from '../../core/models';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { UsuariosService } from './usuarios.service';
 
 @Component({
@@ -70,11 +70,7 @@ export class AsignarRolesDialog {
       await firstValueFrom(this.servicio.asignarRoles(this.data.usuario.id, this.rolIds.value));
       this.dialogRef.close(true);
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible asignar los roles')
-          : 'No fue posible asignar los roles';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible asignar los roles');
     } finally {
       this.guardando.set(false);
     }

@@ -7,17 +7,18 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 
 /** Datos de apertura del diálogo: edición (`item`) o celda de la grilla (`prefill`). */
 export interface RecepcionDialogData {
@@ -31,6 +32,7 @@ export interface RecepcionDialogData {
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatButtonModule, MatIconModule, MatDatepickerModule, MilesInputDirective, SelectBuscable,
+    SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
@@ -101,7 +103,11 @@ export interface RecepcionDialogData {
         form="form-recepcion"
         [disabled]="form.invalid || guardando() || liquidada"
       >
-        Guardar
+        @if (guardando()) {
+          <app-spinner-boton /> Guardando…
+        } @else {
+          Guardar
+        }
       </button>
     </mat-dialog-actions>
   `,
@@ -217,11 +223,7 @@ export class RecepcionFormDialog {
       }
       this.dialogRef.close('guardado');
     } catch (err) {
-      const detalle =
-        err instanceof HttpErrorResponse
-          ? (err.error?.error?.detail ?? 'No fue posible guardar')
-          : 'No fue posible guardar';
-      this.snackbar.open(detalle, 'OK', { duration: 5000 });
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar');
     } finally {
       this.guardando.set(false);
     }
@@ -248,11 +250,7 @@ export class RecepcionFormDialog {
           await firstValueFrom(this.servicio.remove(item.id));
           this.dialogRef.close('eliminado');
         } catch (err) {
-          const detalle =
-            err instanceof HttpErrorResponse
-              ? (err.error?.error?.detail ?? 'No fue posible eliminar')
-              : 'No fue posible eliminar';
-          this.snackbar.open(detalle, 'OK', { duration: 5000 });
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible eliminar');
         } finally {
           this.eliminando.set(false);
         }

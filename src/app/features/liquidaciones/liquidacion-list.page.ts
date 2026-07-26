@@ -24,6 +24,7 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
@@ -175,6 +176,11 @@ export class LiquidacionListPage implements OnInit {
   );
   readonly total = signal(0);
   readonly cargando = signal(false);
+  /**
+   * Mensaje de la consulta fallida. Mientras esté puesto NO se muestra el estado
+   * vacío: un fallo de red no es lo mismo que no tener nada por liquidar.
+   */
+  readonly errorCarga = signal<string | null>(null);
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenEstados | null>(null);
@@ -209,6 +215,7 @@ export class LiquidacionListPage implements OnInit {
 
   async cargar(): Promise<void> {
     this.cargando.set(true);
+    this.errorCarga.set(null);
     try {
       const respuesta = await firstValueFrom(
         this.servicio.list({
@@ -222,6 +229,17 @@ export class LiquidacionListPage implements OnInit {
       );
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
+    } catch (err) {
+      // Se limpia lo anterior: si la consulta falló, los saldos que quedaran en
+      // pantalla ya no se pueden confirmar y se leerían como si fueran de hoy.
+      this.filas.set([]);
+      this.total.set(0);
+      this.errorCarga.set(
+        detalleDeError(
+          err,
+          'No se pudieron cargar las liquidaciones. Revise la conexión e intente de nuevo.',
+        ),
+      );
     } finally {
       this.cargando.set(false);
     }
@@ -254,6 +272,15 @@ export class LiquidacionListPage implements OnInit {
     } catch {
       this.resumen.set(null);
     }
+  }
+
+  /**
+   * "Reintentar" del estado de error: si falló la lista, lo más probable es que
+   * también fallaran las tarjetas resumen, así que se vuelven a pedir las dos.
+   */
+  reintentar(): void {
+    this.cargar();
+    void this.cargarResumen();
   }
 
   /** Clic en una tarjeta resumen: aplica (o quita) el filtro de estado. */
@@ -300,5 +327,4 @@ export class LiquidacionListPage implements OnInit {
         void this.cargarResumen();
       });
   }
-
 }
