@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { RouterLink } from '@angular/router';
@@ -14,6 +14,11 @@ interface AccionRapida {
   icono: string;
   color: string;
   link: string;
+  /**
+   * Permiso de la acción que anuncia la tarjeta (`modulo:accion`). Para
+   * mostrarla se exige además `modulo:consultar`, que es lo que hace falta para
+   * abrir el destino; ver el computed `acciones`.
+   */
   permiso: string;
   tooltip: string;
 }
@@ -30,10 +35,9 @@ interface AccionRapida {
       </header>
 
       <div class="acciones-grid">
-        @for (a of acciones; track a.titulo) {
+        @for (a of acciones(); track a.titulo) {
           <a
             class="accion-card"
-            *hasPermission="a.permiso"
             [routerLink]="a.link"
             [style.--acento]="a.color"
             [matTooltip]="a.tooltip"
@@ -46,10 +50,15 @@ interface AccionRapida {
               <p class="accion-desc">{{ a.descripcion }}</p>
             </div>
           </a>
+        } @empty {
+          <p class="sin-acciones">
+            Tu usuario no tiene accesos directos para mostrar aquí. Abre el menú lateral
+            para entrar a los módulos que tienes habilitados.
+          </p>
         }
       </div>
 
-      <a class="ver-stats" routerLink="/dashboard">
+      <a class="ver-stats" *hasPermission="'reportes:consultar'" routerLink="/dashboard">
         <mat-icon>insights</mat-icon> Ver estadísticas del negocio
       </a>
     </div>
@@ -66,6 +75,16 @@ interface AccionRapida {
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 14px;
       margin-bottom: 24px;
+    }
+
+    /* Texto de respaldo cuando ningún acceso directo pasa el filtro de permisos
+       (p. ej. el cliente que solo consulta reventa): así la página no queda con
+       un hueco en blanco entre el saludo y el pie. */
+    .sin-acciones {
+      grid-column: 1 / -1;
+      margin: 0;
+      max-width: 56ch;
+      color: var(--mat-sys-on-surface-variant);
     }
 
     .accion-card {
@@ -132,55 +151,90 @@ interface AccionRapida {
 export class InicioPage {
   readonly auth = inject(AuthService);
 
-  readonly acciones: AccionRapida[] = [
-    {
-      titulo: 'Registrar leche de hoy',
-      descripcion: 'Anota los litros que entrega cada proveedor',
-      icono: 'water_drop', color: CHART_COLORS[0],
-      link: '/recepciones', permiso: 'recepcion:crear',
-      tooltip: 'Abre el módulo de recepciones de leche',
-    },
-    {
-      titulo: 'Generar liquidación',
-      descripcion: 'Calcula el pago a proveedores y transportadores',
-      icono: 'request_quote', color: CHART_COLORS[7],
-      link: '/liquidaciones', permiso: 'liquidaciones:crear',
-      tooltip: 'Abre el módulo de liquidaciones',
-    },
-    {
-      titulo: 'Registrar venta',
-      descripcion: 'Crea una factura o remisión para un cliente',
-      icono: 'point_of_sale', color: CHART_COLORS[1],
-      link: '/ventas', permiso: 'ventas:crear',
-      tooltip: 'Abre el módulo de ventas',
-    },
-    {
-      titulo: 'Compra y venta de queso',
-      descripcion: 'Compra queso a productores y revéndelo',
-      icono: 'swap_horiz', color: CHART_COLORS[5],
-      link: '/reventa', permiso: 'reventa:crear',
-      tooltip: 'Abre compra y venta de queso (reventa)',
-    },
-    {
-      titulo: 'Registrar gasto',
-      descripcion: 'Guarda una compra o un pago del negocio',
-      icono: 'receipt_long', color: CHART_COLORS[6],
-      link: '/gastos', permiso: 'gastos:crear',
-      tooltip: 'Abre el módulo de gastos',
-    },
-    {
-      titulo: 'Movimiento de caja',
-      descripcion: 'Registra entradas y salidas de efectivo',
-      icono: 'savings', color: CHART_COLORS[2],
-      link: '/caja', permiso: 'caja:crear',
-      tooltip: 'Abre el módulo de caja diaria',
-    },
-    {
-      titulo: 'Ver inventario',
-      descripcion: 'Consulta las existencias de productos e insumos',
-      icono: 'inventory_2', color: CHART_COLORS[4],
-      link: '/inventario', permiso: 'inventario:consultar',
-      tooltip: 'Abre el módulo de inventario',
-    },
-  ];
+  /**
+   * Accesos directos que el usuario puede usar DE VERDAD.
+   *
+   * Antes el filtro estaba en la plantilla (*hasPermission por tarjeta), pero
+   * así no había manera de saber si quedaba alguna: a un usuario sin ninguna
+   * —el cliente que solo consulta reventa— la cuadrícula le quedaba vacía. Con
+   * la lista ya filtrada aquí, la plantilla puede mostrar el texto de respaldo.
+   *
+   * Se exigen DOS permisos por tarjeta: el de la acción que anuncia (crear) y
+   * además `modulo:consultar`, que es lo que piden el menú lateral y el guard
+   * de las rutas para dejar entrar a la pantalla. Con solo el primero la página
+   * enseñaba una tarjeta que su propio guard rechazaba: con un rol de un único
+   * permiso (recepcion:crear) el menú quedaba vacío, se veía una tarjeta a
+   * /recepciones y al pulsarla volvía a /inicio con "No tienes acceso a esa
+   * sección" — el usuario encerrado en Inicio con un botón inútil.
+   *
+   * Se resuelve aquí y no en la directiva *hasPermission porque la directiva no
+   * interviene en este filtro (las tarjetas se filtran en este computed; la
+   * directiva solo envuelve el enlace de estadísticas, que ya pide 'consultar').
+   * Hacer que acepte varios permisos sería complejidad sin usar, y además la
+   * regla "para abrir una pantalla hace falta consultar" es de la navegación:
+   * su sitio es donde se declara a dónde lleva cada tarjeta.
+   */
+  readonly acciones = computed(() => {
+    this.auth.perfil(); // re-evalúa cuando llega el perfil
+    return ACCIONES_RAPIDAS.filter((a) => {
+      const [modulo, accion] = a.permiso.split(':');
+      return (
+        this.auth.hasPermission(modulo, accion ?? 'consultar') &&
+        this.auth.hasPermission(modulo) // 'consultar': el permiso para entrar
+      );
+    });
+  });
 }
+
+/** Catálogo de accesos directos; se filtra por permiso antes de pintarlo. */
+const ACCIONES_RAPIDAS: AccionRapida[] = [
+  {
+    titulo: 'Registrar leche de hoy',
+    descripcion: 'Anota los litros que entrega cada proveedor',
+    icono: 'water_drop', color: CHART_COLORS[0],
+    link: '/recepciones', permiso: 'recepcion:crear',
+    tooltip: 'Abre el módulo de recepciones de leche',
+  },
+  {
+    titulo: 'Generar liquidación',
+    descripcion: 'Calcula el pago a proveedores y transportadores',
+    icono: 'request_quote', color: CHART_COLORS[7],
+    link: '/liquidaciones', permiso: 'liquidaciones:crear',
+    tooltip: 'Abre el módulo de liquidaciones',
+  },
+  {
+    titulo: 'Registrar venta',
+    descripcion: 'Crea una factura o remisión para un cliente',
+    icono: 'point_of_sale', color: CHART_COLORS[1],
+    link: '/ventas', permiso: 'ventas:crear',
+    tooltip: 'Abre el módulo de ventas',
+  },
+  {
+    titulo: 'Compra y venta de queso',
+    descripcion: 'Compra queso a productores y revéndelo',
+    icono: 'swap_horiz', color: CHART_COLORS[5],
+    link: '/reventa', permiso: 'reventa:crear',
+    tooltip: 'Abre compra y venta de queso (reventa)',
+  },
+  {
+    titulo: 'Registrar gasto',
+    descripcion: 'Guarda una compra o un pago del negocio',
+    icono: 'receipt_long', color: CHART_COLORS[6],
+    link: '/gastos', permiso: 'gastos:crear',
+    tooltip: 'Abre el módulo de gastos',
+  },
+  {
+    titulo: 'Movimiento de caja',
+    descripcion: 'Registra entradas y salidas de efectivo',
+    icono: 'savings', color: CHART_COLORS[2],
+    link: '/caja', permiso: 'caja:crear',
+    tooltip: 'Abre el módulo de caja diaria',
+  },
+  {
+    titulo: 'Ver inventario',
+    descripcion: 'Consulta las existencias de productos e insumos',
+    icono: 'inventory_2', color: CHART_COLORS[4],
+    link: '/inventario', permiso: 'inventario:consultar',
+    tooltip: 'Abre el módulo de inventario',
+  },
+];

@@ -41,19 +41,47 @@ export class BuscadorGlobalService {
       .map((item) => ({ grupo: 'Ir a', icono: item.icon, label: item.label, route: item.route }));
   }
 
-  /** Registros reales (proveedores, clientes, productos) usando los buscadores existentes. */
+  /** Módulos que consulta la búsqueda de registros, con el permiso que exige cada uno. */
+  private readonly MODULOS_BUSCABLES = ['proveedores', 'clientes', 'inventario'] as const;
+
+  /**
+   * ¿Tiene sentido buscar registros para este usuario?
+   *
+   * La barra sigue siendo útil aunque sea `false`: la búsqueda de secciones
+   * funciona igual (y 'Inicio' está marcado como `siempre` en NAV_GROUPS, así
+   * que nunca se queda sin nada que ofrecer). Por eso no se esconde la barra
+   * entera —además de que Ctrl+K y '/' son de la aplicación, no del módulo—;
+   * simplemente no se pide a la API lo que el usuario no puede ver.
+   */
+  puedeBuscarRegistros(): boolean {
+    return this.MODULOS_BUSCABLES.some((m) => this.auth.hasPermission(m));
+  }
+
+  /**
+   * Registros reales (proveedores, clientes, productos) usando los buscadores existentes.
+   *
+   * Cada rama se pide SOLO con su permiso `modulo:consultar`, igual que ya hacía
+   * `secciones()`. Antes se pedían siempre las tres: al cliente que solo tiene
+   * el módulo de reventa cada tecla le disparaba tres 403 contra la API para
+   * acabar mostrando "Sin resultados".
+   */
   registros(q: string): Observable<ResultadoBusqueda[]> {
+    if (!this.puedeBuscarRegistros()) return of<ResultadoBusqueda[]>([]);
+
     const opts = { search: q, page_size: 5, estado: 'activo' };
     const vacio = of<Page<Entidad>>({ items: [], total: 0, page: 1, page_size: 5, pages: 0 });
+    // catchError sigue ahí para los fallos de red y para el caso en que el
+    // backend sea más estricto que el perfil: una rama caída no debe tumbar
+    // el forkJoin y dejar la barra sin resultados de las demás.
+    const siPuede = (modulo: string, ruta: string) =>
+      this.auth.hasPermission(modulo)
+        ? this.api.get<Page<Entidad>>(ruta, opts).pipe(catchError(() => vacio))
+        : vacio;
 
     return forkJoin({
-      proveedores: this.api
-        .get<Page<Entidad>>('/proveedores/filtrar/avanzado', opts)
-        .pipe(catchError(() => vacio)),
-      clientes: this.api.get<Page<Entidad>>('/clientes', opts).pipe(catchError(() => vacio)),
-      productos: this.api
-        .get<Page<Entidad>>('/inventario/productos', opts)
-        .pipe(catchError(() => vacio)),
+      proveedores: siPuede('proveedores', '/proveedores/filtrar/avanzado'),
+      clientes: siPuede('clientes', '/clientes'),
+      productos: siPuede('inventario', '/inventario/productos'),
     }).pipe(
       map(({ proveedores, clientes, productos }) => [
         ...proveedores.items.map((p) => this.aResultado(p, 'Proveedores', 'agriculture', '/proveedores', 'proveedores', p.vereda)),

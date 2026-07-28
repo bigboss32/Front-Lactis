@@ -17,12 +17,8 @@ export const authGuard: CanActivateFn = async (_route, state) => {
   return true;
 };
 
-/** Protege una ruta exigiendo el permiso `modulo:consultar`. */
-export const permissionGuard = (modulo: string, accion = 'consultar'): CanActivateFn => {
-  return async () => {
-    const auth = inject(AuthService);
-    const router = inject(Router);
-    await auth.ensurePerfil();
-    return auth.hasPermission(modulo, accion) ? true : router.createUrlTree(['/']);
-  };
-};
+// El guard de PERMISO por módulo vive en permiso.guard.ts (`permisoGuard`) y es
+// el único que hay: aquí existió un `permissionGuard` casi idéntico, sin usar,
+// que se diferenciaba en dos letras y se comportaba distinto (redirigía a '/' y
+// no comprobaba que el perfil hubiera llegado). Se borró para que nadie importe
+// el equivocado al añadir una ruta.
