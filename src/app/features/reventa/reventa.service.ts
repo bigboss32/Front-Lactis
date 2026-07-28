@@ -57,6 +57,31 @@ export interface VentaQueso extends TenantFields {
   abonos: AbonoReventa[];
 }
 
+// ------------------------------------------- saldos de la cuenta anterior
+/** De qué lado está la cuenta vieja: un cliente le debe ('cobrar') o él le debe a un productor ('pagar'). */
+export type TipoSaldoAnterior = 'cobrar' | 'pagar';
+
+/**
+ * Una cuenta a medio pagar traída del sistema que el cliente usaba antes.
+ *
+ * NO es una venta ni una compra de aquí: no mueve kilos, ni el queso
+ * disponible, ni la ganancia. Solo suma en lo que hay por cobrar y por pagar,
+ * acepta abonos y sale en el estado de cuenta del cliente.
+ */
+export interface SaldoAnterior extends TenantFields {
+  tipo: TipoSaldoAnterior;
+  /** Nombre del cliente (si es 'cobrar') o del productor (si es 'pagar'). */
+  tercero: string;
+  /** La fecha ORIGINAL del documento en el libro viejo, no la de carga. */
+  fecha: string;
+  concepto: string;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+  observaciones: string | null;
+  abonos: AbonoReventa[];
+}
+
 /** Destino de un ajuste que baja el queso disponible: borona (vendible) o merma (pérdida). */
 export type DestinoConversion = 'borona' | 'merma';
 
@@ -139,8 +164,17 @@ export interface ResumenReventa {
   // Acumulados (histórico, sin filtro de fechas)
   kilos_disponibles: Monto;
   borona_disponible: Monto; // de compras + conversiones - vendida
+  /** Incluye lo que quede pendiente del libro anterior (ver `por_pagar_libro_anterior`). */
   por_pagar_productores: Monto;
+  /** Incluye lo que quede pendiente del libro anterior (ver `por_cobrar_libro_anterior`). */
   por_cobrar_clientes: Monto;
+  /**
+   * Cuánto de esas dos cifras viene de los saldos de la cuenta anterior. Está
+   * aparte para poder mostrar el desglose: la tarjeta tiene que explicar de
+   * dónde sale su propia suma.
+   */
+  por_cobrar_libro_anterior: Monto;
+  por_pagar_libro_anterior: Monto;
 }
 
 /** Nombres ya usados para autocompletar al crear compras/ventas. */
@@ -180,6 +214,23 @@ export interface EstadoCuentaPago {
   valor: Monto;
 }
 
+/**
+ * Una cuenta a medio pagar que el cliente traía del sistema anterior.
+ *
+ * Solo lleva lo que el cliente reconoce de su propia deuda: la fecha del
+ * documento viejo, de qué era, cuánto valía, cuánto abonó y cuánto queda. Las
+ * `observaciones` del saldo NO vienen: son la nota interna de la quesera, igual
+ * que en EstadoCuentaPago.
+ */
+export interface EstadoCuentaSaldoAnterior {
+  /** La fecha ORIGINAL del documento en el libro viejo. */
+  fecha: string;
+  concepto: string;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+}
+
 /** Cómo va la cuenta de un cliente: sus compras, sus pagos y el saldo. */
 export interface EstadoCuentaCliente {
   cliente: string;
@@ -187,13 +238,23 @@ export interface EstadoCuentaCliente {
   desde: string | null;
   hasta: string | null;
   emitido: string; // fecha de generación
-  compras: number; // cuántas ventas se le hicieron
+  compras: number; // cuántas ventas se le hicieron (las del sistema, no las del libro)
   total_kilos: Monto;
+  /** Solo del sistema; lo del libro anterior va aparte en los tres campos libro_anterior_*. */
   total_facturado: Monto;
   total_abonado: Monto;
-  saldo: Monto; // total_facturado - total_abonado
+  /**
+   * TODO lo que el cliente debe hoy, que es la única cifra que le importa:
+   * (total_facturado − total_abonado) + libro_anterior_saldo = saldo.
+   */
+  saldo: Monto;
   ventas: EstadoCuentaVenta[];
   pagos: EstadoCuentaPago[];
+  /** Lo que traía debiendo del sistema anterior (vacío para casi todos). */
+  saldos_anteriores: EstadoCuentaSaldoAnterior[];
+  libro_anterior_total: Monto;
+  libro_anterior_abonado: Monto;
+  libro_anterior_saldo: Monto;
 }
 
 // ------------------------------------------------------------------ payloads
@@ -220,6 +281,22 @@ export interface VentaQuesoPayload {
   pagada_de_contado?: boolean;
 }
 
+export interface SaldoAnteriorPayload {
+  /** Solo al crear: de qué lado va la cuenta (la pestaña ya lo decide). */
+  tipo: TipoSaldoAnterior;
+  tercero: string;
+  fecha: string;
+  concepto: string;
+  valor_total: number;
+  /**
+   * Solo al crear: lo que el tercero YA había pagado en el libro viejo. Después
+   * el abonado solo se mueve registrando o eliminando abonos, igual que en las
+   * compras y las ventas.
+   */
+  abonado?: number;
+  observaciones?: string | null;
+}
+
 export interface ConversionBoronaPayload {
   fecha: string;
   kilos: number;
@@ -241,6 +318,11 @@ export interface ReventaListOpts extends QueryParams {
   estado?: string | null;
   desde?: string | null;
   hasta?: string | null;
+}
+
+/** Mismos filtros del listado, más el lado del libro anterior que se está viendo. */
+export interface SaldoAnteriorListOpts extends ReventaListOpts {
+  tipo?: TipoSaldoAnterior | null;
 }
 
 // ------------------------------------------------------------------ servicio
@@ -319,6 +401,42 @@ export class ReventaService {
 
   anularVenta(id: string): Observable<VentaQueso> {
     return this.api.post<VentaQueso>(`${this.base}/ventas/${id}/anular`);
+  }
+
+  // ----------------------------------------- saldos de la cuenta anterior
+  listarSaldosAnteriores(opts: SaldoAnteriorListOpts = {}): Observable<Page<SaldoAnterior>> {
+    return this.api.get<Page<SaldoAnterior>>(`${this.base}/saldos-anteriores`, opts);
+  }
+
+  crearSaldoAnterior(payload: SaldoAnteriorPayload): Observable<SaldoAnterior> {
+    return this.api.post<SaldoAnterior>(`${this.base}/saldos-anteriores`, payload);
+  }
+
+  /** El `abonado` no se edita aquí: se mueve solo con abonos (igual que compras y ventas). */
+  editarSaldoAnterior(
+    id: string,
+    payload: Partial<Omit<SaldoAnteriorPayload, 'abonado'>>,
+  ): Observable<SaldoAnterior> {
+    return this.api.put<SaldoAnterior>(`${this.base}/saldos-anteriores/${id}`, payload);
+  }
+
+  eliminarSaldoAnterior(id: string): Observable<void> {
+    return this.api.delete(`${this.base}/saldos-anteriores/${id}`);
+  }
+
+  abonarSaldoAnterior(id: string, payload: AbonoPayload): Observable<SaldoAnterior> {
+    return this.api.post<SaldoAnterior>(`${this.base}/saldos-anteriores/${id}/abonos`, payload);
+  }
+
+  /** Elimina un abono mal registrado; devuelve el saldo con el estado recalculado. */
+  eliminarAbonoSaldoAnterior(saldoId: string, abonoId: string): Observable<SaldoAnterior> {
+    return this.api.delete<SaldoAnterior>(
+      `${this.base}/saldos-anteriores/${saldoId}/abonos/${abonoId}`,
+    );
+  }
+
+  anularSaldoAnterior(id: string): Observable<SaldoAnterior> {
+    return this.api.post<SaldoAnterior>(`${this.base}/saldos-anteriores/${id}/anular`);
   }
 
   // --------------------------------------------------------- estado de cuenta

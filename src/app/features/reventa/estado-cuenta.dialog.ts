@@ -104,6 +104,11 @@ type Alcance = 'historico' | 'periodo';
           · Emitido: {{ ec.emitido | date: 'dd/MM/yyyy' }}
         </p>
 
+        <!-- Los rótulos llevan su OPERADOR, igual que el resumen del PDF: sin él,
+             un cliente con saldo a favor y cuentas del libro sumaba las cuatro
+             tarjetas y le salía el signo contrario a la cifra destacada. El
+             cliente reproduce la cuenta con la calculadora, así que tiene que
+             estar escrito qué se suma y qué se resta. -->
         <div class="cifras">
           <div class="cifra">
             <span class="etq">Total facturado</span>
@@ -111,10 +116,23 @@ type Alcance = 'historico' | 'periodo';
             <span class="sub">{{ ec.compras }} {{ ec.compras === 1 ? 'compra' : 'compras' }}</span>
           </div>
           <div class="cifra">
-            <span class="etq">Total abonado</span>
+            <span class="etq">(-) Total abonado</span>
             <span class="val">{{ pesos(ec.total_abonado) }}</span>
             <span class="sub">{{ ec.pagos.length }} {{ ec.pagos.length === 1 ? 'pago' : 'pagos' }}</span>
           </div>
+          <!-- El renglón que explica de dónde sale el saldo: sin él la cifra
+               grande no sale de las dos de al lado. Va en el mismo orden del PDF
+               (antes del saldo) y con la misma condición que allá. -->
+          @if (tieneSaldoAnterior()) {
+            <div class="cifra">
+              <span class="etq">(+) Saldo de la cuenta anterior</span>
+              <span class="val">{{ pesos(ec.libro_anterior_saldo) }}</span>
+              <span class="sub">
+                {{ saldosAnteriores().length }}
+                {{ saldosAnteriores().length === 1 ? 'cuenta del sistema anterior' : 'cuentas del sistema anterior' }}
+              </span>
+            </div>
+          }
           <!-- Tres casos, igual que en el PDF: debe, está al día, o abonó de más
                y tiene plata a favor (ahí el valor se muestra en POSITIVO). -->
           <div class="cifra">
@@ -129,6 +147,14 @@ type Alcance = 'historico' | 'periodo';
             <span class="sub">{{ notaSaldo() }}</span>
           </div>
         </div>
+
+        <!-- Saldo a favor: la cifra destacada va en POSITIVO, así que aquí queda
+             escrita la operación CON su signo, con el mismo texto del PDF. Sin
+             esto, sumando los renglones a mano daba -$1.500.000 contra un
+             destacado de $1.500.000 y parecía un error del documento. -->
+        @if (explicacionSaldoAFavor(); as nota) {
+          <p class="nota-tabla">{{ nota }}</p>
+        }
 
         <h3>Detalle de compras</h3>
         @if (ec.ventas.length > 0) {
@@ -168,7 +194,10 @@ type Alcance = 'historico' | 'periodo';
                   <td></td>
                   <td>{{ pesos(ec.total_facturado) }}</td>
                   <td>{{ pesos(ec.total_abonado) }}</td>
-                  <td>{{ pesos(ec.saldo) }}</td>
+                  <!-- El saldo DEL SISTEMA, igual que el PDF: el saldo del
+                       encabezado ya trae además la deuda del libro anterior y
+                       ponerlo aquí haría que la columna no sumara sus filas. -->
+                  <td>{{ pesos(saldoSistema()) }}</td>
                 </tr>
               </tfoot>
             </table>
@@ -177,6 +206,58 @@ type Alcance = 'historico' | 'periodo';
           <p class="sin-datos">Sin compras registradas</p>
         }
 
+        <!-- Saldos de la cuenta anterior: lo que el cliente ya venía debiendo del
+             sistema que se usaba antes. Si no hay, la sección no aparece y el
+             diálogo queda exactamente igual que siempre (como en el PDF). -->
+        @if (saldosAnteriores().length > 0) {
+          <h3>Saldos de la cuenta anterior</h3>
+          <div class="tabla-scroll">
+            <table class="tabla-datos">
+              <caption class="solo-lectores">
+                Cuentas del sistema anterior que el cliente traía a medio pagar
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Concepto</th>
+                  <th scope="col">Total</th>
+                  <th scope="col">Abonado</th>
+                  <th scope="col">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (anterior of saldosAnteriores(); track $index) {
+                  <tr>
+                    <td>{{ anterior.fecha | date: 'dd/MM/yyyy' }}</td>
+                    <td class="concepto">{{ anterior.concepto }}</td>
+                    <td>{{ pesos(anterior.valor_total) }}</td>
+                    <td>{{ pesos(anterior.abonado) }}</td>
+                    <td>{{ pesos(anterior.saldo) }}</td>
+                  </tr>
+                }
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="2">Totales</td>
+                  <td>{{ pesos(ec.libro_anterior_total) }}</td>
+                  <td>{{ pesos(ec.libro_anterior_abonado) }}</td>
+                  <td>{{ pesos(ec.libro_anterior_saldo) }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p class="nota-tabla">
+            Estas cuentas vienen del sistema que se usaba antes y no corresponden a compras
+            registradas aquí.
+          </p>
+        }
+
+        <!-- Esta tabla lista SOLO los abonos de las compras de este sistema, igual
+             que el PDF: los del libro anterior ya están cuadrados arriba, en la
+             columna "Abonado" de su sección, y traerlos también aquí mostraría la
+             misma plata dos veces. Lo que no puede hacer el texto es NEGARLE un
+             pago que sí hizo, así que los tres casos y la nota son los mismos del
+             PDF (ver "Pagos recibidos" en build_estado_cuenta_pdf). -->
         <h3>Pagos recibidos</h3>
         @if (ec.pagos.length > 0) {
           <div class="tabla-scroll">
@@ -201,8 +282,16 @@ type Alcance = 'historico' | 'periodo';
               </tbody>
             </table>
           </div>
+        } @else if (saldosAnteriores().length > 0) {
+          <p class="sin-datos">Sin pagos recibidos por compras registradas en este sistema.</p>
         } @else {
           <p class="sin-datos">Sin pagos registrados</p>
+        }
+        @if (saldosAnteriores().length > 0) {
+          <p class="nota-tabla">
+            Los abonos que hizo a las cuentas del sistema anterior están en la columna "Abonado"
+            de la sección "Saldos de la cuenta anterior".
+          </p>
         }
       }
     </mat-dialog-content>
@@ -318,6 +407,13 @@ type Alcance = 'historico' | 'periodo';
       font-style: italic;
     }
 
+    // Nota de una línea debajo de una tabla, con el mismo texto del PDF.
+    .nota-tabla {
+      margin: 6px 0 0;
+      font-size: 0.76rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
     // ------------------------------------------------------------- tablas
     // Scroll horizontal dentro del diálogo: en celular no desborda la pantalla.
     .tabla-scroll { overflow-x: auto; }
@@ -351,9 +447,19 @@ type Alcance = 'historico' | 'periodo';
         color: var(--mat-sys-on-surface-variant);
       }
 
-      // Las dos primeras columnas son texto (fecha y producto): van a la izquierda.
+      // Las dos primeras columnas son texto (fecha y producto/concepto): van a
+      // la izquierda.
       th:first-child, td:first-child,
       th:nth-child(2), td:nth-child(2) { text-align: left; }
+
+      // El concepto del saldo viejo es texto libre y suele ser largo ("Venta 120
+      // kg del 3 de mayo"): se envuelve dentro de la celda, como en el PDF, en
+      // vez de estirar la tabla.
+      td.concepto {
+        white-space: normal;
+        min-width: 160px;
+        font-variant-numeric: normal;
+      }
 
       tfoot td {
         border-top: 1px solid var(--mat-sys-outline);
@@ -400,9 +506,41 @@ export class ReventaEstadoCuentaDialog {
   /** El saldo a favor se muestra en POSITIVO, igual que en el PDF. */
   readonly saldoMostrado = computed(() => Math.abs(Number(this.datos()?.saldo ?? 0)));
 
-  /** Pesos con el mismo formato que el PDF: $1.008.175,85 y $100.000. */
+  /**
+   * Lo que queda debiendo SOLO por las compras hechas en este sistema. Es lo que
+   * tiene que cerrar la columna "Saldo" del detalle de compras: `saldo` trae
+   * además la deuda del libro anterior, y usarlo en esa fila de totales haría que
+   * la tabla no sumara. Sin saldos anteriores las dos cifras son iguales.
+   */
+  readonly saldoSistema = computed(() => {
+    const ec = this.datos();
+    if (!ec) return 0;
+    return Number(ec.total_facturado) - Number(ec.total_abonado);
+  });
+
+  /** Cuentas que el cliente traía del sistema anterior (vacío para casi todos). */
+  readonly saldosAnteriores = computed(() => this.datos()?.saldos_anteriores ?? []);
+
+  /**
+   * Si el resumen lleva el renglón del libro anterior. La condición es la MISMA
+   * del PDF (`if saldos_anteriores` en build_estado_cuenta_pdf): que el cliente
+   * traiga cuentas del sistema anterior, no que el saldo de esas cuentas sea
+   * distinto de cero. Una cuenta vieja ya pagada por completo sale en la tabla y
+   * el PDF le imprime su renglón en $0; esconderlo aquí dejaba la vista previa
+   * con un renglón menos que el documento que recibe el cliente.
+   */
+  readonly tieneSaldoAnterior = computed(() => this.saldosAnteriores().length > 0);
+
+  /**
+   * Pesos con el mismo formato que el PDF: $1.008.175,85 y $100.000.
+   *
+   * El signo va ANTES del $, como en `pesos()` de export.py ("-$550.000"): con
+   * "$ -550.000" la vista previa y el PDF no escribían igual el saldo a favor.
+   */
   pesos(valor: Monto): string {
-    return `$ ${formatearCifra(valor, 2, 2)}`;
+    const numero = Number(valor);
+    if (!Number.isFinite(numero)) return '—';
+    return `${numero < 0 ? '-' : ''}$ ${formatearCifra(Math.abs(numero), 2, 2)}`;
   }
 
   /** Kilos con el mismo formato que el PDF: 10,34 kg, 51,7 kg y 100 kg. */
@@ -410,19 +548,38 @@ export class ReventaEstadoCuentaDialog {
     return `${formatearCifra(valor, 1, 2)} kg`;
   }
 
+  /** Mismos rótulos del resumen del PDF (allá van en mayúsculas por el estilo). */
   readonly rotuloSaldo = computed(() =>
-    this.estadoSaldo() === 'a-favor' ? 'Saldo a favor' : 'Saldo',
+    this.estadoSaldo() === 'a-favor' ? 'Saldo a favor del cliente' : 'Saldo pendiente',
   );
 
+  /** El "Estado" que imprime el PDF en el bloque de datos del cliente. */
   readonly notaSaldo = computed(() => {
     switch (this.estadoSaldo()) {
       case 'pendiente':
-        return 'Con saldo pendiente';
+        return 'Con saldo';
       case 'al-dia':
         return 'Al día';
       default:
-        return 'A favor del cliente';
+        return 'Saldo a favor';
     }
+  });
+
+  /**
+   * La operación escrita cuando el saldo queda a favor del cliente, con el MISMO
+   * texto del PDF. Null en el caso normal (con deuda o al día), igual que allá.
+   */
+  readonly explicacionSaldoAFavor = computed<string | null>(() => {
+    const ec = this.datos();
+    if (!ec || Number(ec.saldo) >= 0) return null;
+    let operacion = `${this.pesos(ec.total_facturado)} - ${this.pesos(ec.total_abonado)}`;
+    if (this.tieneSaldoAnterior()) {
+      operacion += ` + ${this.pesos(ec.libro_anterior_saldo)}`;
+    }
+    return (
+      `La cuenta da ${operacion} = ${this.pesos(ec.saldo)}, es decir que queda a ` +
+      'favor suyo: por eso arriba aparece en positivo.'
+    );
   });
 
   readonly tooltipPeriodo = computed(
@@ -524,16 +681,25 @@ export class ReventaEstadoCuentaDialog {
       ec.desde && ec.hasta
         ? `${this.fechaCorta(ec.desde)} al ${this.fechaCorta(ec.hasta)}`
         : 'todo el histórico';
-    // Mismo criterio del PDF y de la cifra grande: con saldo negativo es plata a
-    // favor del cliente y va en positivo, no un "saldo pendiente" con menos.
-    const saldo = Number(ec.saldo);
-    const rotulo = saldo < 0 ? 'Saldo a favor' : 'Saldo pendiente';
+    // El renglón del libro anterior va ANTES del saldo, con el mismo rótulo y el
+    // mismo operador del resumen del PDF: sin él el cliente resta Total −
+    // Abonado y le sobra plata sin explicación. Este mensaje va AL CLIENTE, así
+    // que los renglones tienen que SUMAR la cifra que se le cobra.
+    const anterior = this.tieneSaldoAnterior()
+      ? `(+) Saldo de la cuenta anterior: ${money(ec.libro_anterior_saldo)}\n`
+      : '';
+    // Con saldo a favor va además la operación con su signo, la misma frase del
+    // PDF: la cifra de abajo se muestra en positivo y sin esta línea el cliente
+    // suma los renglones y le sale al revés.
+    const explicacion = this.explicacionSaldoAFavor();
     const texto =
       `*Estado de cuenta - ${ec.cliente}*\n` +
       `Período: ${periodo}\n` +
-      `Compras: ${ec.compras} · Total: ${money(ec.total_facturado)}\n` +
-      `Abonado: ${money(ec.total_abonado)}\n` +
-      `${rotulo}: ${money(Math.abs(saldo))}`;
+      `Compras: ${ec.compras} · Total facturado: ${money(ec.total_facturado)}\n` +
+      `(-) Total abonado: ${money(ec.total_abonado)}\n` +
+      anterior +
+      `${this.rotuloSaldo()}: ${money(this.saldoMostrado())}` +
+      (explicacion ? `\n${explicacion}` : '');
     compartirWhatsApp(texto);
   }
 
@@ -560,7 +726,12 @@ export class ReventaEstadoCuentaDialog {
   private mensajeError(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
       if (err.status === 404) {
-        return err.error?.error?.detail ?? 'El cliente no tiene ventas registradas';
+        // Un cliente sin ventas pero con deuda del libro anterior SÍ tiene estado
+        // de cuenta, así que el respaldo no puede hablar solo de ventas.
+        return (
+          err.error?.error?.detail ??
+          'El cliente no tiene ventas ni cuentas del libro anterior registradas'
+        );
       }
       if (err.status === 0) {
         // El detalle del interceptor va primero: distingue "sin señal" de "se

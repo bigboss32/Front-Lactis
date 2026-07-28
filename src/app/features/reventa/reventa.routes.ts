@@ -1,6 +1,15 @@
 import { Routes } from '@angular/router';
 
 export const REVENTA_ROUTES: Routes = [
+  // Va ANTES de la shell y fuera de ella: la shell filtra a sus sub-páginas por
+  // un rango de fechas que arranca en el mes actual, y las cuentas del libro
+  // anterior son viejas por definición (llevan la fecha del documento original),
+  // así que ahí dentro la pantalla aparecería vacía.
+  {
+    path: 'libro-anterior',
+    title: 'Compra y venta de queso · Libro anterior | Lactis',
+    loadComponent: () => import('./libro-anterior.page').then((m) => m.LibroAnteriorPage),
+  },
   {
     path: '',
     loadComponent: () => import('./reventa-shell.page').then((m) => m.ReventaShellPage),

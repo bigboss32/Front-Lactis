@@ -60,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
       { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
       { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
+      { label: 'Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },
     ],
   },
   {

@@ -33,6 +33,25 @@ import {
             Sin queso pendiente, ni cobros ni pagos: puedes arrancar una nueva.
           </span>
         </div>
+      } @else if (soloFaltaLibroAnterior(r)) {
+        <!-- La temporada SÍ está cerrada: lo único pendiente son las cuentas
+             viejas del sistema anterior, que no salieron de este queso. Decir
+             "para cerrar la temporada falta cobrar" se leería como que quedó
+             una venta de esta temporada sin cobrar. -->
+        <div class="temporada al-dia">
+          <mat-icon aria-hidden="true">check_circle</mat-icon>
+          <span>
+            <strong>Temporada al día.</strong>
+            Sin queso pendiente y sin cobros ni pagos de esta temporada. Lo que queda es del
+            libro anterior:
+            @if (esPositivo(cobrarDelLibro(r))) {
+              <span class="chip">cobrar {{ cobrarDelLibro(r) | money }}</span>
+            }
+            @if (esPositivo(pagarDelLibro(r))) {
+              <span class="chip">pagar {{ pagarDelLibro(r) | money }}</span>
+            }
+          </span>
+        </div>
       } @else {
         <div class="temporada pendiente">
           <mat-icon aria-hidden="true">pending_actions</mat-icon>
@@ -42,10 +61,20 @@ import {
               <span class="chip">vender o pasar a merma {{ r.kilos_disponibles | cantidad: 'kg' }}</span>
             }
             @if (esPositivo(r.por_cobrar_clientes)) {
-              <span class="chip">cobrar {{ r.por_cobrar_clientes | money }}</span>
+              <span class="chip">
+                cobrar {{ r.por_cobrar_clientes | money }}
+                @if (esPositivo(cobrarDelLibro(r))) {
+                  <span class="del-libro">({{ cobrarDelLibro(r) | money }} del libro anterior)</span>
+                }
+              </span>
             }
             @if (esPositivo(r.por_pagar_productores)) {
-              <span class="chip">pagar {{ r.por_pagar_productores | money }}</span>
+              <span class="chip">
+                pagar {{ r.por_pagar_productores | money }}
+                @if (esPositivo(pagarDelLibro(r))) {
+                  <span class="del-libro">({{ pagarDelLibro(r) | money }} del libro anterior)</span>
+                }
+              </span>
             }
           </span>
         </div>
@@ -90,6 +119,12 @@ import {
           <span class="textos">
             <span class="cifra">{{ r.por_pagar_productores | money }}</span>
             <span class="titulo">Por pagar a productores</span>
+            <!-- De dónde sale la suma: la cifra grande ya trae las cuentas viejas. -->
+            @if (esPositivo(pagarDelLibro(r))) {
+              <span class="detalle">
+                incluye {{ pagarDelLibro(r) | money }} del libro anterior
+              </span>
+            }
           </span>
         </div>
 
@@ -98,6 +133,11 @@ import {
           <span class="textos">
             <span class="cifra">{{ r.por_cobrar_clientes | money }}</span>
             <span class="titulo">Por cobrar a clientes</span>
+            @if (esPositivo(cobrarDelLibro(r))) {
+              <span class="detalle">
+                incluye {{ cobrarDelLibro(r) | money }} del libro anterior
+              </span>
+            }
           </span>
         </div>
       </div>
@@ -162,7 +202,10 @@ import {
         <div class="grafica-card">
           <h3>¿A quién le compras mejor?</h3>
           <p class="grafica-sub">Ganancia estimada por productor</p>
-          @if (productores().length > 0) {
+          <!-- Solo los del período: la lista completa trae además a los que
+               únicamente se les debe del libro anterior, y con 0 kilos y $0 de
+               ganancia encabezaban el ranking sin haberle vendido nada. -->
+          @if (productoresConCompras().length > 0) {
             <app-chart type="bar" [data]="productoresChart()" [options]="opcionesBarrasProductor" />
           } @else {
             <p class="sin-datos">Sin compras en el período</p>
@@ -202,8 +245,10 @@ import {
                       <td>{{ sinVenta(fila, fila.precio_venta_kilo) ? '—' : (fila.precio_venta_kilo | money) }}</td>
                       <td>{{ costoKilo(fila) === null ? '—' : (costoKilo(fila) | money) }}</td>
                       <td>{{ sinVenta(fila, fila.gastos) ? '—' : (fila.gastos | money) }}</td>
+                      <!-- Con centavos si los hay (no | money): esta columna tiene
+                           que sumar su propio pie con calculadora. -->
                       <td [class.positivo]="esPositivo(fila.ganancia)" [class.negativo]="esNegativo(fila.ganancia)">
-                        {{ fila.ganancia | money }}
+                        {{ pesosExactos(fila.ganancia) }}
                       </td>
                     </tr>
                   }
@@ -215,7 +260,7 @@ import {
                       [class.positivo]="esPositivo(r.ganancia_estimada)"
                       [class.negativo]="esNegativo(r.ganancia_estimada)"
                     >
-                      {{ r.ganancia_estimada | money }}
+                      {{ pesosExactos(r.ganancia_estimada) }}
                     </td>
                   </tr>
                 </tfoot>
@@ -229,10 +274,19 @@ import {
 
       <div class="grafica-card tarjeta-ancha">
         <h3>Detalle por productor</h3>
+        <!-- Sin compras en el período el reparto NO existe: esa ganancia salió de
+             queso comprado antes, así que la columna suma $0 a propósito y el
+             subtítulo no puede prometer que cuadra con la tarjeta de arriba. -->
         <p class="grafica-sub">
-          Estimado: de cada kilo comprado en el período entraron
-          {{ r.valor_realizado_kilo | money }} netos (ventas − gastos). Se reparte entre los kilos
-          de cada productor, así que la suma cuadra con la ganancia neta de arriba.
+          @if (sinComprasEnPeriodo(r)) {
+            En este período no se le compró a nadie, así que la tabla no explica la ganancia: esa
+            plata salió de queso comprado antes. Aquí solo se muestra a quién se le debe hoy, con
+            ganancia $0 porque no se le compró nada en el período.
+          } @else {
+            Estimado: de cada kilo comprado en el período entraron
+            {{ r.valor_realizado_kilo | money }} netos (ventas − gastos). Se reparte entre los
+            kilos de cada productor, así que la suma cuadra con la ganancia neta de arriba.
+          }
         </p>
         @if (productores().length > 0) {
           <div class="tabla-scroll">
@@ -253,7 +307,19 @@ import {
               <tbody>
                 @for (fila of productores(); track fila.productor) {
                   <tr>
-                    <td><span class="nombre">{{ fila.productor }}</span></td>
+                    <td>
+                      <span class="nombre">{{ fila.productor }}</span>
+                      <!-- Sin esta nota la fila es una hilera de ceros sin
+                           explicación. El texto NO puede decir "solo cuenta
+                           anterior": la deuda puede venir de una compra vieja
+                           DEL SISTEMA (de mayo, por ejemplo) y no del libro
+                           anterior, y el backend manda las dos sumadas en la
+                           columna "Se le debe". Lo cierto en los dos casos es
+                           que no se le compró nada en el período. -->
+                      @if (sinComprasDelPeriodo(fila)) {
+                        <span class="nota">sin compras en el período</span>
+                      }
+                    </td>
                     <td>{{ fila.compras }}</td>
                     <td>{{ fila.kilos | cantidad: 'kg' }}</td>
                     <td>{{ fila.total_comprado | money }}</td>
@@ -385,6 +451,16 @@ import {
       background: color-mix(in srgb, #2e7d32 12%, transparent);
       border-color: color-mix(in srgb, #2e7d32 40%, transparent);
       color: #2e7d32;
+
+      .chip { background: color-mix(in srgb, #2e7d32 20%, transparent); }
+    }
+
+    // Cuánto de la cifra del chip viene del libro anterior. Va dentro del propio
+    // chip para que la aclaración no se despegue de la cifra que explica.
+    .temporada .chip .del-libro {
+      margin-left: 4px;
+      font-weight: 400;
+      font-size: 0.85em;
     }
 
     .temporada.pendiente {
@@ -527,6 +603,28 @@ export class ReventaResumenPage {
     return Number(valor) < 0;
   }
 
+  /**
+   * Pesos para la columna "Ganancia" y su pie: miles con punto y centavos SOLO
+   * cuando existen (y entonces siempre dos), con el signo antes del $, igual que
+   * `pesos()` de app/utils/export.py.
+   *
+   * A propósito NO usa | money: ese pipe redondea cada cifra a pesos enteros por
+   * separado, así que en un período con centavos las filas visibles se veían
+   * sumando -$4.999 contra un pie de -$5.000 cuando los datos SÍ cuadran
+   * (1.666,66 − 3.333,34 − 3.333,34 + 0,01 = −5.000,01). El usuario revisa este
+   * desglose con calculadora: la columna tiene que sumar lo que dice el pie.
+   */
+  pesosExactos(valor: Monto): string {
+    const numero = Number(valor);
+    if (!Number.isFinite(numero)) return '—';
+    const absoluto = Math.abs(numero);
+    const decimales = Number.isInteger(absoluto) ? 0 : 2;
+    return `${numero < 0 ? '-' : ''}$ ${absoluto.toLocaleString('es-CO', {
+      minimumFractionDigits: decimales,
+      maximumFractionDigits: decimales,
+    })}`;
+  }
+
   esPositivo(valor: Monto): boolean {
     return Number(valor) > 0;
   }
@@ -537,6 +635,45 @@ export class ReventaResumenPage {
       !this.esPositivo(r.por_cobrar_clientes) &&
       !this.esPositivo(r.por_pagar_productores)
     );
+  }
+
+  /**
+   * La temporada quedó cerrada y lo único pendiente son las cuentas del libro
+   * anterior: no hay queso por mover y, quitando esas cuentas viejas, no queda
+   * nada por cobrar ni por pagar de lo que se compró y se vendió aquí.
+   *
+   * Si el backend todavía no manda las cifras del libro anterior, `monto()` las
+   * lee como cero y este caso nunca se cumple: el indicador se comporta igual
+   * que antes.
+   */
+  soloFaltaLibroAnterior(r: ResumenReventa): boolean {
+    if (this.temporadaAlDia(r)) return false;
+    if (this.esPositivo(r.kilos_disponibles)) return false;
+    const cobrarDelSistema = this.monto(r.por_cobrar_clientes) - this.monto(r.por_cobrar_libro_anterior);
+    const pagarDelSistema = this.monto(r.por_pagar_productores) - this.monto(r.por_pagar_libro_anterior);
+    return cobrarDelSistema <= 0 && pagarDelSistema <= 0;
+  }
+
+  /**
+   * Cuánto de la cifra grande "Por cobrar a clientes" se le puede atribuir al
+   * libro anterior: el MÍNIMO entre las dos, nunca el saldo del libro a secas.
+   * Si un cliente abonó de más, el pedazo del sistema queda NEGATIVO y el libro
+   * pasa por encima del total (por cobrar $400.000 con $500.000 del libro): el
+   * desglose quedaría por encima de la cifra que explica.
+   */
+  cobrarDelLibro(r: ResumenReventa): number {
+    return Math.min(this.monto(r.por_cobrar_libro_anterior), this.monto(r.por_cobrar_clientes));
+  }
+
+  /** Lo mismo del otro lado: lo del libro no puede superar lo que hay por pagar. */
+  pagarDelLibro(r: ResumenReventa): number {
+    return Math.min(this.monto(r.por_pagar_libro_anterior), this.monto(r.por_pagar_productores));
+  }
+
+  /** Monto como número; 0 si la respuesta no trae el campo (backend más viejo). */
+  private monto(valor: Monto | null | undefined): number {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : 0;
   }
 
   /**
@@ -583,19 +720,66 @@ export class ReventaResumenPage {
     };
   });
 
-  /** Filas del desglose por producto, sin las despreciables (ni kilos ni plata que mostrar). */
+  /**
+   * Filas del desglose por producto. Se esconde SOLO la que no aporta nada: sin
+   * kilos y con ganancia exactamente 0.
+   *
+   * El umbral de antes (|ganancia| < 1) escondía la fila del residuo justo cuando
+   * el lote del período quedaba repartido exacto (0 kilos) y esa fila se llevaba
+   * los centavos del redondeo. El pie imprime la ganancia COMPLETA del período,
+   * así que las filas visibles sumaban un centavo distinto de su propio Total y
+   * la tabla no cuadraba consigo misma. Con "ganancia exactamente 0" la fila del
+   * centavo se ve, y en el caso normal (todo en ceros) sigue sin aparecer.
+   */
   readonly filasProducto = computed<GananciaProducto[]>(() =>
     (this.resumen()?.por_producto ?? []).filter(
-      (fila) => Number(fila.kilos) !== 0 || Math.abs(Number(fila.ganancia)) >= 1,
+      (fila) => Number(fila.kilos) !== 0 || Number(fila.ganancia) !== 0,
     ),
   );
 
-  /** Productores del período; ya vienen ordenados por ganancia estimada (mayor a menor). */
+  /**
+   * Filas del detalle por productor; ya vienen ordenadas por ganancia estimada
+   * (mayor a menor). Incluye a los que solo se les debe del libro anterior: van
+   * en ceros pero con su deuda, para que la columna "Se le debe" sume lo que dice
+   * la tarjeta de arriba.
+   */
   readonly productores = computed<GananciaProductor[]>(() => this.resumen()?.por_productor ?? []);
+
+  /**
+   * Los productores a los que SÍ se les compró en el período: son los del
+   * ranking. Que la lista traiga filas ya no significa que hubo compras, así que
+   * el "Sin compras en el período" de la gráfica se decide con esta.
+   */
+  readonly productoresConCompras = computed<GananciaProductor[]>(() =>
+    this.productores().filter((fila) => Number(fila.kilos) > 0),
+  );
+
+  /**
+   * La fila está en la tabla solo por lo que se le debe: no tuvo compras en el
+   * período. Puede ser deuda de una compra vieja del sistema, del libro anterior
+   * o de las dos (el backend las manda sumadas en `por_pagar`).
+   */
+  sinComprasDelPeriodo(fila: GananciaProductor): boolean {
+    return Number(fila.kilos) === 0 && fila.compras === 0;
+  }
+
+  /**
+   * El período no tuvo compras. Entonces el detalle por productor NO PUEDE
+   * explicar la ganancia del período: esa plata salió de inventario comprado
+   * ANTES, y repartirla entre gente a la que no se le compró sería inventarla.
+   * Por eso el backend deja esas filas con ganancia $0 y el subtítulo cambia.
+   *
+   * Se deduce de `kilos_comprados`, que ya viene en el resumen y es EL MISMO
+   * divisor con el que el backend reparte el neto del período: no hace falta un
+   * campo nuevo, que además podría quedar en desacuerdo con los kilos.
+   */
+  sinComprasEnPeriodo(r: ResumenReventa): boolean {
+    return !this.esPositivo(r.kilos_comprados);
+  }
 
   /** Barras horizontales: ganancia estimada de los 8 productores que más dejaron. */
   readonly productoresChart = computed<ChartData>(() => {
-    const filas = this.productores().slice(0, 8);
+    const filas = this.productoresConCompras().slice(0, 8);
     const valores = filas.map((fila) => Number(fila.ganancia_estimada));
     return {
       labels: filas.map((fila) => fila.productor),
