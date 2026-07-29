@@ -451,12 +451,36 @@ export interface LineaCategoria {
   total: Monto;
 }
 
+/**
+ * Estado de resultados del período.
+ *
+ * LA CORRECCIÓN IMPORTANTE: antes se restaba toda la leche que entró en el mes
+ * contra todo el queso que se vendió en el mes. Pero la leche del 1 de julio se
+ * convierte en queso que puede venderse 60 días después: no son el mismo queso, y
+ * la utilidad salía negativa sin que el negocio estuviera perdiendo.
+ *
+ * Ahora se resta el COSTO DE LO QUE SE VENDIÓ, y la leche comprada queda en un
+ * bloque informativo junto con lo que sigue sin venderse.
+ */
 export interface EstadoResultados {
   desde: string;
   hasta: string;
+  /** Total facturado. Los tres renglones de abajo lo suman exacto. */
   ingresos_ventas: Monto;
+  queso_vendido: Monto;
+  otras_ventas: Monto;
+  descuentos: Monto;
+  /** Lo que entra en la utilidad, de la cadena de lotes de producción. */
+  costo_queso_vendido: Monto;
+  transporte_despachos: Monto;
+  queso_danado: Monto;
+  /** Queso vendido que no salió de ningún lote: no se pudo costear. */
+  queso_vendido_sin_costo: Monto;
+  /** Informativo: NO entra en la utilidad, porque no es pérdida. */
   costo_leche: Monto;
   costo_transporte: Monto;
+  leche_sin_usar: Monto;
+  queso_en_bodega: Monto;
   gastos_por_categoria: LineaCategoria[];
   total_gastos: Monto;
   utilidad_bruta: Monto;

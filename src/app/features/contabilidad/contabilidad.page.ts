@@ -13,7 +13,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { ChartData } from 'chart.js';
 import { debounceTime, firstValueFrom, merge } from 'rxjs';
 
-import { Balance, EstadoResultados, LibroDiario } from '../../core/models';
+import { Monto, Balance, EstadoResultados, LibroDiario } from '../../core/models';
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
@@ -65,6 +65,46 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
       margin-top: 4px;
       padding-top: 10px;
     }
+    /* Lo que compró en el mes: va separado y en gris, porque NO entra en la
+       utilidad. Si se viera igual que los renglones de arriba, se leería como
+       parte de la cuenta. */
+    .bloque-informativo {
+      margin-top: 18px;
+      padding-top: 12px;
+      border-top: 2px solid var(--mat-sys-outline-variant);
+    }
+    .bloque-informativo h4 {
+      margin: 0 0 4px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .bloque-informativo .nota {
+      margin: 0 0 8px;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .bloque-informativo .nota:last-child { margin: 8px 0 0; }
+    .bloque-informativo .destacado span:last-child {
+      font-weight: 600;
+      color: var(--mat-sys-primary);
+    }
+    .aviso-costo {
+      margin: 12px 0 0;
+      padding: 9px 12px;
+      border-radius: 8px;
+      background: color-mix(in srgb, #a06000 8%, transparent);
+      color: #a06000;
+      font-size: 0.83rem;
+      line-height: 1.45;
+    }
+    @media (prefers-color-scheme: dark) {
+      .aviso-costo { color: #ffb74d; background: color-mix(in srgb, #ffb74d 10%, transparent); }
+    }
+
     .positivo { color: #2e7d32; }
     .negativo { color: #c62828; }
     :host-context(html.dark) {
@@ -148,6 +188,12 @@ export class ContabilidadPage implements OnInit {
   etiquetaOrigen(origen: string): string {
     return ETIQUETAS_ORIGEN[origen] ?? origen;
   }
+
+  /** Número a partir de un Monto, que llega como texto cuando es Decimal. */
+  readonly n = (valor: Monto | null | undefined): number => {
+    const numero = Number(valor);
+    return Number.isFinite(numero) ? numero : 0;
+  };
 
   esPositiva(valor: number | string): boolean {
     return Number(valor) >= 0;

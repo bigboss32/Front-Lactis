@@ -32,18 +32,47 @@
           <div class="estado-financiero">
             <mat-card>
               <mat-card-content>
+                <!-- Los ingresos abiertos: los tres renglones suman el total
+                     facturado, para poder ver de dónde sale la cifra. -->
+                <div class="linea sub">
+                  <span>Queso vendido</span>
+                  <span>{{ er.queso_vendido | money }}</span>
+                </div>
+                @if (n(er.otras_ventas) !== 0) {
+                  <div class="linea sub">
+                    <span>Otras ventas (lo que no es queso)</span>
+                    <span>{{ er.otras_ventas | money }}</span>
+                  </div>
+                }
+                @if (n(er.descuentos) > 0) {
+                  <div class="linea sub">
+                    <span>(−) Descuentos que dio</span>
+                    <span>{{ er.descuentos | money }}</span>
+                  </div>
+                }
                 <div class="linea">
-                  <span>Ingresos por ventas</span>
+                  <span>= Total facturado</span>
                   <span>{{ er.ingresos_ventas | money }}</span>
                 </div>
+
+                <!-- LA CORRECCIÓN: se resta lo que costó el queso QUE SE VENDIÓ, y no
+                     la leche que entró en el mes, que puede seguir en la bodega. -->
                 <div class="linea">
-                  <span>(−) Costo de leche</span>
-                  <span>{{ er.costo_leche | money }}</span>
+                  <span>(−) Costo del queso que vendió</span>
+                  <span>{{ er.costo_queso_vendido | money }}</span>
                 </div>
-                <div class="linea">
-                  <span>(−) Costo de transporte</span>
-                  <span>{{ er.costo_transporte | money }}</span>
-                </div>
+                @if (n(er.transporte_despachos) > 0) {
+                  <div class="linea">
+                    <span>(−) Transporte de los despachos</span>
+                    <span>{{ er.transporte_despachos | money }}</span>
+                  </div>
+                }
+                @if (n(er.queso_danado) > 0) {
+                  <div class="linea">
+                    <span>(−) Queso que se dañó</span>
+                    <span>{{ er.queso_danado | money }}</span>
+                  </div>
+                }
                 <div class="linea total">
                   <span>= Utilidad bruta</span>
                   <span [class]="esPositiva(er.utilidad_bruta) ? 'positivo' : 'negativo'">
@@ -73,6 +102,47 @@
                     {{ er.utilidad_neta | money }}
                   </span>
                 </div>
+
+                <!-- Lo que compró en el mes va APARTE y NO se resta arriba: la leche
+                     que todavía no se ha vendido no es pérdida, está en la bodega
+                     convertida en queso. Restarla era lo que hacía salir negativa la
+                     utilidad de un mes en que el negocio iba bien. -->
+                <div class="bloque-informativo">
+                  <h4>Lo que compró en el mes</h4>
+                  <p class="nota">
+                    Esto <strong>no</strong> se resta arriba: la leche que todavía no se
+                    ha vendido no es pérdida, está en la bodega convertida en queso.
+                  </p>
+                  <div class="linea sub">
+                    <span>Leche comprada</span>
+                    <span>{{ er.costo_leche | money }}</span>
+                  </div>
+                  <div class="linea sub">
+                    <span>Transporte de la leche</span>
+                    <span>{{ er.costo_transporte | money }}</span>
+                  </div>
+                  <div class="linea sub destacado">
+                    <span>De eso, leche que sigue sin usar</span>
+                    <span>{{ er.leche_sin_usar | money }}</span>
+                  </div>
+                  <div class="linea sub destacado">
+                    <span>De eso, queso que sigue en bodega</span>
+                    <span>{{ er.queso_en_bodega | money }}</span>
+                  </div>
+                  <p class="nota">
+                    El detalle lote por lote está en
+                    <strong>Producción &rarr; Utilidad por lote</strong>.
+                  </p>
+                </div>
+
+                @if (n(er.queso_vendido_sin_costo) > 0) {
+                  <p class="aviso-costo">
+                    Ojo: hay <strong>{{ er.queso_vendido_sin_costo | money }}</strong> de
+                    queso vendido que no salió de ninguna producción registrada, así que
+                    no se sabe qué costó. La utilidad de arriba se ve mejor de lo que es
+                    por esa parte.
+                  </p>
+                }
               </mat-card-content>
             </mat-card>
 
