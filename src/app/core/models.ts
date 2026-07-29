@@ -462,6 +462,21 @@ export interface LineaCategoria {
  * Ahora se resta el COSTO DE LO QUE SE VENDIÓ, y la leche comprada queda en un
  * bloque informativo junto con lo que sigue sin venderse.
  */
+/**
+ * Una producción de la que salió parte del queso vendido en el período.
+ *
+ * La suma de sus costos ES `costo_queso_vendido`: es la cuenta que el usuario
+ * puede seguir para comprobar que la leche sí se está restando.
+ */
+export interface OrigenDelCosto {
+  fecha: string;
+  tipo_queso: string;
+  origen: 'produccion' | 'existencia';
+  /** Kilos de ese lote que se vendieron en el período. */
+  kilos: Monto;
+  costo: Monto;
+}
+
 export interface EstadoResultados {
   desde: string;
   hasta: string;
@@ -476,6 +491,8 @@ export interface EstadoResultados {
   queso_danado: Monto;
   /** Queso vendido que no salió de ningún lote: no se pudo costear. */
   queso_vendido_sin_costo: Monto;
+  /** De qué producciones salió el queso vendido. Suman costo_queso_vendido. */
+  origen_del_costo: OrigenDelCosto[];
   /** Informativo: NO entra en la utilidad, porque no es pérdida. */
   costo_leche: Monto;
   costo_transporte: Monto;

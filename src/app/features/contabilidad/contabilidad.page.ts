@@ -17,7 +17,7 @@ import { Monto, Balance, EstadoResultados, LibroDiario } from '../../core/models
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
-import { dateToIso, hoyDate } from '../../shared/date-utils';
+import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ContabilidadService } from './contabilidad.service';
@@ -91,6 +91,23 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
     .bloque-informativo .destacado span:last-child {
       font-weight: 600;
       color: var(--mat-sys-primary);
+    }
+    /* La aclaración de qué es cada cifra va DEBAJO, en pequeño: al lado ensancha el
+       renglón y en el celular empuja la plata fuera de la pantalla. */
+    .aclara {
+      display: block;
+      font-size: 0.76rem;
+      font-style: normal;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* El cierre es la cifra que el usuario venía dudando: se marca para que se vea
+       que es la misma que se resta arriba. */
+    .bloque-informativo .cierre {
+      border-top: 2px solid var(--mat-sys-outline-variant);
+      padding-top: 5px;
+      margin-top: 5px;
+      font-weight: 600;
     }
     .aviso-costo {
       margin: 12px 0 0;
@@ -194,6 +211,11 @@ export class ContabilidadPage implements OnInit {
     const numero = Number(valor);
     return Number.isFinite(numero) ? numero : 0;
   };
+
+  /** El `Date` que necesita el pipe date, a partir del texto ISO del backend. */
+  isoADate(iso: string | null): Date | null {
+    return isoToDate(iso);
+  }
 
   esPositiva(valor: number | string): boolean {
     return Number(valor) >= 0;

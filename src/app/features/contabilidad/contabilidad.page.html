@@ -58,15 +58,30 @@
                 <!-- LA CORRECCIÓN: se resta lo que costó el queso QUE SE VENDIÓ, y no
                      la leche que entró en el mes, que puede seguir en la bodega. -->
                 <div class="linea">
-                  <span>(−) Costo del queso que vendió</span>
+                  <!-- La aclaración de QUÉ es esta cifra es lo más importante de la
+                       pantalla: sin ella no se ve que la leche está restada, y la
+                       utilidad parece inflada. -->
+                  <span>
+                    (−) Costo del queso que vendió
+                    <em class="aclara">la leche que se usó para hacerlo, con su transporte</em>
+                  </span>
                   <span>{{ er.costo_queso_vendido | money }}</span>
                 </div>
-                @if (n(er.transporte_despachos) > 0) {
-                  <div class="linea">
-                    <span>(−) Transporte de los despachos</span>
-                    <span>{{ er.transporte_despachos | money }}</span>
-                  </div>
-                }
+                <!-- El transporte de los despachos sale SIEMPRE, incluso en cero: si se
+                     escondiera, no habría forma de saber si se está contando. -->
+                <div class="linea">
+                  <span>
+                    (−) Transporte de los despachos
+                    @if (n(er.transporte_despachos) === 0) {
+                      <em class="aclara">
+                        ninguna venta del período tiene transporte registrado
+                      </em>
+                    } @else {
+                      <em class="aclara">llevar el queso hasta el cliente</em>
+                    }
+                  </span>
+                  <span>{{ er.transporte_despachos | money }}</span>
+                </div>
                 @if (n(er.queso_danado) > 0) {
                   <div class="linea">
                     <span>(−) Queso que se dañó</span>
@@ -103,35 +118,71 @@
                   </span>
                 </div>
 
-                <!-- Lo que compró en el mes va APARTE y NO se resta arriba: la leche
-                     que todavía no se ha vendido no es pérdida, está en la bodega
-                     convertida en queso. Restarla era lo que hacía salir negativa la
-                     utilidad de un mes en que el negocio iba bien. -->
+                <!-- LA RESPUESTA A "¿y la leche se resta o no?": de qué producciones
+                     salió el queso que se vendió. La suma de estos renglones ES la
+                     cifra que se resta arriba, así que se puede seguir uno por uno.
+
+                     Aquí hubo un intento de puente que partía de la leche comprada en
+                     el mes, pero necesitaba un renglón de ajuste por el queso hecho con
+                     leche de otro mes, y ese ajuste podía salir enorme: un número que
+                     nadie puede señalar es peor que no mostrar nada. -->
                 <div class="bloque-informativo">
-                  <h4>Lo que compró en el mes</h4>
+                  <h4>¿Y la leche que compró?</h4>
                   <p class="nota">
-                    Esto <strong>no</strong> se resta arriba: la leche que todavía no se
-                    ha vendido no es pérdida, está en la bodega convertida en queso.
+                    <strong>Sí se resta</strong>, pero solo la del queso que ya vendió.
+                    Ese queso salió de estas producciones, y lo que costaron suma
+                    exactamente lo que se resta arriba:
                   </p>
-                  <div class="linea sub">
-                    <span>Leche comprada</span>
-                    <span>{{ er.costo_leche | money }}</span>
+                  @for (o of er.origen_del_costo; track $index) {
+                    <div class="linea sub">
+                      <span>
+                        {{ isoADate(o.fecha) | date: 'd MMM y' }} &middot; {{ o.tipo_queso }}
+                        <em class="aclara">
+                          {{ o.kilos | cantidad: 'kg' }} de ese lote
+                          @if (o.origen === 'existencia') {
+                            &middot; ya estaba en bodega
+                          }
+                        </em>
+                      </span>
+                      <span>{{ o.costo | money }}</span>
+                    </div>
+                  } @empty {
+                    <div class="linea sub">
+                      <span>No se vendió queso en el período</span>
+                      <span>{{ 0 | money }}</span>
+                    </div>
+                  }
+                  <div class="linea sub cierre destacado">
+                    <span>= Costo del queso que vendió</span>
+                    <span>{{ er.costo_queso_vendido | money }}</span>
                   </div>
-                  <div class="linea sub">
-                    <span>Transporte de la leche</span>
-                    <span>{{ er.costo_transporte | money }}</span>
-                  </div>
+                  <p class="nota">
+                    Cada producción se puede abrir en
+                    <strong>Producción &rarr; Utilidad por lote</strong> para ver de qué
+                    proveedor vino su leche y a qué precio.
+                  </p>
+                </div>
+
+                <!-- El inventario va aparte y SIN cuentas: son dos cifras que
+                     significan una sola cosa cada una. -->
+                <div class="bloque-informativo">
+                  <h4>Lo que tiene guardado</h4>
+                  <p class="nota">
+                    Esto <strong>no</strong> se resta arriba y <strong>no</strong> es
+                    pérdida: es plata suya, guardada en leche y en queso. Su costo se
+                    restará en el mes en que lo venda.
+                  </p>
                   <div class="linea sub destacado">
-                    <span>De eso, leche que sigue sin usar</span>
+                    <span>Leche sin usar, en el tanque</span>
                     <span>{{ er.leche_sin_usar | money }}</span>
                   </div>
                   <div class="linea sub destacado">
-                    <span>De eso, queso que sigue en bodega</span>
+                    <span>Queso en bodega, del que hizo en el período</span>
                     <span>{{ er.queso_en_bodega | money }}</span>
                   </div>
                   <p class="nota">
-                    El detalle lote por lote está en
-                    <strong>Producción &rarr; Utilidad por lote</strong>.
+                    En el período compró {{ er.costo_leche | money }} de leche, más
+                    {{ er.costo_transporte | money }} de transporte para traerla.
                   </p>
                 </div>
 
