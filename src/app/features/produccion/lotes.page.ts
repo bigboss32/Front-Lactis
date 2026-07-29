@@ -133,6 +133,19 @@ function n(valor: Monto | null | undefined): number {
             </span>
           </p>
 
+          @if (n(p.kilos_existencia_sin_costo) > 0) {
+            <mat-card class="aviso ojo">
+              <mat-icon aria-hidden="true">price_change</mat-icon>
+              <span>
+                Hay <strong>{{ p.kilos_existencia_sin_costo | cantidad: 'kg' }}</strong>
+                de queso que se cargaron a mano <strong>sin ponerle costo</strong>. Esos
+                kilos salen como si le hubieran costado cero, así que la utilidad de
+                arriba se ve mejor de lo que es. Si le pone el costo a esas entradas de
+                inventario, la cifra queda real.
+              </span>
+            </mat-card>
+          }
+
           @if (n(p.kilos_sin_lote) > 0 || n(p.litros_sin_recepcion) > 0) {
             <mat-card class="aviso ojo">
               <mat-icon aria-hidden="true">report_problem</mat-icon>
@@ -180,20 +193,35 @@ function n(valor: Monto | null | undefined): number {
                   <div class="identidad">
                     <h3>
                       {{ l.tipo_queso }} del {{ isoADate(l.fecha) | date: 'd \\'de\\' MMMM \\'de\\' y' }}
+                      @if (l.origen === 'existencia') {
+                        <span class="chip existencia">Ya estaba en bodega</span>
+                      }
                       @if (l.vendido_completo) {
                         <span class="chip cerrado">Vendido completo</span>
                       } @else {
                         <span class="chip abierto">Queda queso</span>
                       }
                     </h3>
-                    <p class="quienes">
-                      {{ l.litros_usados | cantidad: 'L' }} de leche →
-                      {{ l.kilos_producidos | cantidad: 'kg' }} de queso
-                      ({{ rendimientoTexto(l) }})
-                      @if (n(l.merma) > 0) {
-                        · merma {{ l.merma | cantidad: 'kg' }}
-                      }
-                    </p>
+                    @if (l.origen === 'existencia') {
+                      <!-- No tiene leche detrás, y decir "0 litros de leche" haría
+                           creer que salió de la nada. Se dice de dónde vino. -->
+                      <p class="quienes">
+                        {{ l.kilos_producidos | cantidad: 'kg' }} cargados a mano,
+                        no salieron de una producción registrada
+                        @if (l.referencia) {
+                          · {{ l.referencia }}
+                        }
+                      </p>
+                    } @else {
+                      <p class="quienes">
+                        {{ l.litros_usados | cantidad: 'L' }} de leche →
+                        {{ l.kilos_producidos | cantidad: 'kg' }} de queso
+                        ({{ rendimientoTexto(l) }})
+                        @if (n(l.merma) > 0) {
+                          · merma {{ l.merma | cantidad: 'kg' }}
+                        }
+                      </p>
+                    }
                   </div>
                   <div class="ganancia" [class.perdida]="n(l.utilidad) < 0">
                     <span class="rotulo">
@@ -211,22 +239,35 @@ function n(valor: Monto | null | undefined): number {
                 <div class="cuerpo">
                   <dl class="bloque">
                     <h4>Lo que costó</h4>
-                    <div>
-                      <dt>Leche</dt>
-                      <dd>{{ l.costo_leche | money }}</dd>
-                    </div>
-                    <div>
-                      <dt>(+) Transporte</dt>
-                      <dd>{{ l.costo_transporte | money }}</dd>
-                    </div>
-                    <div class="suma">
-                      <dt>Costo del lote</dt>
-                      <dd>{{ l.costo_total | money }}</dd>
-                    </div>
+                    @if (l.origen === 'existencia') {
+                      <div>
+                        <dt>Cargado a mano</dt>
+                        <dd>{{ l.costo_total | money }}</dd>
+                      </div>
+                    } @else {
+                      <div>
+                        <dt>Leche</dt>
+                        <dd>{{ l.costo_leche | money }}</dd>
+                      </div>
+                      <div>
+                        <dt>(+) Transporte</dt>
+                        <dd>{{ l.costo_transporte | money }}</dd>
+                      </div>
+                      <div class="suma">
+                        <dt>Costo del lote</dt>
+                        <dd>{{ l.costo_total | money }}</dd>
+                      </div>
+                    }
                     <div>
                       <dt>Por kilo producido</dt>
                       <dd>{{ l.costo_kilo | money }}</dd>
                     </div>
+                    @if (l.sin_costo) {
+                      <div class="ojo">
+                        <dt>Sin costo cargado</dt>
+                        <dd>ojo</dd>
+                      </div>
+                    }
                     @if (n(l.litros_sin_recepcion) > 0) {
                       <div class="ojo">
                         <dt>Litros sin respaldo</dt>
@@ -246,6 +287,14 @@ function n(valor: Monto | null | undefined): number {
                       <dt>(−) Costo de lo vendido</dt>
                       <dd>{{ l.costo_vendido | money }}</dd>
                     </div>
+                    @if (n(l.costo_de_baja) > 0) {
+                      <!-- Lo que se dañó sí es pérdida de este lote: salió sin
+                           dejar un peso. -->
+                      <div>
+                        <dt>(−) Se dañó o se ajustó</dt>
+                        <dd>{{ l.costo_de_baja | money }}</dd>
+                      </div>
+                    }
                     <div class="suma">
                       <dt>{{ n(l.utilidad) < 0 ? 'Pérdida' : 'Utilidad' }}</dt>
                       <dd>{{ l.utilidad | money }}</dd>
@@ -264,6 +313,12 @@ function n(valor: Monto | null | undefined): number {
                       <dt>Vendido</dt>
                       <dd>{{ l.kilos_vendidos | cantidad: 'kg' }}</dd>
                     </div>
+                    @if (n(l.kilos_de_baja) > 0) {
+                      <div class="ojo">
+                        <dt>Se dañó o se ajustó</dt>
+                        <dd>{{ l.kilos_de_baja | cantidad: 'kg' }}</dd>
+                      </div>
+                    }
                     @if (n(l.kilos_en_bodega) > 0) {
                       <div class="ojo">
                         <dt>En bodega</dt>
@@ -298,7 +353,17 @@ function n(valor: Monto | null | undefined): number {
                   <div class="detalle">
                     <div class="tabla-envoltura">
                       <h4>De qué leche salió este lote</h4>
-                      @if (l.detalle_leche.length === 0) {
+                      @if (l.origen === 'existencia') {
+                        <p class="vacio-tabla">
+                          Este queso ya estaba en bodega y se cargó a mano, así que no
+                          hay leche registrada detrás. Su costo es el que se cargó:
+                          <strong>{{ l.costo_total | money }}</strong>
+                          @if (l.sin_costo) {
+                            — y quedó en cero, así que la utilidad de este lote sale
+                            mejor de lo que es.
+                          }
+                        </p>
+                      } @else if (l.detalle_leche.length === 0) {
                         <p class="vacio-tabla">
                           No hay leche registrada que respalde esta producción.
                         </p>
@@ -384,15 +449,31 @@ function n(valor: Monto | null | undefined): number {
                           </tbody>
                           <tfoot>
                             <tr>
-                              <th colspan="2">Total del lote</th>
+                              <th colspan="2">Suma de las ventas</th>
                               <th class="num">{{ l.kilos_vendidos | cantidad: 'kg' }}</th>
                               <th></th>
                               <th class="num">{{ l.ingresos | money }}</th>
                               <th class="num">{{ l.costo_vendido | money }}</th>
-                              <th class="num" [class.perdida]="n(l.utilidad) < 0">
-                                {{ l.utilidad | money }}
+                              <th class="num" [class.perdida]="utilidadDeVentas(l) < 0">
+                                {{ utilidadDeVentas(l) | money }}
                               </th>
                             </tr>
+                            @if (n(l.costo_de_baja) > 0) {
+                              <!-- Lo que se dañó NO sale en ninguna venta (no se
+                                   vendió), pero sí se le resta al lote. Sin estos dos
+                                   renglones las filas no sumarían el total y el
+                                   usuario lo notaría con la calculadora. -->
+                              <tr class="ajuste">
+                                <th colspan="6">(−) Se dañó o se ajustó</th>
+                                <th class="num">-{{ l.costo_de_baja | money }}</th>
+                              </tr>
+                              <tr>
+                                <th colspan="6">Utilidad del lote</th>
+                                <th class="num" [class.perdida]="n(l.utilidad) < 0">
+                                  {{ l.utilidad | money }}
+                                </th>
+                              </tr>
+                            }
                           </tfoot>
                         </table>
                       }
@@ -584,6 +665,11 @@ function n(valor: Monto | null | undefined): number {
       background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
       color: var(--mat-sys-primary);
     }
+    /* Gris a propósito: no es bueno ni malo, es solo de dónde vino el queso. */
+    .chip.existencia {
+      background: var(--mat-sys-surface-container-highest);
+      color: var(--mat-sys-on-surface-variant);
+    }
     .ganancia {
       display: flex;
       flex-direction: column;
@@ -727,6 +813,11 @@ function n(valor: Monto | null | undefined): number {
       border-top: 2px solid var(--mat-sys-outline-variant);
       font-weight: 700;
     }
+    .tabla tfoot .ajuste th {
+      border-top: 0;
+      font-weight: 500;
+      color: var(--mat-sys-on-surface-variant);
+    }
     .tabla .perdida { color: var(--mat-sys-error); }
     .tabla .nota {
       display: block;
@@ -821,6 +912,17 @@ export class ProduccionLotesPage implements OnInit {
   utilidadPorKilo(l: LoteProduccion): number {
     const kilos = n(l.kilos_vendidos);
     return kilos > 0 ? n(l.utilidad) / kilos : 0;
+  }
+
+  /**
+   * La suma de lo que dejaron las VENTAS del lote. No es la utilidad del lote
+   * cuando hubo baja: lo que se dañó no sale en ninguna venta porque no se vendió,
+   * pero sí se le resta. Se calcula aparte para que el pie de la tabla sume
+   * exactamente las filas de arriba, y la baja se muestre como un renglón propio
+   * que lleva de una cifra a la otra.
+   */
+  utilidadDeVentas(l: LoteProduccion): number {
+    return n(l.ingresos) - n(l.costo_vendido);
   }
 
   /**

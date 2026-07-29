@@ -44,6 +44,15 @@ export interface VentaDelLoteProduccion {
 export interface LoteProduccion {
   fecha: string;
   tipo_queso: string;
+  /**
+   * 'produccion' = se hizo aquí, con su leche detrás.
+   * 'existencia' = ya estaba en bodega y se cargó a mano; su costo es el que se
+   * cargó y no tiene leche. Es el caso normal al empezar a usar el sistema.
+   */
+  origen: 'produccion' | 'existencia';
+  referencia: string | null;
+  /** Existencia cargada SIN costo: hace ver la utilidad mejor de lo que es. */
+  sin_costo: boolean;
   litros_usados: Monto;
   kilos_producidos: Monto;
   merma: Monto;
@@ -54,9 +63,12 @@ export interface LoteProduccion {
   costo_total: Monto;
   costo_kilo: Monto;
   kilos_vendidos: Monto;
+  /** Ajustes de inventario hacia abajo: se dañó o se corrigió un sobrante. */
+  kilos_de_baja: Monto;
   kilos_en_bodega: Monto;
   ingresos: Monto;
   costo_vendido: Monto;
+  costo_de_baja: Monto;
   costo_en_bodega: Monto;
   utilidad: Monto;
   precio_venta_kilo: Monto;
@@ -80,6 +92,8 @@ export interface LotesProduccionPanel {
   /** Queso vendido que no salió de ninguna producción registrada. */
   kilos_sin_lote: Monto;
   ingreso_sin_lote: Monto;
+  /** Existencia cargada a mano sin costo: hace ver la utilidad mejor de lo real. */
+  kilos_existencia_sin_costo: Monto;
   /** Litros usados en producciones sin leche registrada que los respalde. */
   litros_sin_recepcion: Monto;
   /** Leche recibida que todavía no se ha usado en ninguna producción. */
