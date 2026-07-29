@@ -40,6 +40,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'settings',
     items: [
       { label: 'Producción', icon: 'factory', route: '/produccion', modulo: 'produccion' },
+      { label: 'Utilidad por lote', icon: 'query_stats', route: '/produccion/lotes', modulo: 'produccion' },
       { label: 'Inventario', icon: 'inventory_2', route: '/inventario', modulo: 'inventario' },
     ],
   },
