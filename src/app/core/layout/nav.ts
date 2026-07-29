@@ -57,6 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: 'swap_horiz',
     items: [
       { label: 'Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
+      { label: 'Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
       { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
       { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
       { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },

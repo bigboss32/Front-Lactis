@@ -8,6 +8,7 @@ import { RouterOutlet } from '@angular/router';
 import { PageHeader } from '../../shared/page-header';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ReventaFiltroService } from './reventa-filtro.service';
+import { SelectorTemporada } from './selector-temporada';
 
 /**
  * Contenedor del módulo de reventa: encabezado + filtro de fechas compartido y
@@ -17,7 +18,7 @@ import { ReventaFiltroService } from './reventa-filtro.service';
   selector: 'app-reventa-shell',
   imports: [
     ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatDatepickerModule,
-    RouterOutlet, PageHeader, RangoFechasRapido,
+    RouterOutlet, PageHeader, RangoFechasRapido, SelectorTemporada,
   ],
   template: `
     <div class="page">
@@ -40,6 +41,10 @@ import { ReventaFiltroService } from './reventa-filtro.service';
           <mat-datepicker #pHasta />
         </mat-form-field>
         <app-rango-fechas-rapido [desde]="filtro.desde" [hasta]="filtro.hasta" />
+        <!-- Va junto a los rangos rápidos porque hace lo mismo: fijar el filtro.
+             La diferencia es que este rango lo puso el usuario, tiene nombre, y en
+             el menú se ve de una la ganancia de cada temporada. -->
+        <app-selector-temporada />
       </div>
 
       <router-outlet />

@@ -57,6 +57,73 @@ export interface VentaQueso extends TenantFields {
   abonos: AbonoReventa[];
 }
 
+// ------------------------------------------------------------- temporadas
+/**
+ * Un ciclo de compra y reventa con nombre y fechas. NO guarda plata: la ganancia
+ * se calcula con el mismo motor del Resumen sobre sus fechas, así que la cifra de
+ * la temporada es la MISMA que muestra el Resumen filtrado a ese rango.
+ */
+export interface Temporada extends TenantFields {
+  nombre: string;
+  fecha_inicio: string;
+  /** null = temporada abierta (la que está corriendo). */
+  fecha_fin: string | null;
+  notas: string | null;
+  abierta: boolean;
+}
+
+/** Una temporada con sus cifras ya calculadas. */
+export interface TemporadaResumen {
+  id: string;
+  nombre: string;
+  fecha_inicio: string;
+  /** En la abierta es HOY: hasta dónde llegan las cifras que se muestran. */
+  fecha_fin: string;
+  abierta: boolean;
+  dias: number;
+  notas: string | null;
+  kilos_comprados: Monto;
+  kilos_vendidos: Monto;
+  kilos_borona_vendidos: Monto;
+  kilos_a_borona: Monto;
+  kilos_merma: Monto;
+  kilos_pendientes: Monto;
+  total_compras: Monto;
+  total_ventas: Monto;
+  total_gastos: Monto;
+  ganancia: Monto;
+  margen_por_kilo: Monto;
+  precio_promedio_compra: Monto;
+  precio_promedio_venta: Monto;
+  /** Lo que falta de ESTA temporada: no la cartera de siempre ni el libro anterior. */
+  por_cobrar: Monto;
+  por_pagar: Monto;
+  cerrada_de_verdad: boolean;
+}
+
+export interface TemporadasPanel {
+  temporadas: TemporadaResumen[];
+  /** Los totales son la suma EXACTA de las temporadas listadas, no el histórico. */
+  total_ganancia: Monto;
+  total_kilos_comprados: Monto;
+  total_ventas: Monto;
+  total_compras: Monto;
+  mejor: string | null;
+  peor: string | null;
+  /** Días con compras o ventas que no caen en ninguna temporada (huecos). */
+  dias_sin_temporada: number;
+  /** Inicio que se propone para la próxima: día siguiente al último cierre. */
+  proximo_inicio: string | null;
+}
+
+export interface TemporadaPayload {
+  nombre: string;
+  fecha_inicio: string;
+  /** Sin fecha_fin queda ABIERTA. */
+  fecha_fin?: string | null;
+  notas?: string | null;
+}
+
 // ------------------------------------------- saldos de la cuenta anterior
 /** De qué lado está la cuenta vieja: un cliente le debe ('cobrar') o él le debe a un productor ('pagar'). */
 export type TipoSaldoAnterior = 'cobrar' | 'pagar';
@@ -465,6 +532,37 @@ export class ReventaService {
 
   anularVenta(id: string): Observable<VentaQueso> {
     return this.api.post<VentaQueso>(`${this.base}/ventas/${id}/anular`);
+  }
+
+  // -------------------------------------------------------------- temporadas
+  /** Las temporadas con la ganancia de cada una, de la más reciente a la más vieja. */
+  temporadas(): Observable<TemporadasPanel> {
+    return this.api.get<TemporadasPanel>(`${this.base}/temporadas`);
+  }
+
+  /** Sin `fecha_fin` la temporada queda ABIERTA. Se puede registrar una ya pasada. */
+  crearTemporada(payload: TemporadaPayload): Observable<Temporada> {
+    return this.api.post<Temporada>(`${this.base}/temporadas`, payload);
+  }
+
+  editarTemporada(id: string, payload: Partial<TemporadaPayload>): Observable<Temporada> {
+    return this.api.put<Temporada>(`${this.base}/temporadas/${id}`, payload);
+  }
+
+  /** Borra solo el rango con nombre: las compras y las ventas se quedan. */
+  eliminarTemporada(id: string): Observable<void> {
+    return this.api.delete(`${this.base}/temporadas/${id}`);
+  }
+
+  /** Le pone fecha de fin (hoy si no se manda). No congela las cifras. */
+  cerrarTemporada(id: string, fechaFin?: string | null): Observable<Temporada> {
+    return this.api.post<Temporada>(`${this.base}/temporadas/${id}/cerrar`, {
+      fecha_fin: fechaFin ?? null,
+    });
+  }
+
+  reabrirTemporada(id: string): Observable<Temporada> {
+    return this.api.post<Temporada>(`${this.base}/temporadas/${id}/reabrir`);
   }
 
   // ----------------------------------------- saldos de la cuenta anterior

@@ -10,6 +10,14 @@ export const REVENTA_ROUTES: Routes = [
     title: 'Compra y venta de queso · Libro anterior | Lactis',
     loadComponent: () => import('./libro-anterior.page').then((m) => m.LibroAnteriorPage),
   },
+  // También va fuera de la shell, por la misma razón: cada temporada trae su
+  // propio rango de fechas, así que el filtro compartido de la shell no aplica
+  // aquí y tenerlo arriba haría creer que recorta la lista.
+  {
+    path: 'temporadas',
+    title: 'Compra y venta de queso · Temporadas | Lactis',
+    loadComponent: () => import('./temporadas.page').then((m) => m.ReventaTemporadasPage),
+  },
   {
     path: '',
     loadComponent: () => import('./reventa-shell.page').then((m) => m.ReventaShellPage),
