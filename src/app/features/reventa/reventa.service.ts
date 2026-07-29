@@ -57,6 +57,70 @@ export interface VentaQueso extends TenantFields {
   abonos: AbonoReventa[];
 }
 
+// ------------------------------------------------------------------ lotes
+/**
+ * Un lote de compra: todas las compras de queso de una misma FECHA.
+ *
+ * Las ventas no dicen de qué lote salió el queso, así que se reparten FIFO: se
+ * vende del lote más viejo primero, que es lo que pasa en la bodega porque el
+ * queso es perecedero. Cada lote tiene su propio costo por kilo.
+ *
+ * OJO con `ganancia`: es la de lo que YA se realizó (vendido y perdido como
+ * merma), y NO le resta el costo de lo que sigue en inventario. Por eso NO
+ * coincide con la "ganancia del período" del Resumen, que sí resta todas las
+ * compras del período aunque no se hayan vendido. Las dos son correctas y
+ * responden a preguntas distintas.
+ */
+export interface LoteResumen {
+  fecha: string;
+  productores: string[];
+  compras: number;
+  kilos_comprados: Monto;
+  costo_total: Monto;
+  costo_kilo: Monto;
+  /** Lo que falta pagarles a los productores de ESTE lote (exacto, no repartido). */
+  por_pagar: Monto;
+  /** Borona que llegó con el lote y no se paga. */
+  borona_recibida: Monto;
+  // Los cuatro suman kilos_comprados
+  kilos_vendidos: Monto;
+  kilos_a_borona: Monto;
+  kilos_merma: Monto;
+  kilos_sin_vender: Monto;
+  borona_vendida: Monto;
+  borona_sin_vender: Monto;
+  ingreso_queso: Monto;
+  ingreso_borona: Monto;
+  ingresos: Monto;
+  gastos: Monto;
+  costo_vendido: Monto;
+  /** Solo la borona que venía de queso: la que llega gratis cuesta 0. */
+  costo_borona_vendida: Monto;
+  costo_merma: Monto;
+  costo_sin_vender: Monto;
+  ganancia: Monto;
+  margen_kilo: Monto;
+  precio_venta_kilo: Monto;
+  cerrado: boolean;
+}
+
+export interface LotesPanel {
+  lotes: LoteResumen[];
+  total_ganancia: Monto;
+  total_kilos_comprados: Monto;
+  total_costo: Monto;
+  total_ingresos: Monto;
+  total_por_pagar: Monto;
+  total_kilos_sin_vender: Monto;
+  total_costo_sin_vender: Monto;
+  mejor: string | null;
+  peor: string | null;
+  /** Kilos vendidos que no encontraron lote: falta cargar una compra. */
+  kilos_sin_lote: Monto;
+  borona_sin_lote: Monto;
+  ingreso_sin_lote: Monto;
+}
+
 // ------------------------------------------------------------- temporadas
 /**
  * Un ciclo de compra y reventa con nombre y fechas. NO guarda plata: la ganancia
@@ -532,6 +596,21 @@ export class ReventaService {
 
   anularVenta(id: string): Observable<VentaQueso> {
     return this.api.post<VentaQueso>(`${this.base}/ventas/${id}/anular`);
+  }
+
+  // ------------------------------------------------------------------- lotes
+  /**
+   * Los lotes de compra con lo que dejó cada uno.
+   *
+   * `desde`/`hasta` recortan qué lotes se muestran, NO el cálculo: el reparto FIFO
+   * se hace siempre sobre toda la historia, porque para saber qué había en
+   * inventario en una fecha hay que haber procesado lo de antes.
+   */
+  lotes(desde?: string | null, hasta?: string | null): Observable<LotesPanel> {
+    const params: QueryParams = {};
+    if (desde) params['desde'] = desde;
+    if (hasta) params['hasta'] = hasta;
+    return this.api.get<LotesPanel>(`${this.base}/lotes`, params);
   }
 
   // -------------------------------------------------------------- temporadas

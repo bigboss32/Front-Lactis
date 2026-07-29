@@ -18,6 +18,13 @@ export const REVENTA_ROUTES: Routes = [
     title: 'Compra y venta de queso · Temporadas | Lactis',
     loadComponent: () => import('./temporadas.page').then((m) => m.ReventaTemporadasPage),
   },
+  // Fuera de la shell también: el reparto por lotes necesita toda la historia, así
+  // que el filtro de fechas compartido no aplica y arriba haría creer que recorta.
+  {
+    path: 'lotes',
+    title: 'Compra y venta de queso · Ganancia por lote | Lactis',
+    loadComponent: () => import('./lotes.page').then((m) => m.ReventaLotesPage),
+  },
   {
     path: '',
     loadComponent: () => import('./reventa-shell.page').then((m) => m.ReventaShellPage),

@@ -1,4 +1,6 @@
-import { ApplicationConfig, provideZoneChangeDetection } from '@angular/core';
+import { ApplicationConfig, LOCALE_ID, provideZoneChangeDetection } from '@angular/core';
+import { registerLocaleData } from '@angular/common';
+import localeEsCO from '@angular/common/locales/es-CO';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -12,9 +14,17 @@ import { routes } from './app.routes';
 import { authInterceptor } from './core/auth/auth.interceptor';
 import { PaginadorEspanol } from './shared/paginador-espanol';
 
+// Locale de Colombia para el pipe `date`. Hasta ahora toda la aplicación usaba
+// 'dd/MM/yyyy', que sale igual en cualquier idioma, así que el locale nunca hizo
+// falta; en cuanto una pantalla escribe el mes con letras ('d MMMM y'), sin esto
+// sale "17 de July de 2026". Registrarlo NO cambia ninguna pantalla existente:
+// 'dd/MM/yyyy' es un formato explícito y se ve idéntico.
+registerLocaleData(localeEsCO);
+
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
+    { provide: LOCALE_ID, useValue: 'es-CO' },
     provideRouter(routes, withComponentInputBinding()),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimationsAsync(),
