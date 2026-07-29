@@ -97,6 +97,13 @@ function n(valor: Monto | null | undefined): number {
                 {{ p.total_kilos_en_bodega | cantidad: 'kg' }} · plata invertida, sin vender
               </span>
             </div>
+            @if (n(p.total_gastos) > 0) {
+              <div class="total">
+                <span class="rotulo">Transporte de despachos</span>
+                <span class="cifra chica">{{ p.total_gastos | money }}</span>
+                <span class="detalle">lo que costó llevar el queso</span>
+              </div>
+            }
             @if (n(p.litros_sin_usar) > 0) {
               <div class="total">
                 <span class="rotulo">Leche sin usar</span>
@@ -259,9 +266,17 @@ function n(valor: Monto | null | undefined): number {
                       </div>
                     }
                     <div>
-                      <dt>Por kilo producido</dt>
+                      <dt>Por kilo en la planta</dt>
                       <dd>{{ l.costo_kilo | money }}</dd>
                     </div>
+                    @if (n(l.gastos) > 0) {
+                      <!-- La cifra que pidió el usuario: lo que vale el kilo puesto
+                           en Bogotá o donde se haya despachado. -->
+                      <div class="destacado">
+                        <dt>Por kilo puesto allá</dt>
+                        <dd>{{ l.costo_puesto_kilo | money }}</dd>
+                      </div>
+                    }
                     @if (l.sin_costo) {
                       <div class="ojo">
                         <dt>Sin costo cargado</dt>
@@ -287,6 +302,12 @@ function n(valor: Monto | null | undefined): number {
                       <dt>(−) Costo de lo vendido</dt>
                       <dd>{{ l.costo_vendido | money }}</dd>
                     </div>
+                    @if (n(l.gastos) > 0) {
+                      <div>
+                        <dt>(−) Transporte del despacho</dt>
+                        <dd>{{ l.gastos | money }}</dd>
+                      </div>
+                    }
                     @if (n(l.costo_de_baja) > 0) {
                       <!-- Lo que se dañó sí es pérdida de este lote: salió sin
                            dejar un peso. -->
@@ -420,6 +441,8 @@ function n(valor: Monto | null | undefined): number {
                               <th class="num">Precio</th>
                               <th class="num">Entró</th>
                               <th class="num">Costó</th>
+                              <th class="num">Transporte</th>
+                              <th class="num">Puesto allá</th>
                               <th class="num">Dejó</th>
                             </tr>
                           </thead>
@@ -441,6 +464,10 @@ function n(valor: Monto | null | undefined): number {
                                 <td class="num">{{ v.precio_kilo | money }}</td>
                                 <td class="num">{{ v.ingreso | money }}</td>
                                 <td class="num">{{ v.costo | money }}</td>
+                                <td class="num">
+                                  {{ n(v.gasto) > 0 ? (v.gasto | money) : SIN_DATO }}
+                                </td>
+                                <td class="num">{{ v.costo_puesto_kilo | money }}</td>
                                 <td class="num" [class.perdida]="n(v.utilidad) < 0">
                                   {{ v.utilidad | money }}
                                 </td>
@@ -454,6 +481,10 @@ function n(valor: Monto | null | undefined): number {
                               <th></th>
                               <th class="num">{{ l.ingresos | money }}</th>
                               <th class="num">{{ l.costo_vendido | money }}</th>
+                              <th class="num">
+                                {{ n(l.gastos) > 0 ? (l.gastos | money) : SIN_DATO }}
+                              </th>
+                              <th class="num">{{ l.costo_puesto_kilo | money }}</th>
                               <th class="num" [class.perdida]="utilidadDeVentas(l) < 0">
                                 {{ utilidadDeVentas(l) | money }}
                               </th>
@@ -464,11 +495,11 @@ function n(valor: Monto | null | undefined): number {
                                    renglones las filas no sumarían el total y el
                                    usuario lo notaría con la calculadora. -->
                               <tr class="ajuste">
-                                <th colspan="6">(−) Se dañó o se ajustó</th>
+                                <th colspan="8">(−) Se dañó o se ajustó</th>
                                 <th class="num">-{{ l.costo_de_baja | money }}</th>
                               </tr>
                               <tr>
-                                <th colspan="6">Utilidad del lote</th>
+                                <th colspan="8">Utilidad del lote</th>
                                 <th class="num" [class.perdida]="n(l.utilidad) < 0">
                                   {{ l.utilidad | money }}
                                 </th>
@@ -729,6 +760,11 @@ function n(valor: Monto | null | undefined): number {
     }
     .bloque .suma dt { color: inherit; }
     .bloque > div.ojo dd { color: #a06000; font-weight: 600; }
+    /* El kilo puesto en destino es la cifra que se busca en este bloque. */
+    .bloque > div.destacado dd {
+      color: var(--mat-sys-primary);
+      font-weight: 700;
+    }
 
     .pendiente {
       display: flex;
@@ -922,8 +958,11 @@ export class ProduccionLotesPage implements OnInit {
    * que lleva de una cifra a la otra.
    */
   utilidadDeVentas(l: LoteProduccion): number {
-    return n(l.ingresos) - n(l.costo_vendido);
+    return n(l.ingresos) - n(l.costo_vendido) - n(l.gastos);
   }
+
+  /** Guion para las celdas sin dato, como constante para no meterlo en la plantilla. */
+  readonly SIN_DATO = '—';
 
   /**
    * El rendimiento en la unidad que se usa en la planta: litros de leche por kilo

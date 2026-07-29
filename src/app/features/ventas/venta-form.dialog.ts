@@ -16,7 +16,7 @@ import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { Cliente, Page, Producto, Venta } from '../../core/models';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
-import { MoneyPipe } from '../../shared/pipes';
+import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { SelectBuscable } from '../../shared/select-buscable';
 import { SpinnerBoton } from '../../shared/spinner-boton';
@@ -29,7 +29,7 @@ import { VentaPayload, VentasService } from './ventas.service';
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
     MatSelectModule, MatButtonModule, MatIconModule, MatCheckboxModule,
-    MatTooltipModule, MatDatepickerModule, MoneyPipe, MilesInputDirective,
+    MatTooltipModule, MatDatepickerModule, MoneyPipe, CantidadPipe, MilesInputDirective,
     SelectBuscable, SpinnerBoton,
   ],
   templateUrl: './venta-form.dialog.html',
@@ -95,6 +95,23 @@ import { VentaPayload, VentasService } from './ventas.service';
         strong { min-width: 110px; text-align: right; font-variant-numeric: tabular-nums; }
       }
       .total-final { font-size: 1.05rem; }
+      /* El transporte va DESPUÉS del total y separado por una línea: si fuera
+         antes, se leería como que está incluido en lo que paga el cliente. */
+      .aparte {
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.88rem;
+      }
+      .aparte:first-of-type {
+        margin-top: 4px;
+        padding-top: 6px;
+        border-top: 1px solid var(--mat-sys-outline-variant);
+      }
+    }
+    .ayuda {
+      margin: 0 0 10px;
+      font-size: 0.84rem;
+      line-height: 1.45;
+      color: var(--mat-sys-on-surface-variant);
     }
     mat-checkbox { display: block; margin-bottom: 8px; }
     .obs { width: 100%; margin-top: 8px; }
@@ -119,6 +136,9 @@ export class VentaFormDialog {
     cliente_id: ['', Validators.required],
     fecha: [hoyDate(), Validators.required],
     descuento: [0, [Validators.min(0)]],
+    // Flete del despacho. NO se le suma al total que paga el cliente.
+    gasto_concepto: [''],
+    gasto_por_kilo: [0, [Validators.min(0)]],
     observaciones: [''],
     descontar_inventario: [true],
     lineas: this.fb.array([this.nuevaLinea()]),
@@ -141,6 +161,20 @@ export class VentaFormDialog {
   });
   readonly total = computed(() => this.subtotal() - this.descuentoValor());
 
+  /** Kilos que suben al camión: el flete se paga por peso, no por plata. */
+  readonly kilosDespachados = computed(() => {
+    this.cambios();
+    return this.lineas.controls.reduce(
+      (acum, linea) => acum + Number(linea.getRawValue().cantidad || 0),
+      0,
+    );
+  });
+  readonly fletePorKilo = computed(() => {
+    this.cambios();
+    return Number(this.form.controls.gasto_por_kilo.value || 0);
+  });
+  readonly fleteTotal = computed(() => this.kilosDespachados() * this.fletePorKilo());
+
   constructor() {
     firstValueFrom(
       this.api.get<Page<Cliente>>('/clientes', { page_size: 100, estado: 'activo' }),
@@ -162,6 +196,8 @@ export class VentaFormDialog {
         cliente_id: v.cliente_id,
         fecha: isoToDate(v.fecha) ?? hoyDate(),
         descuento: Number(v.descuento),
+        gasto_concepto: v.gasto_concepto ?? '',
+        gasto_por_kilo: Number(v.gasto_por_kilo ?? 0),
         observaciones: v.observaciones ?? '',
       });
       this.lineas.clear();
@@ -217,6 +253,8 @@ export class VentaFormDialog {
             cliente_id: valor.cliente_id,
             fecha: dateToIso(valor.fecha)!,
             descuento: Number(valor.descuento || 0),
+            gasto_concepto: valor.gasto_concepto?.trim() || null,
+            gasto_por_kilo: Number(valor.gasto_por_kilo || 0),
             observaciones: valor.observaciones || null,
             detalles,
           }),
@@ -227,6 +265,8 @@ export class VentaFormDialog {
           cliente_id: valor.cliente_id,
           fecha: dateToIso(valor.fecha)!,
           descuento: Number(valor.descuento || 0),
+          gasto_concepto: valor.gasto_concepto?.trim() || null,
+          gasto_por_kilo: Number(valor.gasto_por_kilo || 0),
           observaciones: valor.observaciones || null,
           descontar_inventario: valor.descontar_inventario,
           detalles,

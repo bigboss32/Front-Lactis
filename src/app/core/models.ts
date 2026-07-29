@@ -329,6 +329,16 @@ export interface Venta extends TenantFields {
   pagado: Monto;
   saldo: Monto;
   observaciones: string | null;
+  /**
+   * Lo que cuesta LLEVAR el despacho (el flete a Bogotá o a donde sea).
+   *
+   * NO está dentro de `total`: el cliente no lo paga, lo paga la quesera. Es lo que
+   * hace que el kilo puesto en destino valga más que el kilo en la planta, y sale
+   * restado en la utilidad por lote de producción.
+   */
+  gasto_concepto: string | null;
+  gasto_por_kilo: Monto;
+  gasto_monto: Monto;
   detalles: VentaDetalle[];
 }
 

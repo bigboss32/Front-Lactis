@@ -62,10 +62,47 @@
       <mat-icon>add</mat-icon> Agregar línea
     </button>
 
+    <h3 class="seccion">Transporte del despacho</h3>
+    <p class="ayuda">
+      Lo que cuesta llevarlo. <strong>No se le cobra al cliente</strong>: es un costo
+      suyo, y es lo que hace que el kilo puesto allá valga más que en la planta.
+    </p>
+    <div class="form-grid">
+      <mat-form-field>
+        <mat-label>A dónde va</mat-label>
+        <input matInput formControlName="gasto_concepto" maxlength="150"
+               placeholder="Ej: Transporte a Bogotá" />
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>Cuánto por kilo</mat-label>
+        <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
+        <span matTextPrefix>$&nbsp;</span>
+        <mat-hint>
+          @if (kilosDespachados() > 0 && fleteTotal() > 0) {
+            {{ kilosDespachados() | cantidad: 'kg' }} × {{ fletePorKilo() | money }} =
+            {{ fleteTotal() | money }}
+          } @else {
+            Déjelo vacío si lo recogen en la planta
+          }
+        </mat-hint>
+      </mat-form-field>
+    </div>
+
     <div class="totales">
       <div><span>Subtotal</span><strong>{{ subtotal() | money }}</strong></div>
       <div><span>Descuento</span><strong>&minus; {{ descuentoValor() | money }}</strong></div>
-      <div class="total-final"><span>Total</span><strong>{{ total() | money }}</strong></div>
+      <div class="total-final"><span>Total que paga el cliente</span><strong>{{ total() | money }}</strong></div>
+      @if (fleteTotal() > 0) {
+        <!-- Va DESPUÉS del total y con su aclaración: si fuera antes, se leería
+             como que el flete está incluido en lo que paga el cliente. -->
+        <div class="aparte">
+          <span>Transporte (lo paga usted)</span><strong>&minus; {{ fleteTotal() | money }}</strong>
+        </div>
+        <div class="aparte">
+          <span>Le queda</span><strong>{{ total() - fleteTotal() | money }}</strong>
+        </div>
+      }
     </div>
     @if (total() < 0) {
       <p style="color: var(--mat-sys-error); margin: 4px 0 0; font-size: 0.85rem">

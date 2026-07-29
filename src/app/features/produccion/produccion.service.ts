@@ -29,6 +29,10 @@ export interface VentaDelLoteProduccion {
   precio_kilo: Monto;
   ingreso: Monto;
   costo: Monto;
+  /** La parte del flete de ese despacho que le toca a este lote. */
+  gasto: Monto;
+  /** Lo que costó el kilo PUESTO en el destino: el queso más el flete. */
+  costo_puesto_kilo: Monto;
   utilidad: Monto;
   partida: boolean;
 }
@@ -67,6 +71,14 @@ export interface LoteProduccion {
   kilos_de_baja: Monto;
   kilos_en_bodega: Monto;
   ingresos: Monto;
+  /** Fletes de los despachos, en la parte que le toca a este lote. */
+  gastos: Monto;
+  /**
+   * Lo que costó el kilo PUESTO en el destino (queso + flete), sobre los kilos
+   * VENDIDOS: el flete solo se pagó por los que se despacharon, así que dividirlo
+   * entre todos le cargaría al queso de bodega un flete que nadie pagó.
+   */
+  costo_puesto_kilo: Monto;
   costo_vendido: Monto;
   costo_de_baja: Monto;
   costo_en_bodega: Monto;
@@ -85,6 +97,7 @@ export interface LotesProduccionPanel {
   total_kilos: Monto;
   total_costo: Monto;
   total_ingresos: Monto;
+  total_gastos: Monto;
   total_kilos_en_bodega: Monto;
   total_costo_en_bodega: Monto;
   mejor: string | null;

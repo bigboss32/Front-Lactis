@@ -16,6 +16,9 @@ export interface VentaPayload {
   cliente_id: string;
   fecha: string; // ISO YYYY-MM-DD
   descuento: number;
+  /** Flete del despacho: no se le suma al total que paga el cliente. */
+  gasto_concepto?: string | null;
+  gasto_por_kilo?: number;
   observaciones?: string | null;
   detalles: VentaLineaPayload[];
   descontar_inventario: boolean;
