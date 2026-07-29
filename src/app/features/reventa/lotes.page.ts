@@ -300,6 +300,178 @@ function n(valor: Monto | null | undefined): number {
                     <strong>{{ l.precio_venta_kilo | money }}/kg</strong> en promedio.
                   </p>
                 }
+
+                <!-- El detalle: quién aportó qué y a quién se le vendió. Va
+                     plegado porque en un lote de seis productores son dos tablas
+                     y la tarjeta dejaría de leerse de un vistazo. -->
+                <button class="ver-detalle" type="button" (click)="alternar(l.fecha)">
+                  <mat-icon>{{ abierto(l.fecha) ? 'expand_less' : 'expand_more' }}</mat-icon>
+                  {{ abierto(l.fecha) ? 'Ocultar el detalle' : 'Ver quién aportó y a quién se le vendió' }}
+                </button>
+
+                @if (abierto(l.fecha)) {
+                  <div class="detalle">
+                    <div class="tabla-envoltura">
+                      <h4>A quién le compró este lote</h4>
+                      <table class="tabla">
+                        <thead>
+                          <tr>
+                            <th>Productor</th>
+                            <th class="num">Kilos</th>
+                            <th class="num">Le pagó</th>
+                            <th class="num">Costó</th>
+                            <th class="num">Vendidos</th>
+                            <th class="num">Margen/kg</th>
+                            <th class="num">Dejó</th>
+                            <th class="num">Falta pagarle</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (c of l.detalle_compras; track $index) {
+                            <tr>
+                              <td>
+                                {{ c.productor }}
+                                @if (n(c.borona_recibida) > 0) {
+                                  <span class="nota">
+                                    + {{ c.borona_recibida | cantidad: 'kg' }} de borona gratis
+                                  </span>
+                                }
+                              </td>
+                              <td class="num">{{ c.kilos | cantidad: 'kg' }}</td>
+                              <td class="num">{{ c.precio_kilo | money }}</td>
+                              <td class="num">{{ c.valor_total | money }}</td>
+                              <td class="num">
+                                {{ c.kilos_vendidos | cantidad: 'kg' }}
+                                @if (n(c.kilos_sin_vender) > 0) {
+                                  <span class="nota ojo">
+                                    quedan {{ c.kilos_sin_vender | cantidad: 'kg' }}
+                                  </span>
+                                }
+                              </td>
+                              <td class="num">
+                                {{ n(c.margen_kilo) === 0 ? '—' : (c.margen_kilo | money) }}
+                              </td>
+                              <td class="num" [class.perdida]="n(c.ganancia) < 0">
+                                {{ c.ganancia | money }}
+                              </td>
+                              <td class="num" [class.ojo]="n(c.saldo) > 0">
+                                {{ n(c.saldo) > 0 ? (c.saldo | money) : '—' }}
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                        <tfoot>
+                          <!-- La fila de totales es la del lote, no una suma
+                               aparte: las cifras del lote SON la suma de sus
+                               compras, así que aquí no puede haber diferencia. -->
+                          <tr>
+                            <th>Total del lote</th>
+                            <th class="num">{{ l.kilos_comprados | cantidad: 'kg' }}</th>
+                            <th class="num">{{ l.costo_kilo | money }}</th>
+                            <th class="num">{{ l.costo_total | money }}</th>
+                            <th class="num">{{ l.kilos_vendidos | cantidad: 'kg' }}</th>
+                            <th class="num">{{ n(l.margen_kilo) === 0 ? '—' : (l.margen_kilo | money) }}</th>
+                            <th class="num" [class.perdida]="n(l.ganancia) < 0">
+                              {{ l.ganancia | money }}
+                            </th>
+                            <th class="num">{{ n(l.por_pagar) > 0 ? (l.por_pagar | money) : '—' }}</th>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    <div class="tabla-envoltura">
+                      <h4>A quién le vendió este lote</h4>
+                      @if (l.detalle_ventas.length === 0) {
+                        <p class="vacio-tabla">
+                          Todavía no se ha vendido nada de este lote.
+                        </p>
+                      } @else {
+                        <table class="tabla">
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Cliente</th>
+                              <th class="num">Kilos de este lote</th>
+                              <th class="num">Precio</th>
+                              <th class="num">Entró</th>
+                              <th class="num">Costó</th>
+                              <th class="num">Dejó</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            @for (v of l.detalle_ventas; track $index) {
+                              <tr>
+                                <td>{{ isoADate(v.fecha) | date: 'dd/MM/yyyy' }}</td>
+                                <td>
+                                  {{ v.cliente }}
+                                  @if (v.tipo === 'borona') {
+                                    <span class="nota">borona</span>
+                                  }
+                                </td>
+                                <td class="num">
+                                  {{ v.kilos | cantidad: 'kg' }}
+                                  @if (v.partida) {
+                                    <!-- Sin esto la venta pareceria mas pequeña de
+                                         lo que fue: el resto salio de otro lote. -->
+                                    <span class="nota">
+                                      de {{ v.kilos_venta | cantidad: 'kg' }} en total
+                                    </span>
+                                  }
+                                </td>
+                                <td class="num">{{ v.precio_kilo | money }}</td>
+                                <td class="num">{{ v.ingreso | money }}</td>
+                                <td class="num">{{ v.costo | money }}</td>
+                                <td class="num" [class.perdida]="n(v.ganancia) < 0">
+                                  {{ v.ganancia | money }}
+                                </td>
+                              </tr>
+                            }
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <th colspan="2">Suma de las ventas</th>
+                              <th class="num">
+                                <!-- Los kilos de las filas incluyen la borona, que
+                                     NO sale de los kilos comprados. Si aquí fuera
+                                     solo el queso, las filas no sumarían el pie. -->
+                                {{ kilosVendidosTotales(l) | cantidad: 'kg' }}
+                                @if (n(l.borona_vendida) > 0) {
+                                  <span class="nota">
+                                    incluye {{ l.borona_vendida | cantidad: 'kg' }} de borona
+                                  </span>
+                                }
+                              </th>
+                              <th></th>
+                              <th class="num">{{ l.ingresos | money }}</th>
+                              <th class="num">{{ costoDeLoVendido(l) | money }}</th>
+                              <th class="num" [class.perdida]="gananciaDeVentas(l) < 0">
+                                {{ gananciaDeVentas(l) | money }}
+                              </th>
+                            </tr>
+                            @if (n(l.costo_merma) > 0) {
+                              <!-- La merma NO sale en ninguna venta (no se vendió),
+                                   pero sí se le resta a la ganancia del lote. Sin
+                                   estos dos renglones las filas no sumarían el
+                                   total y el usuario lo notaría con la
+                                   calculadora. -->
+                              <tr class="ajuste">
+                                <th colspan="6">(−) Merma perdida de este lote</th>
+                                <th class="num">-{{ l.costo_merma | money }}</th>
+                              </tr>
+                              <tr>
+                                <th colspan="6">Ganancia del lote</th>
+                                <th class="num" [class.perdida]="n(l.ganancia) < 0">
+                                  {{ l.ganancia | money }}
+                                </th>
+                              </tr>
+                            }
+                          </tfoot>
+                        </table>
+                      }
+                    </div>
+                  </div>
+                }
               </mat-card>
             }
           </div>
@@ -563,9 +735,105 @@ function n(valor: Monto | null | undefined): number {
       color: var(--mat-sys-on-surface-variant);
     }
 
+    /* ------------------------------------------------ detalle desplegable */
+    .ver-detalle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 12px 0 0;
+      padding: 6px 10px 6px 6px;
+      border: 0;
+      border-radius: 8px;
+      background: none;
+      color: var(--mat-sys-primary);
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .ver-detalle:hover { background: var(--mat-sys-surface-container-high); }
+    .ver-detalle mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+    }
+    .detalle {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-top: 6px;
+      padding-top: 12px;
+      border-top: 1px solid var(--mat-sys-outline-variant);
+    }
+    .detalle h4 {
+      margin: 0 0 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* Las tablas se desplazan DENTRO de su caja: con ocho columnas de plata no
+       caben en una tablet, y sin esto la página entera se movería de lado. */
+    .tabla-envoltura { overflow-x: auto; }
+    .tabla {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .tabla th,
+    .tabla td {
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--mat-sys-outline-variant);
+      white-space: nowrap;
+    }
+    .tabla thead th {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--mat-sys-on-surface-variant);
+      white-space: normal;
+    }
+    .tabla .num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .tabla tfoot th {
+      border-bottom: 0;
+      border-top: 2px solid var(--mat-sys-outline-variant);
+      font-weight: 700;
+    }
+    .tabla tfoot .ajuste th {
+      border-top: 0;
+      font-weight: 500;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .tabla .perdida { color: var(--mat-sys-error); }
+    .tabla .ojo { color: #a06000; font-weight: 600; }
+    /* Las notas van debajo del dato, no al lado: al lado ensanchan la columna y
+       empujan la tabla a desplazarse cuando no hace falta. */
+    .tabla .nota {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 400;
+      color: var(--mat-sys-on-surface-variant);
+      white-space: nowrap;
+    }
+    .tabla .nota.ojo { color: #a06000; }
+    .vacio-tabla {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
     @media (prefers-color-scheme: dark) {
       .aviso.ojo, .bloque > div.ojo dd { color: #ffb74d; }
       .chip.cerrado { background: color-mix(in srgb, #81c784 14%, transparent); color: #81c784; }
+      .tabla .ojo, .tabla .nota.ojo { color: #ffb74d; }
     }
 
     @media (max-width: 980px) {
@@ -640,6 +908,40 @@ export class ReventaLotesPage implements OnInit {
    */
   costoDeLoVendido(l: LoteResumen): number {
     return n(l.costo_vendido) + n(l.costo_borona_vendida);
+  }
+
+  /**
+   * La suma de lo que dejaron las VENTAS del lote. No es la ganancia del lote
+   * cuando hubo merma: la merma no sale en ninguna venta porque no se vendió, pero
+   * sí se le resta a la ganancia. Se calcula aparte para que el pie de la tabla
+   * sume exactamente las filas de arriba, y la merma se muestre como un renglón
+   * propio que lleva de una cifra a la otra.
+   */
+  gananciaDeVentas(l: LoteResumen): number {
+    return n(l.ingresos) - this.costoDeLoVendido(l) - n(l.gastos);
+  }
+
+  /**
+   * Kilos que salieron del lote por venta: queso MÁS borona. `kilos_vendidos` es
+   * solo el queso, y las filas de la tabla incluyen las ventas de borona: con el
+   * queso solo, las filas no sumarían el pie (33,4 kg de diferencia en un lote con
+   * borona, que es justo lo que se nota al sumar la columna).
+   */
+  kilosVendidosTotales(l: LoteResumen): number {
+    return n(l.kilos_vendidos) + n(l.borona_vendida);
+  }
+
+  /** Qué lotes tienen el detalle desplegado (por fecha, que es su identidad). */
+  private readonly desplegados = signal<ReadonlySet<string>>(new Set());
+
+  abierto(fecha: string): boolean {
+    return this.desplegados().has(fecha);
+  }
+
+  alternar(fecha: string): void {
+    const copia = new Set(this.desplegados());
+    if (!copia.delete(fecha)) copia.add(fecha);
+    this.desplegados.set(copia);
   }
 
   anchoBarra(l: LoteResumen): number {

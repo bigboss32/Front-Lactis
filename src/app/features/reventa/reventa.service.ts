@@ -71,6 +71,53 @@ export interface VentaQueso extends TenantFields {
  * compras del período aunque no se hayan vendido. Las dos son correctas y
  * responden a preguntas distintas.
  */
+/**
+ * Una compra dentro del lote, con lo que dejaron SUS kilos.
+ *
+ * La ganancia es exacta, no la del lote repartida a prorrata: son los kilos de
+ * ese productor costeados al precio que se le pagó a él. Por eso dos productores
+ * del mismo lote pueden tener margen distinto, y por eso la suma da la del lote.
+ */
+export interface CompraDelLote {
+  productor: string;
+  kilos: Monto;
+  borona_recibida: Monto;
+  precio_kilo: Monto;
+  valor_total: Monto;
+  saldo: Monto;
+  kilos_vendidos: Monto;
+  kilos_a_borona: Monto;
+  kilos_merma: Monto;
+  kilos_sin_vender: Monto;
+  borona_vendida: Monto;
+  borona_sin_vender: Monto;
+  ingresos: Monto;
+  gastos: Monto;
+  costo_realizado: Monto;
+  costo_sin_vender: Monto;
+  ganancia: Monto;
+  margen_kilo: Monto;
+}
+
+/**
+ * Una venta que se llevó kilos de este lote. `kilos` son los que salieron de ESTE
+ * lote y `kilos_venta` los de la venta completa: una venta grande se parte entre
+ * varios lotes.
+ */
+export interface VentaDelLote {
+  fecha: string;
+  cliente: string;
+  tipo: TipoVenta;
+  kilos: Monto;
+  kilos_venta: Monto;
+  precio_kilo: Monto;
+  ingreso: Monto;
+  gasto: Monto;
+  costo: Monto;
+  ganancia: Monto;
+  partida: boolean;
+}
+
 export interface LoteResumen {
   fecha: string;
   productores: string[];
@@ -102,6 +149,10 @@ export interface LoteResumen {
   margen_kilo: Monto;
   precio_venta_kilo: Monto;
   cerrado: boolean;
+  /** Quién aportó qué: la suma de sus ganancias da la del lote. */
+  detalle_compras: CompraDelLote[];
+  /** A quién se le vendió este lote, de la venta más reciente a la más vieja. */
+  detalle_ventas: VentaDelLote[];
 }
 
 export interface LotesPanel {
