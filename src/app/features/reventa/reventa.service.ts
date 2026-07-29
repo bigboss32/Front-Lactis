@@ -257,6 +257,70 @@ export interface EstadoCuentaCliente {
   libro_anterior_saldo: Monto;
 }
 
+// ---------------------------------------------- estado de cuenta (productor)
+// ESPEJO del bloque del cliente, pero al revés: ESTE se le entrega AL PRODUCTOR,
+// así que NO trae ni puede traer a qué precio se revendió su queso, el total de
+// ventas, el margen, la ganancia, los gastos de venta ni nombres de clientes.
+// Tampoco los saldos del libro anterior de tipo 'cobrar', que son deudas de
+// CLIENTES con la quesera y no tienen nada que ver con él.
+//
+// OJO CON LOS SIGNOS: aquí un saldo positivo significa que LA QUESERA LE DEBE A
+// ÉL (al contrario del estado de cuenta del cliente).
+
+/** Una compra que se le hizo al productor dentro de su estado de cuenta. */
+export interface EstadoCuentaCompra {
+  fecha: string;
+  /** Kilos netos: los que se le pagan. */
+  kilos: Monto;
+  /** Borona que vino con el lote y NO se paga (0 si no hubo). */
+  borona_kilos: Monto;
+  precio_kilo: Monto;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+  estado: string; // pendiente | parcial | pagada
+}
+
+/**
+ * Un pago hecho al productor (abono de cualquiera de sus compras).
+ *
+ * NO trae `observaciones` a propósito: la observación del abono es la nota
+ * INTERNA de la quesera y este bloque se le entrega al productor. Es el mismo
+ * criterio de EstadoCuentaPago (ver el incidente que se corrigió allá).
+ */
+export interface EstadoCuentaPagoProductor {
+  fecha: string;
+  valor: Monto;
+}
+
+/** Cómo va la cuenta con un productor: lo que se le compró, lo que se le pagó y lo que se le debe. */
+export interface EstadoCuentaProductor {
+  productor: string;
+  /** Null en los dos si el estado de cuenta cubre todo el histórico. */
+  desde: string | null;
+  hasta: string | null;
+  emitido: string; // fecha de generación
+  compras: number; // cuántas compras se le hicieron (las del sistema, no las del libro)
+  total_kilos: Monto;
+  /** Lo que valen sus compras. Solo del sistema; el libro anterior va aparte. */
+  total_comprado: Monto;
+  /** Lo que se le ha abonado por esas compras. */
+  total_pagado: Monto;
+  /**
+   * TODO lo que se le debe hoy, que es la única cifra que le importa:
+   * (total_comprado − total_pagado) + libro_anterior_saldo = saldo.
+   * Positivo = la quesera le debe a él.
+   */
+  saldo: Monto;
+  compras_detalle: EstadoCuentaCompra[];
+  pagos: EstadoCuentaPagoProductor[];
+  /** Lo que se le venía debiendo del sistema anterior (solo los de tipo 'pagar'). */
+  saldos_anteriores: EstadoCuentaSaldoAnterior[];
+  libro_anterior_total: Monto;
+  libro_anterior_abonado: Monto;
+  libro_anterior_saldo: Monto;
+}
+
 // ------------------------------------------------------------------ payloads
 export interface CompraQuesoPayload {
   fecha: string;
@@ -499,6 +563,72 @@ export class ReventaService {
     hasta?: string | null,
   ): QueryParams {
     const params: QueryParams = { cliente };
+    if (desde) params['desde'] = desde;
+    if (hasta) params['hasta'] = hasta;
+    return params;
+  }
+
+  // ---------------------------------------- estado de cuenta del productor
+  /**
+   * Estado de cuenta de un productor: lo que se le compró, lo que se le pagó y
+   * lo que se le debe. Sin `desde`/`hasta` cubre todo el histórico (el saldo real
+   * que se le debe, que es el caso normal); con rango se limita a ese período.
+   */
+  estadoCuentaProductor(
+    productor: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): Observable<EstadoCuentaProductor> {
+    return this.api.get<EstadoCuentaProductor>(
+      `${this.base}/estado-cuenta-productor`,
+      this.paramsEstadoCuentaProductor(productor, desde, hasta),
+    );
+  }
+
+  /** PDF del estado de cuenta del productor como Blob, para compartírselo. */
+  estadoCuentaProductorPdfBlob(
+    productor: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): Observable<Blob> {
+    return this.api.getBlob(
+      `${this.base}/estado-cuenta-productor/pdf`,
+      this.paramsEstadoCuentaProductor(productor, desde, hasta),
+    );
+  }
+
+  /**
+   * Descarga el PDF del estado de cuenta del productor en el navegador.
+   *
+   * `nombreArchivo` es el nombre de RESPALDO, que se usa cuando el navegador no
+   * puede leer la cabecera Content-Disposition (petición cross-origin). Tiene que
+   * llevar el nombre del productor: con el genérico todas las cuentas se guardan
+   * igual y es fácil entregarle a un productor la cuenta de otro.
+   */
+  descargarEstadoCuentaProductor(
+    productor: string,
+    desde?: string | null,
+    hasta?: string | null,
+    nombreArchivo?: string,
+  ): Observable<void> {
+    return this.api.download(
+      `${this.base}/estado-cuenta-productor/pdf`,
+      nombreArchivo || 'estado_cuenta_productor.pdf',
+      this.paramsEstadoCuentaProductor(productor, desde, hasta),
+    );
+  }
+
+  /**
+   * Query del estado de cuenta del productor: `desde`/`hasta` solo viajan si
+   * tienen valor, para que el backend entienda "todo el histórico" (además
+   * `toHttpParams` descarta null, undefined y cadena vacía, nunca manda "null").
+   */
+  private paramsEstadoCuentaProductor(
+    productor: string,
+    desde?: string | null,
+    hasta?: string | null,
+  ): QueryParams {
+    const params: QueryParams = { productor };
     if (desde) params['desde'] = desde;
     if (hasta) params['hasta'] = hasta;
     return params;

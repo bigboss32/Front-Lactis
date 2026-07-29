@@ -90,6 +90,16 @@
         <ng-container matColumnDef="acciones">
           <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
           <td mat-cell *matCellDef="let fila" class="col-acciones">
+            <!-- Abrir el diálogo solo necesita 'consultar': el PDF es lo único que
+                 pide 'imprimir' y esos botones ya están gateados adentro. -->
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:consultar'"
+              matTooltip="Estado de cuenta del productor (PDF)"
+              (click)="estadoCuenta(fila)"
+            >
+              <mat-icon>picture_as_pdf</mat-icon>
+            </button>
             <button
               mat-icon-button
               *hasPermission="'reventa:crear'"

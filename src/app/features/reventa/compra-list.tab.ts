@@ -25,6 +25,7 @@ import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
 import { CompraFormDialog } from './compra-form.dialog';
+import { ReventaEstadoCuentaProductorDialog } from './estado-cuenta-productor.dialog';
 import { CompraQueso, ReventaService } from './reventa.service';
 
 /** Pestaña de compras de queso a productores, con abonos por compra. */
@@ -40,7 +41,16 @@ import { CompraQueso, ReventaService } from './reventa.service';
   styles: `
     .spacer { flex: 1; }
 
-    .table-card .col-acciones { width: 230px; }
+    // Seis iconos en la fila (estado de cuenta, abonar, ver abonos, editar,
+    // anular, eliminar): el ancho tiene que alcanzar para todos.
+    .table-card .col-acciones { width: 275px; }
+
+    // En celular la tabla se vuelve tarjetas y los iconos envuelven: la celda
+    // toma el ancho de la tarjeta. Con un ancho fijo mayor que la pantalla el
+    // primer icono quedaría recortado (ya pasó con el icono de abonos).
+    @media (max-width: 700px) {
+      .table-card.tarjetas .col-acciones { width: auto; }
+    }
 
     .badge-saldo {
       display: inline-block;
@@ -198,6 +208,19 @@ export class CompraListTab {
         this.snackbar.open('Abono registrado', 'OK', { duration: 3000 });
         this.notificar();
       });
+  }
+
+  /**
+   * Estado de cuenta del productor de la fila: junta TODAS sus compras (no solo
+   * esta) y lo que se le ha pagado, para entregárselo en PDF o por WhatsApp y
+   * cuadrar cuentas con él.
+   */
+  estadoCuenta(fila: CompraQueso): void {
+    this.dialog.open(ReventaEstadoCuentaProductorDialog, {
+      data: { productor: fila.productor, desde: this.desde(), hasta: this.hasta() },
+      width: '720px',
+      maxWidth: '95vw',
+    });
   }
 
   verAbonos(fila: CompraQueso): void {
