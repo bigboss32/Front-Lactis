@@ -29,6 +29,7 @@ import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { dateToIso } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
+import { TransporteTabs } from './transporte-tabs';
 import { VehiculosService } from './vehiculos.service';
 import { ViajeFormDialog } from './viaje-form.dialog';
 import { ETIQUETAS_ESTADO_VIAJE, ViajesService } from './viajes.service';
@@ -41,7 +42,7 @@ import { ETIQUETAS_ESTADO_VIAJE, ViajesService } from './viajes.service';
     MatInputModule, MatSelectModule, MatButtonModule, MatIconModule,
     MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
-    RangoFechasRapido, MatSortModule,
+    RangoFechasRapido, MatSortModule, TransporteTabs,
   ],
   templateUrl: './viaje-list.page.html',
   styles: `

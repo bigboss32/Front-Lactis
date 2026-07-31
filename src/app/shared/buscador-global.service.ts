@@ -3,7 +3,7 @@ import { Observable, catchError, forkJoin, map, of } from 'rxjs';
 
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth/auth.service';
-import { NAV_GROUPS } from '../core/layout/nav';
+import { NAV_GROUPS, SECCIONES_OCULTAS } from '../core/layout/nav';
 import { Page } from '../core/models';
 
 export interface ResultadoBusqueda {
@@ -36,7 +36,7 @@ export class BuscadorGlobalService {
   secciones(q: string): ResultadoBusqueda[] {
     const f = q.toLowerCase().trim();
     if (!f) return [];
-    return NAV_GROUPS.flatMap((g) => g.items)
+    return [...NAV_GROUPS.flatMap((g) => g.items), ...SECCIONES_OCULTAS]
       .filter((item) => (item.siempre || this.auth.hasPermission(item.modulo)) && item.label.toLowerCase().includes(f))
       .map((item) => ({ grupo: 'Ir a', icono: item.icon, label: item.label, route: item.route }));
   }

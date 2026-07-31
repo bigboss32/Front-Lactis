@@ -11,6 +11,7 @@ import { isoToDate } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { ReventaTabs } from './reventa-tabs';
 import { LoteResumen, LotesPanel, ReventaService } from './reventa.service';
 
 /** Número a partir de un Monto, que llega como texto cuando es Decimal. */
@@ -40,10 +41,11 @@ function n(valor: Monto | null | undefined): number {
   selector: 'app-reventa-lotes',
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    MatTooltipModule, PageHeader, MoneyPipe, CantidadPipe,
+    MatTooltipModule, PageHeader, MoneyPipe, CantidadPipe, ReventaTabs,
   ],
   template: `
     <div class="page">
+      <app-reventa-tabs />
       <app-page-header
         titulo="Ganancia por lote"
         subtitulo="Cada tanda de queso que compró y qué dejó. Un lote son todas las compras de una misma fecha."

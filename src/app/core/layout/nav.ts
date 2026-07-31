@@ -54,30 +54,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Reventa de queso',
-    icon: 'swap_horiz',
-    items: [
-      { label: 'Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
-      { label: 'Ganancia por lote', icon: 'inventory_2', route: '/reventa/lotes', modulo: 'reventa' },
-      { label: 'Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
-      { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
-      { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
-      { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
-      { label: 'Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },
-    ],
-  },
-  {
-    title: 'Transporte',
-    icon: 'local_shipping',
-    items: [
-      { label: 'Resumen', icon: 'insights', route: '/transporte/resumen', modulo: 'transporte' },
-      { label: 'Viajes', icon: 'local_shipping', route: '/transporte/viajes', modulo: 'transporte' },
-      { label: 'Cartera de fletes', icon: 'account_balance_wallet', route: '/transporte/cartera', modulo: 'transporte' },
-      { label: 'Vehículos', icon: 'directions_bus', route: '/transporte/vehiculos', modulo: 'transporte' },
-      { label: 'Mantenimiento', icon: 'build', route: '/transporte/mantenimiento', modulo: 'transporte' },
-    ],
-  },
-  {
     title: 'Finanzas',
     icon: 'account_balance_wallet',
     items: [
@@ -98,4 +74,27 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: 'Auditoría', icon: 'history', route: '/auditoria', modulo: 'auditoria' },
     ],
   },
+];
+
+/**
+ * Páginas de los negocios aparte (reventa y transporte). NO van en el menú
+ * lateral: ahí los usuarios las confundían con la operación de la quesera,
+ * siendo que llevan contabilidad separada. Se entra por las tarjetas de
+ * "Negocios aparte" del Inicio y se navega con las pestañas internas de cada
+ * módulo. Se listan aquí solo para que el buscador global (Ctrl+K) las siga
+ * ofreciendo en "Ir a".
+ */
+export const SECCIONES_OCULTAS: NavItem[] = [
+  { label: 'Reventa · Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
+  { label: 'Reventa · Ganancia por lote', icon: 'inventory_2', route: '/reventa/lotes', modulo: 'reventa' },
+  { label: 'Reventa · Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
+  { label: 'Reventa · Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
+  { label: 'Reventa · Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
+  { label: 'Reventa · Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
+  { label: 'Reventa · Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },
+  { label: 'Transporte · Viajes', icon: 'local_shipping', route: '/transporte/viajes', modulo: 'transporte' },
+  { label: 'Transporte · Cartera de fletes', icon: 'account_balance_wallet', route: '/transporte/cartera', modulo: 'transporte' },
+  { label: 'Transporte · Vehículos', icon: 'directions_bus', route: '/transporte/vehiculos', modulo: 'transporte' },
+  { label: 'Transporte · Mantenimiento', icon: 'build', route: '/transporte/mantenimiento', modulo: 'transporte' },
+  { label: 'Transporte · Resumen', icon: 'insights', route: '/transporte/resumen', modulo: 'transporte' },
 ];

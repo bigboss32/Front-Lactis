@@ -58,6 +58,32 @@ interface AccionRapida {
         }
       </div>
 
+      @if (negocios().length) {
+        <h2 class="seccion-titulo">Negocios aparte</h2>
+        <p class="seccion-desc">
+          Llevan su propia contabilidad: nada de lo que registres ahí se mezcla con el libro de
+          la quesera.
+        </p>
+        <div class="acciones-grid">
+          @for (a of negocios(); track a.titulo) {
+            <a
+              class="accion-card"
+              [routerLink]="a.link"
+              [style.--acento]="a.color"
+              [matTooltip]="a.tooltip"
+            >
+              <div class="accion-icono">
+                <mat-icon aria-hidden="true">{{ a.icono }}</mat-icon>
+              </div>
+              <div class="accion-texto">
+                <p class="accion-titulo">{{ a.titulo }}</p>
+                <p class="accion-desc">{{ a.descripcion }}</p>
+              </div>
+            </a>
+          }
+        </div>
+      }
+
       <a class="ver-stats" *hasPermission="'reportes:consultar'" routerLink="/dashboard">
         <mat-icon>insights</mat-icon> Ver estadísticas del negocio
       </a>
@@ -75,6 +101,20 @@ interface AccionRapida {
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
       gap: 14px;
       margin-bottom: 24px;
+    }
+
+    /* Encabezado de la sección de negocios aparte: separa visualmente estos
+       módulos de las tareas de la quesera, que es justo lo que confundía en el
+       menú lateral. */
+    .seccion-titulo {
+      margin: 8px 0 2px;
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+    .seccion-desc {
+      margin: 0 0 14px;
+      max-width: 62ch;
+      color: var(--mat-sys-on-surface-variant);
     }
 
     /* Texto de respaldo cuando ningún acceso directo pasa el filtro de permisos
@@ -174,16 +214,21 @@ export class InicioPage {
    * regla "para abrir una pantalla hace falta consultar" es de la navegación:
    * su sitio es donde se declara a dónde lleva cada tarjeta.
    */
-  readonly acciones = computed(() => {
+  readonly acciones = computed(() => this.visibles(ACCIONES_RAPIDAS));
+
+  /** Negocios aparte (reventa y transporte) que el usuario puede abrir. */
+  readonly negocios = computed(() => this.visibles(NEGOCIOS_APARTE));
+
+  private visibles(lista: AccionRapida[]): AccionRapida[] {
     this.auth.perfil(); // re-evalúa cuando llega el perfil
-    return ACCIONES_RAPIDAS.filter((a) => {
+    return lista.filter((a) => {
       const [modulo, accion] = a.permiso.split(':');
       return (
         this.auth.hasPermission(modulo, accion ?? 'consultar') &&
         this.auth.hasPermission(modulo) // 'consultar': el permiso para entrar
       );
     });
-  });
+  }
 }
 
 /** Catálogo de accesos directos; se filtra por permiso antes de pintarlo. */
@@ -210,20 +255,6 @@ const ACCIONES_RAPIDAS: AccionRapida[] = [
     tooltip: 'Abre el módulo de ventas',
   },
   {
-    titulo: 'Compra y venta de queso',
-    descripcion: 'Compra queso a productores y revéndelo',
-    icono: 'swap_horiz', color: CHART_COLORS[5],
-    link: '/reventa', permiso: 'reventa:crear',
-    tooltip: 'Abre compra y venta de queso (reventa)',
-  },
-  {
-    titulo: 'Registrar viaje de la turbo',
-    descripcion: 'Anota el viaje, sus fletes y sus gastos',
-    icono: 'local_shipping', color: CHART_COLORS[8],
-    link: '/transporte/viajes', permiso: 'transporte:crear',
-    tooltip: 'Abre los viajes del módulo de transporte',
-  },
-  {
     titulo: 'Registrar gasto',
     descripcion: 'Guarda una compra o un pago del negocio',
     icono: 'receipt_long', color: CHART_COLORS[6],
@@ -243,5 +274,28 @@ const ACCIONES_RAPIDAS: AccionRapida[] = [
     icono: 'inventory_2', color: CHART_COLORS[4],
     link: '/inventario', permiso: 'inventario:consultar',
     tooltip: 'Abre el módulo de inventario',
+  },
+];
+
+/**
+ * Negocios con contabilidad APARTE de la quesera. Salieron del menú lateral
+ * porque ahí los usuarios los confundían con la operación diaria (creían que
+ * la reventa y la turbo se mezclaban con el libro de la quesera): ahora se
+ * entra solo por aquí y cada módulo navega con sus pestañas internas.
+ */
+const NEGOCIOS_APARTE: AccionRapida[] = [
+  {
+    titulo: 'Compra y venta de queso',
+    descripcion: 'Compra queso a productores y revéndelo',
+    icono: 'swap_horiz', color: CHART_COLORS[5],
+    link: '/reventa', permiso: 'reventa:consultar',
+    tooltip: 'Abre la reventa de queso (contabilidad aparte de la quesera)',
+  },
+  {
+    titulo: 'Transporte — la turbo',
+    descripcion: 'Viajes, fletes, cartera y mantenimiento del camión',
+    icono: 'local_shipping', color: CHART_COLORS[8],
+    link: '/transporte', permiso: 'transporte:consultar',
+    tooltip: 'Abre el transporte (contabilidad aparte de la quesera)',
   },
 ];

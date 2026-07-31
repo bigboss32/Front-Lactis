@@ -19,6 +19,7 @@ import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ReventaFiltroService } from './reventa-filtro.service';
+import { ReventaTabs } from './reventa-tabs';
 import { ReventaService, TemporadaResumen, TemporadasPanel } from './reventa.service';
 import { TemporadaFormDialog } from './temporada-form.dialog';
 
@@ -45,10 +46,11 @@ function n(valor: Monto | null | undefined): number {
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatMenuModule,
     MatProgressBarModule, MatTooltipModule, PageHeader, MoneyPipe, CantidadPipe,
-    HasPermissionDirective,
+    HasPermissionDirective, ReventaTabs,
   ],
   template: `
     <div class="page">
+      <app-reventa-tabs />
       <app-page-header
         titulo="Temporadas"
         subtitulo="Cada ciclo de compra y reventa con lo que dejó. Las cifras se calculan de las compras y ventas de esas fechas."
