@@ -8,7 +8,6 @@ import { RouterOutlet } from '@angular/router';
 import { PageHeader } from '../../shared/page-header';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ReventaFiltroService } from './reventa-filtro.service';
-import { ReventaTabs } from './reventa-tabs';
 import { SelectorTemporada } from './selector-temporada';
 
 /**
@@ -19,11 +18,10 @@ import { SelectorTemporada } from './selector-temporada';
   selector: 'app-reventa-shell',
   imports: [
     ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatDatepickerModule,
-    RouterOutlet, PageHeader, RangoFechasRapido, SelectorTemporada, ReventaTabs,
+    RouterOutlet, PageHeader, RangoFechasRapido, SelectorTemporada,
   ],
   template: `
     <div class="page">
-      <app-reventa-tabs />
       <app-page-header
         titulo="Compra y venta de queso"
         subtitulo="Queso comprado a productores para revender; contabilidad separada del libro de la quesera"

@@ -23,7 +23,6 @@ import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
-import { TransporteTabs } from './transporte-tabs';
 import { VehiculoDetailDialog } from './vehiculo-detail.dialog';
 import { VehiculoFormDialog } from './vehiculo-form.dialog';
 import { VehiculosService } from './vehiculos.service';
@@ -41,7 +40,6 @@ interface ConteoDocumentos {
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule,
     PageHeader, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
-    TransporteTabs,
   ],
   templateUrl: './vehiculo-list.page.html',
   styles: `

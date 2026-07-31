@@ -77,24 +77,55 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /**
- * Páginas de los negocios aparte (reventa y transporte). NO van en el menú
- * lateral: ahí los usuarios las confundían con la operación de la quesera,
+ * Menús de los negocios aparte (reventa y transporte). NO están en NAV_GROUPS:
+ * en el menú de la quesera los usuarios los confundían con la operación diaria,
  * siendo que llevan contabilidad separada. Se entra por las tarjetas de
- * "Negocios aparte" del Inicio y se navega con las pestañas internas de cada
- * módulo. Se listan aquí solo para que el buscador global (Ctrl+K) las siga
- * ofreciendo en "Ir a".
+ * "Negocios aparte" del Inicio, y el menú lateral SE ADAPTA: dentro de
+ * /reventa o /transporte el layout muestra el menú del negocio (con su
+ * "Volver al inicio") en lugar del de la quesera.
  */
-export const SECCIONES_OCULTAS: NavItem[] = [
-  { label: 'Reventa · Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
-  { label: 'Reventa · Ganancia por lote', icon: 'inventory_2', route: '/reventa/lotes', modulo: 'reventa' },
-  { label: 'Reventa · Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
-  { label: 'Reventa · Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
-  { label: 'Reventa · Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
-  { label: 'Reventa · Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
-  { label: 'Reventa · Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },
-  { label: 'Transporte · Viajes', icon: 'local_shipping', route: '/transporte/viajes', modulo: 'transporte' },
-  { label: 'Transporte · Cartera de fletes', icon: 'account_balance_wallet', route: '/transporte/cartera', modulo: 'transporte' },
-  { label: 'Transporte · Vehículos', icon: 'directions_bus', route: '/transporte/vehiculos', modulo: 'transporte' },
-  { label: 'Transporte · Mantenimiento', icon: 'build', route: '/transporte/mantenimiento', modulo: 'transporte' },
-  { label: 'Transporte · Resumen', icon: 'insights', route: '/transporte/resumen', modulo: 'transporte' },
+const VOLVER_AL_INICIO: NavGroup = {
+  title: '',
+  items: [{ label: 'Volver al inicio', icon: 'arrow_back', route: '/inicio', modulo: 'reportes', siempre: true }],
+};
+
+export const NAV_REVENTA: NavGroup[] = [
+  VOLVER_AL_INICIO,
+  {
+    title: 'Compra y venta de queso',
+    icon: 'swap_horiz',
+    items: [
+      { label: 'Resumen', icon: 'insights', route: '/reventa/resumen', modulo: 'reventa' },
+      { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
+      { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
+      { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
+      { label: 'Ganancia por lote', icon: 'inventory_2', route: '/reventa/lotes', modulo: 'reventa' },
+      { label: 'Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
+      { label: 'Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },
+    ],
+  },
 ];
+
+export const NAV_TRANSPORTE: NavGroup[] = [
+  VOLVER_AL_INICIO,
+  {
+    title: 'Transporte — la turbo',
+    icon: 'local_shipping',
+    items: [
+      { label: 'Viajes', icon: 'local_shipping', route: '/transporte/viajes', modulo: 'transporte' },
+      { label: 'Cartera de fletes', icon: 'account_balance_wallet', route: '/transporte/cartera', modulo: 'transporte' },
+      { label: 'Vehículos', icon: 'directions_bus', route: '/transporte/vehiculos', modulo: 'transporte' },
+      { label: 'Mantenimiento', icon: 'build', route: '/transporte/mantenimiento', modulo: 'transporte' },
+      { label: 'Resumen', icon: 'insights', route: '/transporte/resumen', modulo: 'transporte' },
+    ],
+  },
+];
+
+/**
+ * Las páginas de los negocios aparte, con el negocio como prefijo, para que el
+ * buscador global (Ctrl+K) las siga ofreciendo en "Ir a" aunque no estén en el
+ * menú de la quesera. Se excluye el "Volver al inicio" (grupo sin título).
+ */
+export const SECCIONES_OCULTAS: NavItem[] = [...NAV_REVENTA, ...NAV_TRANSPORTE].flatMap((g) =>
+  g.title ? g.items.map((item) => ({ ...item, label: `${g.title} · ${item.label}` })) : [],
+);

@@ -5,7 +5,6 @@ import { PageHeader } from '../../shared/page-header';
 import { DocumentoListTab } from './documento-list.tab';
 import { GastoGeneralListTab } from './gasto-general-list.tab';
 import { MantenimientoListTab } from './mantenimiento-list.tab';
-import { TransporteTabs } from './transporte-tabs';
 
 /**
  * Página de mantenimiento del vehículo con pestañas: mantenimientos, documentos
@@ -13,10 +12,9 @@ import { TransporteTabs } from './transporte-tabs';
  */
 @Component({
   selector: 'app-mantenimiento-page',
-  imports: [MatTabsModule, PageHeader, MantenimientoListTab, DocumentoListTab, GastoGeneralListTab, TransporteTabs],
+  imports: [MatTabsModule, PageHeader, MantenimientoListTab, DocumentoListTab, GastoGeneralListTab],
   template: `
     <div class="page">
-      <app-transporte-tabs />
       <app-page-header
         titulo="Mantenimiento"
         subtitulo="Mantenimientos, documentos legales y gastos generales de los vehículos"

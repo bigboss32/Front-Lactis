@@ -13,7 +13,6 @@ import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
 import { detalleDeError } from '../../shared/errores-ui';
 import { CarteraClienteDetalleDialog } from './cartera-cliente-detalle.dialog';
-import { TransporteTabs } from './transporte-tabs';
 import { ViajesService } from './viajes.service';
 
 /** Saldos de fletes pendientes de cobro por cliente (clon de la cartera de ventas). */
@@ -22,11 +21,9 @@ import { ViajesService } from './viajes.service';
   imports: [
     MatCardModule, MatTableModule, MatButtonModule, MatIconModule,
     MatProgressBarModule, MatTooltipModule, PageHeader, MoneyPipe,
-    TransporteTabs,
   ],
   template: `
     <div class="page">
-      <app-transporte-tabs />
       <app-page-header
         titulo="Cartera de fletes"
         subtitulo="Saldos pendientes de cobro por cliente, ordenados por saldo"

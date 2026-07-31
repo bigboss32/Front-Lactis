@@ -20,7 +20,7 @@ import { Empresa, Page } from '../models';
 import { NotificacionesService } from '../notificaciones.service';
 import { ThemeService } from '../theme.service';
 import { BarraBusquedaGlobal } from '../../shared/barra-busqueda-global';
-import { NAV_GROUPS } from './nav';
+import { NAV_GROUPS, NAV_REVENTA, NAV_TRANSPORTE, NavGroup } from './nav';
 
 @Component({
   selector: 'app-layout',
@@ -62,9 +62,22 @@ export class Layout implements OnInit, OnDestroy {
   /** Elemento con el scroll de la página (mat-sidenav-content). */
   private readonly contenido = viewChild('contenido', { read: ElementRef });
 
+  /**
+   * Menú base según dónde está el usuario: dentro de un negocio aparte
+   * (/reventa, /transporte) el menú es el del negocio, con su "Volver al
+   * inicio"; en el resto de la aplicación es el de la quesera. Así el menú no
+   * mezcla los dos libros contables, que era lo que confundía.
+   */
+  private readonly gruposBase = computed<NavGroup[]>(() => {
+    const ruta = this.urlActual().split('?')[0];
+    if (ruta === '/transporte' || ruta.startsWith('/transporte/')) return NAV_TRANSPORTE;
+    if (ruta === '/reventa' || ruta.startsWith('/reventa/')) return NAV_REVENTA;
+    return NAV_GROUPS;
+  });
+
   readonly grupos = computed(() => {
     this.auth.perfil();
-    return NAV_GROUPS.map((grupo) => ({
+    return this.gruposBase().map((grupo) => ({
       ...grupo,
       items: grupo.items.filter((item) => item.siempre || this.auth.hasPermission(item.modulo)),
     })).filter((grupo) => grupo.items.length > 0);
@@ -97,7 +110,7 @@ export class Layout implements OnInit, OnDestroy {
   /** Título del grupo cuyo ítem coincide con la ruta dada (null si ninguno). */
   private grupoDeRuta(url: string): string | null {
     const ruta = url.split('?')[0];
-    for (const grupo of NAV_GROUPS) {
+    for (const grupo of this.gruposBase()) {
       if (!grupo.title) continue;
       if (grupo.items.some((it) => ruta === it.route || ruta.startsWith(it.route + '/'))) {
         return grupo.title;

@@ -25,7 +25,6 @@ import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
-import { ReventaTabs } from './reventa-tabs';
 import { hoyIso, ReventaService, SaldoAnterior, TipoSaldoAnterior } from './reventa.service';
 import {
   SaldoAbonoFormDialog,
@@ -592,10 +591,9 @@ export class SaldoAnteriorListTab implements OnInit {
  */
 @Component({
   selector: 'app-libro-anterior',
-  imports: [MatTabsModule, PageHeader, SaldoAnteriorListTab, ReventaTabs],
+  imports: [MatTabsModule, PageHeader, SaldoAnteriorListTab],
   template: `
     <div class="page">
-      <app-reventa-tabs />
       <app-page-header
         titulo="Libro de la cuenta anterior"
         subtitulo="Cuentas a medio pagar que vienen del sistema que usaba antes"

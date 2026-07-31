@@ -23,7 +23,6 @@ import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { ETIQUETAS_CATEGORIA_GASTO } from './transporte-gastos.service';
-import { TransporteTabs } from './transporte-tabs';
 import { VehiculosService } from './vehiculos.service';
 import { ViajesService } from './viajes.service';
 
@@ -42,11 +41,9 @@ function primerDiaDelMes(): Date {
     MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule,
     MatDatepickerModule,
     PageHeader, AppChart, MoneyPipe, CantidadPipe, RangoFechasRapido,
-    TransporteTabs,
   ],
   template: `
     <div class="page">
-      <app-transporte-tabs />
       <app-page-header
         titulo="Resumen de transporte"
         subtitulo="Rentabilidad de los viajes de la turbo en el período"
