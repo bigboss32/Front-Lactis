@@ -1,0 +1,384 @@
+<div class="page">
+  <app-page-header
+    [titulo]="viaje() ? 'Viaje Nº ' + viaje()!.numero : 'Viaje'"
+    [subtitulo]="viaje() ? viaje()!.origen + ' → ' + viaje()!.destino : ''"
+  >
+    <a mat-stroked-button routerLink="/transporte/viajes">
+      <mat-icon>arrow_back</mat-icon> Volver a viajes
+    </a>
+    @if (viaje(); as v) {
+      @if (v.estado === 'en_curso') {
+        <button mat-stroked-button *hasPermission="'transporte:editar'" (click)="editar()">
+          <mat-icon>edit</mat-icon> Editar
+        </button>
+        <button mat-flat-button *hasPermission="'transporte:editar'" (click)="finalizar()">
+          <mat-icon>flag</mat-icon> Finalizar viaje
+        </button>
+      }
+      @if (v.estado === 'finalizado') {
+        <button mat-stroked-button *hasPermission="'transporte:editar'" (click)="reabrir()">
+          <mat-icon>lock_open</mat-icon> Reabrir
+        </button>
+      }
+      @if (v.estado !== 'anulado') {
+        <button mat-stroked-button *hasPermission="'transporte:administrar'" (click)="anular()">
+          <mat-icon>block</mat-icon> Anular
+        </button>
+      }
+    }
+  </app-page-header>
+
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (errorCarga(); as error) {
+    <div class="error-state" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <p>{{ error }}</p>
+      <button mat-stroked-button type="button" (click)="cargar()">
+        <mat-icon>refresh</mat-icon> Reintentar
+      </button>
+    </div>
+  }
+
+  @if (viaje(); as v) {
+    <!-- ------------------------------------------------------- datos del viaje -->
+    <mat-card class="ficha">
+      <div class="info-grid">
+        <div>
+          <span class="etq">Estado</span>
+          <app-estado-chip [estado]="estadoEtiqueta()" />
+        </div>
+        <div>
+          <span class="etq">Vehículo</span>
+          <span>{{ v.vehiculo_placa ?? '—' }}{{ v.vehiculo_nombre ? ' — ' + v.vehiculo_nombre : '' }}</span>
+        </div>
+        <div>
+          <span class="etq">Salida</span>
+          <span>{{ v.fecha_salida | date: 'dd/MM/yyyy' }}</span>
+        </div>
+        <div>
+          <span class="etq">Regreso</span>
+          <span>{{ v.fecha_regreso ? (v.fecha_regreso | date: 'dd/MM/yyyy') : '—' }}</span>
+        </div>
+        <div>
+          <span class="etq">Conductor</span>
+          <span>{{ v.conductor_nombre ?? '—' }}</span>
+        </div>
+        <div>
+          <span class="etq">Pago conductor</span>
+          <span>{{ v.pago_conductor | money }}</span>
+        </div>
+        <div>
+          <span class="etq">Odómetro</span>
+          <span>
+            {{ v.odometro_salida !== null ? (v.odometro_salida | cantidad: 'km') : '—' }}
+            →
+            {{ v.odometro_regreso !== null ? (v.odometro_regreso | cantidad: 'km') : '—' }}
+          </span>
+        </div>
+      </div>
+      @if (v.observaciones) {
+        <p class="observaciones">{{ v.observaciones }}</p>
+      }
+    </mat-card>
+
+    <!-- ------------------------------------------------- totales del viaje -->
+    <div class="kpi-grid">
+      <mat-card class="total-card">
+        <p class="titulo">Ingresos</p>
+        <p class="valor">{{ v.total_ingresos | money }}</p>
+        <p class="sub">
+          Terceros {{ v.ingresos_terceros | money }} · Queso propio {{ v.ingresos_internos | money }}
+        </p>
+      </mat-card>
+      <mat-card class="total-card">
+        <p class="titulo">Gastos</p>
+        <p class="valor">{{ v.total_gastos_viaje | money }}</p>
+        <p class="sub">Incluye pago del conductor ({{ v.pago_conductor | money }})</p>
+      </mat-card>
+      <mat-card class="total-card">
+        <p class="titulo">Utilidad</p>
+        <p class="valor" [class.negativa]="negativo(v.utilidad)">{{ v.utilidad | money }}</p>
+        <p class="sub">Ingresos menos gastos del viaje</p>
+      </mat-card>
+      <mat-card class="total-card">
+        <p class="titulo">Por cobrar</p>
+        <p class="valor">{{ v.saldo_cartera | money }}</p>
+        <p class="sub">Saldo pendiente de los fletes a crédito</p>
+      </mat-card>
+    </div>
+
+    <!-- ----------------------------------------------------------- servicios -->
+    <div class="seccion-header">
+      <h2>Servicios de flete</h2>
+      <span class="spacer"></span>
+      @if (v.estado === 'en_curso') {
+        <button mat-flat-button *hasPermission="'transporte:crear'" (click)="agregarServicio()">
+          <mat-icon>add</mat-icon> Agregar servicio
+        </button>
+      }
+    </div>
+    <mat-card class="table-card tarjetas tabla-seccion">
+      <div class="zona-tabla">
+        <table mat-table [dataSource]="v.servicios">
+          <ng-container matColumnDef="sentido">
+            <th mat-header-cell *matHeaderCellDef>Sentido</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Sentido'">
+              <span class="chip-sentido">{{ fila.sentido === 'ida' ? 'Ida' : 'Regreso' }}</span>
+            </td>
+            <td mat-footer-cell *matFooterCellDef>Total</td>
+          </ng-container>
+
+          <ng-container matColumnDef="cliente">
+            <th mat-header-cell *matHeaderCellDef>Cliente</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cliente'">
+              @if (fila.es_interno) {
+                <em>Queso propio</em>
+              } @else {
+                <span class="cliente-directorio">
+                  @if (fila.cliente_id) {
+                    <mat-icon matTooltip="Cliente del directorio">group</mat-icon>
+                  }
+                  {{ fila.cliente_nombre ?? '—' }}
+                </span>
+              }
+            </td>
+            <td mat-footer-cell *matFooterCellDef></td>
+          </ng-container>
+
+          <ng-container matColumnDef="descripcion">
+            <th mat-header-cell *matHeaderCellDef>Descripción</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Descripción'">{{ fila.descripcion }}</td>
+            <td mat-footer-cell *matFooterCellDef></td>
+          </ng-container>
+
+          <ng-container matColumnDef="cobro">
+            <th mat-header-cell *matHeaderCellDef>Cobro</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Cobro'">
+              @if (fila.tipo_cobro === 'por_kilo') {
+                {{ fila.kilos | cantidad: 'kg' }} × {{ fila.tarifa_kilo | money }}
+              } @else {
+                Precio fijo
+              }
+            </td>
+            <td mat-footer-cell *matFooterCellDef></td>
+          </ng-container>
+
+          <ng-container matColumnDef="valor">
+            <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor'">{{ fila.valor_total | money }}</td>
+            <td mat-footer-cell *matFooterCellDef class="num">{{ v.total_ingresos | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="abonado">
+            <th mat-header-cell *matHeaderCellDef class="num">Abonado</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Abonado'">
+              {{ fila.es_interno ? '—' : (fila.abonado | money) }}
+            </td>
+            <td mat-footer-cell *matFooterCellDef class="num">{{ totalAbonado() | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="saldo">
+            <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
+              {{ fila.es_interno ? '—' : (fila.saldo | money) }}
+            </td>
+            <td mat-footer-cell *matFooterCellDef class="num">{{ v.saldo_cartera | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="estado">
+            <th mat-header-cell *matHeaderCellDef>Estado</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'"><app-estado-chip [estado]="fila.estado" /></td>
+            <td mat-footer-cell *matFooterCellDef></td>
+          </ng-container>
+
+          <ng-container matColumnDef="acciones">
+            <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+            <td mat-cell *matCellDef="let fila" class="col-acciones">
+              @if (puedeAbonar(fila)) {
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:crear'"
+                  matTooltip="Registrar abono"
+                  (click)="abonar(fila)"
+                >
+                  <mat-icon>payments</mat-icon>
+                </button>
+              }
+              @if (!fila.es_interno) {
+                <button mat-icon-button matTooltip="Ver abonos" (click)="verAbonos(fila)">
+                  <mat-icon>receipt_long</mat-icon>
+                </button>
+              }
+              @if (v.estado === 'en_curso' && fila.estado !== 'anulada') {
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:editar'"
+                  matTooltip="Editar"
+                  (click)="editarServicio(fila)"
+                >
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:eliminar'"
+                  matTooltip="Eliminar (solo sin abonos)"
+                  (click)="eliminarServicio(fila)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:administrar'"
+                  matTooltip="Anular"
+                  (click)="anularServicio(fila)"
+                >
+                  <mat-icon>block</mat-icon>
+                </button>
+              }
+            </td>
+            <td mat-footer-cell *matFooterCellDef></td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="columnasServicios"></tr>
+          <tr mat-row *matRowDef="let fila; columns: columnasServicios"></tr>
+          <!-- El pie va SIEMPRE presente, nunca dentro de un @if: MatTable
+               registra las definiciones de fila en el primer render y no
+               vuelve a pintar el <tfoot> si la definición aparece después.
+               Cuando no hay filas se oculta con [hidden] (CSS). -->
+          <tr mat-footer-row *matFooterRowDef="columnasServicios" [hidden]="v.servicios.length === 0"></tr>
+        </table>
+      </div>
+
+      @if (v.servicios.length === 0) {
+        <div class="empty-state">
+          <mat-icon>package_2</mat-icon>
+          <p>Sin servicios: agregue los fletes de la ida y del regreso</p>
+        </div>
+      }
+    </mat-card>
+
+    <!-- -------------------------------------------------------------- gastos -->
+    <div class="seccion-header">
+      <h2>Gastos del viaje</h2>
+      <span class="spacer"></span>
+      @if (v.estado === 'en_curso') {
+        <button mat-flat-button *hasPermission="'transporte:crear'" (click)="agregarGasto()">
+          <mat-icon>add</mat-icon> Agregar gasto
+        </button>
+      }
+    </div>
+    <mat-card class="table-card tarjetas tabla-seccion">
+      <div class="zona-tabla">
+        <table mat-table [dataSource]="v.gastos">
+          <ng-container matColumnDef="fecha">
+            <th mat-header-cell *matHeaderCellDef>Fecha</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="categoria">
+            <th mat-header-cell *matHeaderCellDef>Categoría</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Categoría'">
+              {{ etiquetaCategoria(fila.categoria) }}
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="concepto">
+            <th mat-header-cell *matHeaderCellDef>Concepto</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Concepto'">{{ fila.concepto ?? '—' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="valor">
+            <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor'">{{ fila.valor | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="odometro">
+            <th mat-header-cell *matHeaderCellDef class="num">Odómetro</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Odómetro'">
+              {{ fila.odometro !== null ? (fila.odometro | cantidad: 'km') : '—' }}
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="adjunto">
+            <th mat-header-cell *matHeaderCellDef>Adjunto</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Adjunto'">
+              @if (fila.adjunto_url) {
+                <a
+                  mat-icon-button
+                  [href]="uploadsBase + '/' + fila.adjunto_url"
+                  target="_blank"
+                  matTooltip="Ver adjunto"
+                >
+                  <mat-icon>attach_file</mat-icon>
+                </a>
+              } @else {
+                —
+              }
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="acciones">
+            <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+            <td mat-cell *matCellDef="let fila" class="col-acciones">
+              @if (v.estado === 'en_curso') {
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:editar'"
+                  matTooltip="Editar"
+                  (click)="editarGasto(fila)"
+                >
+                  <mat-icon>edit</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  *hasPermission="'transporte:eliminar'"
+                  matTooltip="Eliminar"
+                  (click)="eliminarGasto(fila)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
+            </td>
+          </ng-container>
+
+          <!-- Pie en dos líneas: el pago del conductor no es una fila de gasto
+               (se digita en el viaje) pero SÍ está dentro del total, y sin verlo
+               aquí la suma no cuadraría con la tarjeta de gastos. -->
+          <ng-container matColumnDef="pieConductorEtq">
+            <td mat-footer-cell *matFooterCellDef [attr.colspan]="3">Pago del conductor</td>
+          </ng-container>
+          <ng-container matColumnDef="pieConductorValor">
+            <td mat-footer-cell *matFooterCellDef class="num">{{ v.pago_conductor | money }}</td>
+          </ng-container>
+          <ng-container matColumnDef="pieConductorRelleno">
+            <td mat-footer-cell *matFooterCellDef [attr.colspan]="3"></td>
+          </ng-container>
+          <ng-container matColumnDef="pieTotalEtq">
+            <td mat-footer-cell *matFooterCellDef [attr.colspan]="3">Total gastos del viaje</td>
+          </ng-container>
+          <ng-container matColumnDef="pieTotalValor">
+            <td mat-footer-cell *matFooterCellDef class="num">{{ v.total_gastos_viaje | money }}</td>
+          </ng-container>
+          <ng-container matColumnDef="pieTotalRelleno">
+            <td mat-footer-cell *matFooterCellDef [attr.colspan]="3"></td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="columnasGastos"></tr>
+          <tr mat-row *matRowDef="let fila; columns: columnasGastos"></tr>
+          <tr mat-footer-row *matFooterRowDef="['pieConductorEtq', 'pieConductorValor', 'pieConductorRelleno']"></tr>
+          <tr mat-footer-row *matFooterRowDef="['pieTotalEtq', 'pieTotalValor', 'pieTotalRelleno']"></tr>
+        </table>
+      </div>
+
+      @if (v.gastos.length === 0) {
+        <div class="empty-state">
+          <mat-icon>receipt_long</mat-icon>
+          <p>Sin gastos registrados en este viaje</p>
+        </div>
+      }
+    </mat-card>
+  }
+</div>

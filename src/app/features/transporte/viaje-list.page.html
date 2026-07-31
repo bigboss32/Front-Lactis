@@ -1,0 +1,164 @@
+<div class="page">
+  <app-page-header
+    titulo="Viajes"
+    subtitulo="Viajes de transporte con sus ingresos, gastos y utilidad"
+  >
+    <button mat-flat-button *hasPermission="'transporte:crear'" (click)="nuevoViaje()">
+      <mat-icon>add</mat-icon> Nuevo viaje
+    </button>
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Buscar</mat-label>
+      <input matInput [formControl]="buscar" placeholder="Origen, destino, conductor…" />
+      @if (buscar.value) {
+        <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+          <mat-icon>close</mat-icon>
+        </button>
+      } @else {
+        <mat-icon matSuffix>search</mat-icon>
+      }
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Estado</mat-label>
+      <mat-select [formControl]="estado">
+        <mat-option [value]="null">Todos</mat-option>
+        <mat-option value="en_curso">En curso</mat-option>
+        <mat-option value="finalizado">Finalizado</mat-option>
+        <mat-option value="anulado">Anulado</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Vehículo</mat-label>
+      <mat-select [formControl]="vehiculoId">
+        <mat-option [value]="null">Todos</mat-option>
+        @for (vehiculo of vehiculos(); track vehiculo.id) {
+          <mat-option [value]="vehiculo.id">
+            {{ vehiculo.placa }}{{ vehiculo.nombre ? ' — ' + vehiculo.nombre : '' }}
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Desde</mat-label>
+      <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
+      <mat-datepicker-toggle matSuffix [for]="pDesde" />
+      <mat-datepicker #pDesde />
+    </mat-form-field>
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Hasta</mat-label>
+      <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
+      <mat-datepicker-toggle matSuffix [for]="pHasta" />
+      <mat-datepicker #pHasta />
+    </mat-form-field>
+    <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
+  </div>
+
+  <mat-card class="table-card tarjetas alto-limitado">
+    @if (cargando()) {
+      <mat-progress-bar mode="indeterminate" />
+    }
+
+    <!-- La tabla se oculta si la consulta falló: una tabla con solo el
+         encabezado se lee igual que "no hay viajes". -->
+    @if (!errorCarga()) {
+      <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita
+           un antecesor con scroll al que pegarse, y el paginador queda fuera de
+           este div para no irse de vista al bajar. -->
+      <div class="zona-tabla">
+        <table mat-table [dataSource]="filasOrdenadas()" matSort (matSortChange)="orden.set($event)">
+          <ng-container matColumnDef="numero">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Nº</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Nº'">{{ fila.numero }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="fecha_salida">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Salida</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Salida'">{{ fila.fecha_salida | date: 'dd/MM/yyyy' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="ruta">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Ruta</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Ruta'">{{ fila.origen }} → {{ fila.destino }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="vehiculo">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Vehículo</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Vehículo'">{{ fila.vehiculo_placa ?? '—' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="conductor">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Conductor</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Conductor'">{{ fila.conductor_nombre ?? '—' }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="ingresos">
+            <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Ingresos</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Ingresos'">{{ fila.total_ingresos | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="gastos">
+            <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Gastos</th>
+            <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Gastos'">{{ fila.total_gastos_viaje | money }}</td>
+          </ng-container>
+
+          <ng-container matColumnDef="utilidad">
+            <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Utilidad</th>
+            <td
+              mat-cell
+              *matCellDef="let fila"
+              class="num"
+              [class.negativa]="negativo(fila.utilidad)"
+              [attr.data-label]="'Utilidad'"
+            >
+              {{ fila.utilidad | money }}
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="estado">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Estado</th>
+            <td mat-cell *matCellDef="let fila" [attr.data-label]="'Estado'">
+              <app-estado-chip [estado]="etiquetaEstado(fila.estado)" />
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="columnas; sticky: true"></tr>
+          <tr
+            mat-row
+            *matRowDef="let fila; columns: columnas"
+            class="fila-click"
+            (click)="abrirDetalle(fila)"
+          ></tr>
+        </table>
+      </div>
+    }
+
+    @if (errorCarga(); as error) {
+      <div class="error-state" role="alert">
+        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <p>{{ error }}</p>
+        <p class="aclara">Esto no quiere decir que no haya viajes: la consulta no alcanzó a llegar.</p>
+        <button mat-stroked-button type="button" (click)="cargar()">
+          <mat-icon>refresh</mat-icon> Reintentar
+        </button>
+      </div>
+    }
+
+    @if (!cargando() && !errorCarga() && filas().length === 0) {
+      <div class="empty-state">
+        <mat-icon>local_shipping</mat-icon>
+        <p>No hay viajes para los filtros seleccionados</p>
+      </div>
+    }
+
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  </mat-card>
+</div>

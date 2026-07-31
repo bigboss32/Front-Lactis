@@ -1,0 +1,154 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Concepto…" />
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    } @else {
+      <mat-icon matSuffix>search</mat-icon>
+    }
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Vehículo</mat-label>
+    <mat-select [formControl]="vehiculoId">
+      <mat-option [value]="null">Todos</mat-option>
+      @for (vehiculo of vehiculos(); track vehiculo.id) {
+        <mat-option [value]="vehiculo.id">
+          {{ vehiculo.placa }}{{ vehiculo.nombre ? ' — ' + vehiculo.nombre : '' }}
+        </mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Categoría</mat-label>
+    <mat-select [formControl]="categoria">
+      <mat-option [value]="null">Todas</mat-option>
+      @for (cat of categorias; track cat) {
+        <mat-option [value]="cat">{{ etiquetasCategoria[cat] }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Desde</mat-label>
+    <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
+    <mat-datepicker-toggle matSuffix [for]="pDesde" />
+    <mat-datepicker #pDesde />
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Hasta</mat-label>
+    <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
+    <mat-datepicker-toggle matSuffix [for]="pHasta" />
+    <mat-datepicker #pHasta />
+  </mat-form-field>
+  <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
+  <span class="spacer"></span>
+  <button mat-flat-button *hasPermission="'transporte:crear'" (click)="abrirFormulario()">
+    <mat-icon>add</mat-icon> Nuevo gasto general
+  </button>
+</div>
+
+<mat-card class="table-card tarjetas alto-limitado">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita
+       un antecesor con scroll al que pegarse, y el paginador queda fuera de
+       este div para no irse de vista al bajar. -->
+  <div class="zona-tabla">
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="fecha">
+        <th mat-header-cell *matHeaderCellDef>Fecha</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Fecha'">{{ fila.fecha | date: 'dd/MM/yyyy' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="vehiculo">
+        <th mat-header-cell *matHeaderCellDef>Vehículo</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Vehículo'">{{ placaDe(fila.vehiculo_id) }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="categoria">
+        <th mat-header-cell *matHeaderCellDef>Categoría</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Categoría'">{{ etiquetaCategoria(fila.categoria) }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="concepto">
+        <th mat-header-cell *matHeaderCellDef>Concepto</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Concepto'">{{ fila.concepto ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="valor">
+        <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor'">{{ fila.valor | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="odometro">
+        <th mat-header-cell *matHeaderCellDef class="num">Odómetro</th>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Odómetro'">
+          {{ fila.odometro !== null ? kilometros(fila.odometro) : '—' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="adjunto">
+        <th mat-header-cell *matHeaderCellDef>Adjunto</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Adjunto'">
+          @if (fila.adjunto_url) {
+            <a
+              mat-icon-button
+              [href]="uploadsBase + '/' + fila.adjunto_url"
+              target="_blank"
+              matTooltip="Ver adjunto"
+            >
+              <mat-icon>attach_file</mat-icon>
+            </a>
+          } @else {
+            —
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let fila" class="col-acciones">
+          <button
+            mat-icon-button
+            *hasPermission="'transporte:editar'"
+            matTooltip="Editar"
+            (click)="abrirFormulario(fila)"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'transporte:eliminar'"
+            matTooltip="Eliminar"
+            (click)="eliminar(fila)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas; sticky: true"></tr>
+      <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+    </table>
+  </div>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>receipt_long</mat-icon>
+      <p>No hay gastos generales para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>

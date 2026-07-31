@@ -119,6 +119,12 @@ export const routes: Routes = [
         canMatch: [permisoGuard('gastos')],
         loadChildren: () => import('./features/gastos/gastos.routes').then((m) => m.GASTOS_ROUTES),
       },
+      // --------------------------------------------------------- transporte
+      {
+        path: 'transporte',
+        canMatch: [permisoGuard('transporte')],
+        loadChildren: () => import('./features/transporte/transporte.routes').then((m) => m.TRANSPORTE_ROUTES),
+      },
       // ---------------------------------------------------------- finanzas
       {
         path: 'caja',

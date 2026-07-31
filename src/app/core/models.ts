@@ -582,3 +582,214 @@ export interface LoginAudit {
   ip: string | null;
   user_agent: string | null;
 }
+
+// -------------------------------------------------------------- transporte
+export interface Vehiculo extends TenantFields {
+  placa: string;
+  /** Alias con el que la finca conoce al vehículo ("la turbo"). */
+  nombre: string | null;
+  marca: string | null;
+  linea: string | null;
+  anio: number | null;
+  capacidad_kg: Monto | null;
+  /** Tarifa base por kilo transportado; cada servicio puede ajustarla. */
+  tarifa_kilo: Monto;
+  odometro_actual: Monto;
+  observaciones: string | null;
+}
+
+export interface AbonoFlete {
+  id: string;
+  fecha: string;
+  valor: Monto;
+  metodo: string;
+  referencia: string | null;
+  observaciones: string | null;
+}
+
+/** Un flete dentro de un viaje: carga de terceros o queso propio (interno). */
+export interface ViajeServicio extends TenantFields {
+  viaje_id: string;
+  sentido: 'ida' | 'regreso' | string;
+  tipo_cobro: 'por_kilo' | 'precio_fijo' | string;
+  /** Queso propio: se valora a tarifa para medir rentabilidad, sin cartera. */
+  es_interno: boolean;
+  cliente_id: string | null;
+  cliente_nombre: string | null;
+  descripcion: string;
+  kilos: Monto | null;
+  tarifa_kilo: Monto | null;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+  observaciones: string | null;
+  abonos: AbonoFlete[];
+}
+
+export interface VehiculoGasto extends TenantFields {
+  vehiculo_id: string;
+  /** Null = gasto general del vehículo (no atado a un viaje). */
+  viaje_id: string | null;
+  fecha: string;
+  categoria: string;
+  concepto: string | null;
+  valor: Monto;
+  odometro: Monto | null;
+  adjunto_url: string | null;
+}
+
+/** Viaje del listado, con los agregados que calcula el backend (evita N+1). */
+export interface Viaje extends TenantFields {
+  numero: number;
+  vehiculo_id: string;
+  vehiculo_placa: string | null;
+  vehiculo_nombre: string | null;
+  fecha_salida: string;
+  fecha_regreso: string | null;
+  origen: string;
+  destino: string;
+  conductor_nombre: string | null;
+  pago_conductor: Monto;
+  odometro_salida: Monto | null;
+  odometro_regreso: Monto | null;
+  observaciones: string | null;
+  total_ingresos: Monto;
+  ingresos_terceros: Monto;
+  ingresos_internos: Monto;
+  /** Gastos del viaje INCLUYENDO el pago del conductor. */
+  total_gastos_viaje: Monto;
+  utilidad: Monto;
+  saldo_cartera: Monto;
+}
+
+/** Detalle del viaje (= reporte de rentabilidad): servicios y gastos. */
+export interface ViajeDetalle extends Viaje {
+  servicios: ViajeServicio[];
+  gastos: VehiculoGasto[];
+}
+
+export interface VehiculoMantenimiento extends TenantFields {
+  vehiculo_id: string;
+  fecha: string;
+  tipo: 'preventivo' | 'correctivo' | string;
+  descripcion: string;
+  taller: string | null;
+  odometro: Monto | null;
+  valor: Monto;
+  proximo_odometro: Monto | null;
+  proxima_fecha: string | null;
+  adjunto_url: string | null;
+}
+
+export interface VehiculoDocumento extends TenantFields {
+  vehiculo_id: string;
+  tipo: 'soat' | 'tecnomecanica' | 'seguro' | 'impuesto' | 'otro' | string;
+  descripcion: string | null;
+  numero: string | null;
+  fecha_expedicion: string | null;
+  fecha_vencimiento: string;
+  valor: Monto;
+  adjunto_url: string | null;
+}
+
+/** Fila de GET /transporte/cartera (saldos de fletes por cliente). */
+export interface CarteraFleteCliente {
+  /** Null = cliente ocasional (texto libre), agrupado por nombre. */
+  cliente_id: string | null;
+  cliente_nombre: string;
+  servicios_pendientes: number;
+  total_facturado: Monto;
+  total_abonado: Monto;
+  saldo: Monto;
+}
+
+export interface CarteraFleteServicio {
+  id: string;
+  viaje_id: string;
+  viaje_numero: number;
+  viaje_fecha: string;
+  sentido: string;
+  tipo_cobro: string;
+  descripcion: string;
+  kilos: Monto | null;
+  tarifa_kilo: Monto | null;
+  valor_total: Monto;
+  abonado: Monto;
+  saldo: Monto;
+  estado: string;
+  abonos: AbonoFlete[];
+}
+
+export interface CarteraFleteDetalle {
+  cliente_id: string | null;
+  cliente_nombre: string;
+  servicios: CarteraFleteServicio[];
+  total_facturado: Monto;
+  total_abonado: Monto;
+  saldo: Monto;
+}
+
+export interface SerieMesTransporte {
+  /** 'YYYY-MM' */
+  mes: string;
+  ingresos: Monto;
+  gastos: Monto;
+  utilidad: Monto;
+}
+
+export interface ResumenTransporte {
+  desde: string;
+  hasta: string;
+  vehiculo_id: string | null;
+  viajes_realizados: number;
+  kilos_transportados: Monto;
+  /** Solo suma viajes con ambos odómetros registrados. */
+  kilometros: Monto;
+  ingresos_terceros: Monto;
+  ingresos_internos: Monto;
+  total_ingresos: Monto;
+  total_pago_conductores: Monto;
+  gastos_por_categoria: Record<string, Monto>;
+  total_gastos: Monto;
+  total_mantenimientos: Monto;
+  total_documentos: Monto;
+  utilidad_operativa: Monto;
+  utilidad_neta: Monto;
+  /** Cartera de HOY (histórica), no del rango consultado. */
+  por_cobrar: Monto;
+  serie_mensual: SerieMesTransporte[];
+}
+
+export interface AlertaDocumento {
+  documento_id: string;
+  vehiculo_id: string;
+  vehiculo_placa: string;
+  vehiculo_nombre: string | null;
+  tipo: string;
+  descripcion: string | null;
+  numero: string | null;
+  fecha_vencimiento: string;
+  /** Negativo = ya venció. */
+  dias_restantes: number;
+  estado: 'vencido' | 'por_vencer';
+}
+
+export interface AlertaMantenimiento {
+  mantenimiento_id: string;
+  vehiculo_id: string;
+  vehiculo_placa: string;
+  vehiculo_nombre: string | null;
+  tipo: string;
+  descripcion: string;
+  fecha: string;
+  proxima_fecha: string | null;
+  proximo_odometro: Monto | null;
+  dias_restantes: number | null;
+  km_restantes: Monto | null;
+  estado: 'vencido' | 'por_vencer';
+}
+
+export interface AlertasTransporte {
+  documentos: AlertaDocumento[];
+  mantenimientos: AlertaMantenimiento[];
+}

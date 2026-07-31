@@ -67,6 +67,17 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: 'Transporte',
+    icon: 'local_shipping',
+    items: [
+      { label: 'Resumen', icon: 'insights', route: '/transporte/resumen', modulo: 'transporte' },
+      { label: 'Viajes', icon: 'local_shipping', route: '/transporte/viajes', modulo: 'transporte' },
+      { label: 'Cartera de fletes', icon: 'account_balance_wallet', route: '/transporte/cartera', modulo: 'transporte' },
+      { label: 'Vehículos', icon: 'directions_bus', route: '/transporte/vehiculos', modulo: 'transporte' },
+      { label: 'Mantenimiento', icon: 'build', route: '/transporte/mantenimiento', modulo: 'transporte' },
+    ],
+  },
+  {
     title: 'Finanzas',
     icon: 'account_balance_wallet',
     items: [

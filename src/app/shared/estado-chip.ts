@@ -11,6 +11,14 @@ const COLORES: Record<string, string> = {
   aprobada: 'azul',
   abierta: 'azul',
   anulada: 'rojo',
+  // Transporte: viajes (el backend manda 'en_curso'; la vista pasa la etiqueta
+  // legible de ETIQUETAS_ESTADO_VIAJE) y vigencia de documentos del vehículo.
+  'en curso': 'azul',
+  finalizado: 'verde',
+  anulado: 'rojo',
+  vigente: 'verde',
+  'por vencer': 'ambar',
+  vencido: 'rojo',
 };
 
 /** Chip de color según el estado del registro o del flujo de trabajo. */

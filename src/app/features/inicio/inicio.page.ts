@@ -217,6 +217,13 @@ const ACCIONES_RAPIDAS: AccionRapida[] = [
     tooltip: 'Abre compra y venta de queso (reventa)',
   },
   {
+    titulo: 'Registrar viaje de la turbo',
+    descripcion: 'Anota el viaje, sus fletes y sus gastos',
+    icono: 'local_shipping', color: CHART_COLORS[8],
+    link: '/transporte/viajes', permiso: 'transporte:crear',
+    tooltip: 'Abre los viajes del módulo de transporte',
+  },
+  {
     titulo: 'Registrar gasto',
     descripcion: 'Guarda una compra o un pago del negocio',
     icono: 'receipt_long', color: CHART_COLORS[6],

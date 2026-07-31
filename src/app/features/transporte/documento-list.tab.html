@@ -1,0 +1,177 @@
+<!-- Vencimientos vigentes (solo el documento más reciente por vehículo y tipo,
+     como las alertas del backend): el aviso se ve sin salir a otra pantalla. -->
+@if (alertas().length > 0) {
+  <div class="banner-alertas" role="alert">
+    <mat-icon aria-hidden="true">warning</mat-icon>
+    <span>
+      <strong>Documentos vencidos o por vencer:</strong>
+      @for (alerta of alertas(); track alerta.documento_id) {
+        <span class="chip" [class.vencido]="alerta.estado === 'vencido'">
+          {{ etiquetaTipo(alerta.tipo) }} {{ alerta.vehiculo_placa }} — {{ textoVencimiento(alerta) }}
+        </span>
+      }
+    </span>
+  </div>
+}
+
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Buscar</mat-label>
+    <input matInput [formControl]="buscar" placeholder="Número, descripción…" />
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    } @else {
+      <mat-icon matSuffix>search</mat-icon>
+    }
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Vehículo</mat-label>
+    <mat-select [formControl]="vehiculoId">
+      <mat-option [value]="null">Todos</mat-option>
+      @for (vehiculo of vehiculos(); track vehiculo.id) {
+        <mat-option [value]="vehiculo.id">
+          {{ vehiculo.placa }}{{ vehiculo.nombre ? ' — ' + vehiculo.nombre : '' }}
+        </mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Tipo</mat-label>
+    <mat-select [formControl]="tipo">
+      <mat-option [value]="null">Todos</mat-option>
+      @for (tipoDocumento of tipos; track tipoDocumento) {
+        <mat-option [value]="tipoDocumento">{{ etiquetasTipo[tipoDocumento] }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Vence desde</mat-label>
+    <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
+    <mat-datepicker-toggle matSuffix [for]="pDesde" />
+    <mat-datepicker #pDesde />
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Vence hasta</mat-label>
+    <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
+    <mat-datepicker-toggle matSuffix [for]="pHasta" />
+    <mat-datepicker #pHasta />
+  </mat-form-field>
+  <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
+  <span class="spacer"></span>
+  <button mat-flat-button *hasPermission="'transporte:crear'" (click)="abrirFormulario()">
+    <mat-icon>add</mat-icon> Nuevo documento
+  </button>
+</div>
+
+<mat-card class="table-card tarjetas alto-limitado">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita
+       un antecesor con scroll al que pegarse, y el paginador queda fuera de
+       este div para no irse de vista al bajar. -->
+  <div class="zona-tabla">
+    <table mat-table [dataSource]="filas()">
+      <ng-container matColumnDef="vehiculo">
+        <th mat-header-cell *matHeaderCellDef>Vehículo</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Vehículo'">{{ placaDe(fila.vehiculo_id) }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="tipo">
+        <th mat-header-cell *matHeaderCellDef>Tipo</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Tipo'">
+          {{ etiquetaTipo(fila.tipo) }}{{ fila.numero ? ' · ' + fila.numero : '' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="descripcion">
+        <th mat-header-cell *matHeaderCellDef>Descripción</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Descripción'">{{ fila.descripcion ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="expedicion">
+        <th mat-header-cell *matHeaderCellDef>Expedición</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Expedición'">
+          {{ fila.fecha_expedicion ? (fila.fecha_expedicion | date: 'dd/MM/yyyy') : '—' }}
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="vencimiento">
+        <th mat-header-cell *matHeaderCellDef>Vence</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Vence'">{{ fila.fecha_vencimiento | date: 'dd/MM/yyyy' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="vigencia">
+        <th mat-header-cell *matHeaderCellDef>Vigencia</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Vigencia'"><app-estado-chip [estado]="vigenciaDe(fila)" /></td>
+      </ng-container>
+
+      <ng-container matColumnDef="valor">
+        <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor'">{{ fila.valor | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="adjunto">
+        <th mat-header-cell *matHeaderCellDef>Adjunto</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Adjunto'">
+          @if (fila.adjunto_url) {
+            <a
+              mat-icon-button
+              [href]="uploadsBase + '/' + fila.adjunto_url"
+              target="_blank"
+              matTooltip="Ver adjunto"
+            >
+              <mat-icon>attach_file</mat-icon>
+            </a>
+          } @else {
+            —
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let fila" class="col-acciones">
+          <button
+            mat-icon-button
+            *hasPermission="'transporte:editar'"
+            matTooltip="Editar"
+            (click)="abrirFormulario(fila)"
+          >
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            *hasPermission="'transporte:eliminar'"
+            matTooltip="Eliminar"
+            (click)="eliminar(fila)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnas; sticky: true"></tr>
+      <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
+    </table>
+  </div>
+
+  @if (!cargando() && filas().length === 0) {
+    <div class="empty-state">
+      <mat-icon>description</mat-icon>
+      <p>No hay documentos para los filtros seleccionados</p>
+    </div>
+  }
+
+  <mat-paginator
+    [length]="total()"
+    [pageIndex]="page() - 1"
+    [pageSize]="pageSize()"
+    [pageSizeOptions]="[10, 20, 50, 100]"
+    (page)="cambiarPagina($event)"
+    showFirstLastButtons
+  />
+</mat-card>
