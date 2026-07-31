@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { CrudService } from '../../core/api.service';
-import { Usuario } from '../../core/models';
+import { MembresiaEmpresa, MembresiaEmpresaPayload, Usuario } from '../../core/models';
 
 /** Campos aceptados por POST /usuarios (schema UsuarioCreate). */
 export interface UsuarioCreatePayload {
@@ -46,5 +46,25 @@ export class UsuariosService extends CrudService<Usuario, UsuarioCreatePayload, 
 
   restablecerPassword(id: string, password: string): Observable<Usuario> {
     return this.api.post<Usuario>(`${this.base}/${id}/restablecer-password`, { password });
+  }
+
+  /** Membresías del usuario con sus roles por empresa (solo superadmin). */
+  empresasDe(id: string): Observable<MembresiaEmpresa[]> {
+    return this.api.get<MembresiaEmpresa[]>(`${this.base}/${id}/empresas`);
+  }
+
+  /**
+   * Reemplaza las membresías del usuario (solo superadmin). El backend devuelve
+   * el estado resultante con el mismo shape del GET.
+   */
+  asignarEmpresas(
+    id: string,
+    membresias: MembresiaEmpresaPayload[],
+    empresaPrincipalId?: string | null,
+  ): Observable<MembresiaEmpresa[]> {
+    return this.api.put<MembresiaEmpresa[]>(`${this.base}/${id}/empresas`, {
+      membresias,
+      empresa_principal_id: empresaPrincipalId ?? null,
+    });
   }
 }

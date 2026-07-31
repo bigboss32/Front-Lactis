@@ -74,14 +74,16 @@
 
       <app-barra-busqueda-global class="busqueda-toolbar" />
 
-      @if (auth.esSuperadmin() && empresas().length > 0) {
+      <!-- Selector de empresa: superadmin siempre; los demás solo si son
+           miembros de más de una (con una sola no hay nada que elegir). -->
+      @if (empresasSelector().length > (auth.esSuperadmin() ? 0 : 1)) {
         <mat-select
           class="selector-empresa"
           [value]="auth.empresaActiva()"
           (valueChange)="cambiarEmpresa($event)"
           aria-label="Empresa activa"
         >
-          @for (empresa of empresas(); track empresa.id) {
+          @for (empresa of empresasSelector(); track empresa.id) {
             <mat-option [value]="empresa.id">{{ empresa.nombre }}</mat-option>
           }
         </mat-select>

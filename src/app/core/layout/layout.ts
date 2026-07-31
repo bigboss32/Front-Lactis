@@ -10,13 +10,12 @@ import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSidenavModule } from '@angular/material/sidenav';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { filter, firstValueFrom, map } from 'rxjs';
+import { filter, map } from 'rxjs';
 
-import { ApiService } from '../api.service';
 import { AuthService } from '../auth/auth.service';
-import { Empresa, Page } from '../models';
 import { NotificacionesService } from '../notificaciones.service';
 import { ThemeService } from '../theme.service';
 import { BarraBusquedaGlobal } from '../../shared/barra-busqueda-global';
@@ -34,9 +33,9 @@ import { NAV_GROUPS, NEGOCIOS, NavGroup, Negocio } from './nav';
   styleUrl: './layout.scss',
 })
 export class Layout implements OnInit, OnDestroy {
-  private readonly api = inject(ApiService);
   private readonly breakpoints = inject(BreakpointObserver);
   private readonly router = inject(Router);
+  private readonly snackbar = inject(MatSnackBar);
 
   readonly auth = inject(AuthService);
   readonly theme = inject(ThemeService);
@@ -58,7 +57,12 @@ export class Layout implements OnInit, OnDestroy {
       .pipe(map((r) => r.matches)),
     { initialValue: false },
   );
-  readonly empresas = signal<Empresa[]>([]);
+  /**
+   * Empresas del selector de la barra: las que el backend puso en el perfil
+   * (membresías del usuario, o todas las activas si es superadmin). Se muestra
+   * al superadmin siempre y al resto solo cuando tiene más de una.
+   */
+  readonly empresasSelector = computed(() => this.auth.empresasDisponibles());
   /** Elemento con el scroll de la página (mat-sidenav-content). */
   private readonly contenido = viewChild('contenido', { read: ElementRef });
 
@@ -134,13 +138,11 @@ export class Layout implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     await this.auth.ensurePerfil();
-    if (this.auth.esSuperadmin()) {
-      const page = await firstValueFrom(this.api.get<Page<Empresa>>('/empresas', { page_size: 100 }));
-      this.empresas.set(page.items);
-      // Selecciona la primera empresa si no hay una activa guardada
-      if (!this.auth.empresaActiva() && page.items.length > 0) {
-        this.auth.seleccionarEmpresa(page.items[0].id);
-      }
+    // Selecciona la primera empresa para el superadmin si no hay una activa
+    // guardada (a los demás se la normaliza el propio AuthService).
+    if (this.auth.esSuperadmin() && !this.auth.empresaActiva()) {
+      const primera = this.empresasSelector()[0];
+      if (primera) this.auth.seleccionarEmpresa(primera.id);
     }
     this.notificaciones.refrescar();
     this.pollId = setInterval(() => this.notificaciones.refrescar(), 60_000);
@@ -150,11 +152,31 @@ export class Layout implements OnInit, OnDestroy {
     if (this.pollId) clearInterval(this.pollId);
   }
 
-  cambiarEmpresa(empresaId: string): void {
+  async cambiarEmpresa(empresaId: string): Promise<void> {
+    const anterior = this.auth.empresaActiva();
+    if (empresaId === anterior) return;
+    // El orden importa: primero la empresa (para que el header salga bien),
+    // luego el perfil (los guards de la navegación usan ensurePerfil() cacheado
+    // y deben ver los permisos de la NUEVA empresa) y solo al final se navega.
     this.auth.seleccionarEmpresa(empresaId);
-    // Recarga la vista actual para que los datos correspondan a la nueva empresa
+    const perfil = await this.auth.recargarPerfil();
+    if (!perfil) {
+      // La red falló: se revierte para que el selector no mienta. El perfil
+      // anterior sigue intacto (recargarPerfil no lo toca cuando falla).
+      this.auth.seleccionarEmpresa(anterior);
+      this.snackbar.open(
+        'No fue posible cambiar de empresa. Revisa la señal y vuelve a intentar.',
+        'OK',
+        { duration: 5000 },
+      );
+      return;
+    }
+    // Recarga la vista actual para que los datos correspondan a la nueva empresa.
+    // Si en ella no tiene permiso para esta pantalla, permisoGuard lo manda a
+    // /inicio con su aviso: es el comportamiento deseado.
     const url = this.router.url;
-    this.router.navigateByUrl('/', { skipLocationChange: true }).then(() => this.router.navigateByUrl(url));
+    await this.router.navigateByUrl('/', { skipLocationChange: true });
+    await this.router.navigateByUrl(url);
   }
 
   logout(): void {

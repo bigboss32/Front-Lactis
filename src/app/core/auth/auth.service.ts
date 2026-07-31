@@ -1,14 +1,30 @@
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpContext,
+  HttpContextToken,
+  HttpErrorResponse,
+  HttpParams,
+} from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
 import { API_BASE } from '../api.service';
-import { Perfil, TokenResponse } from '../models';
+import { EmpresaResumen, Perfil, TokenResponse } from '../models';
 
 const ACCESS_KEY = 'qe.access';
 const REFRESH_KEY = 'qe.refresh';
 const EMPRESA_KEY = 'qe.empresa';
+
+/**
+ * Marca una petición que debe ir SIN el header X-Empresa-Id aunque haya una
+ * empresa activa. La usa `revalidarMembresia()`: para saber si el usuario sigue
+ * siendo miembro de la empresa activa hay que preguntarle al backend por su
+ * empresa PRINCIPAL, y con el header puesto la pregunta misma daría 403.
+ * Mismo patrón que SOLO_LECTURA (core/errores-red.ts): el contexto es local de
+ * Angular y nunca viaja por la red.
+ */
+export const SIN_EMPRESA = new HttpContextToken<boolean>(() => false);
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -16,13 +32,19 @@ export class AuthService {
   private readonly router = inject(Router);
 
   readonly perfil = signal<Perfil | null>(null);
-  /** Empresa activa para el superadmin (header X-Empresa-Id). */
+  /** Empresa activa (header X-Empresa-Id): la elegida en el selector de la barra. */
   readonly empresaActiva = signal<string | null>(localStorage.getItem(EMPRESA_KEY));
   readonly esSuperadmin = computed(() => this.perfil()?.es_superadmin ?? false);
+  /**
+   * Empresas a las que puede entrar el usuario, según el backend: sus
+   * membresías, o todas las activas si es superadmin. Alimenta el selector.
+   */
+  readonly empresasDisponibles = computed<EmpresaResumen[]>(() => this.perfil()?.empresas ?? []);
 
   private permisos = new Set<string>();
   private perfilPromise: Promise<Perfil | null> | null = null;
   private refreshPromise: Promise<string | null> | null = null;
+  private revalidacionPromise: Promise<boolean> | null = null;
 
   get accessToken(): string | null {
     return localStorage.getItem(ACCESS_KEY);
@@ -46,6 +68,10 @@ export class AuthService {
       }),
     );
     this.guardarTokens(tokens);
+    // La empresa activa del usuario ANTERIOR no se hereda: si en este navegador
+    // un superadmin dejó guardada la empresa 2 y luego entra Alirio, sin este
+    // reset Alirio arrancaría pidiendo datos de una empresa que quizá no es suya.
+    this.seleccionarEmpresa(null);
     this.perfilPromise = null;
     await this.ensurePerfil();
   }
@@ -68,6 +94,9 @@ export class AuthService {
   limpiarSesion(): void {
     localStorage.removeItem(ACCESS_KEY);
     localStorage.removeItem(REFRESH_KEY);
+    // La empresa activa también es de la sesión: dejarla en localStorage haría
+    // que el siguiente usuario del mismo navegador la heredara.
+    this.seleccionarEmpresa(null);
     this.perfil.set(null);
     this.permisos.clear();
     this.perfilPromise = null;
@@ -77,17 +106,102 @@ export class AuthService {
   ensurePerfil(): Promise<Perfil | null> {
     if (this.perfil()) return Promise.resolve(this.perfil());
     if (!this.isAuthenticated) return Promise.resolve(null);
+    // Esta primera llamada va SIN header X-Empresa-Id (el interceptor solo lo
+    // pone cuando ya conoce las membresías del perfil): el backend responde con
+    // el contexto de la empresa PRINCIPAL, y de ahí se normaliza la activa.
     this.perfilPromise ??= firstValueFrom(this.http.get<Perfil>(`${API_BASE}/auth/me`))
       .then((perfil) => {
-        this.perfil.set(perfil);
-        this.permisos = new Set(perfil.permisos);
-        return perfil;
+        this.aplicarPerfil(perfil);
+        return this.normalizarEmpresaActiva(perfil);
       })
       .catch(() => {
         this.perfilPromise = null;
         return null;
       });
     return this.perfilPromise;
+  }
+
+  /** Reemplaza perfil y permisos de una sola vez (nunca deja el perfil en null). */
+  private aplicarPerfil(perfil: Perfil): void {
+    this.perfil.set(perfil);
+    this.permisos = new Set(perfil.permisos);
+  }
+
+  /**
+   * Cuadra la empresa activa guardada con las membresías que dijo el backend.
+   *
+   * - Superadmin: no se toca (el layout autoselecciona la primera si no hay).
+   * - Guardada ausente o que ya no es membresía: cae a la principal del perfil
+   *   (o a la primera membresía si no tiene principal).
+   * - Guardada válida pero distinta de la del perfil recién pedido: ese perfil
+   *   vino con roles/permisos de la PRINCIPAL, así que se re-pide una vez, ya
+   *   con el header puesto, para que el menú refleje la empresa activa real.
+   */
+  private async normalizarEmpresaActiva(perfil: Perfil): Promise<Perfil> {
+    if (perfil.es_superadmin) return perfil;
+    const empresas = perfil.empresas ?? [];
+    const activa = this.empresaActiva();
+    if (!activa || !empresas.some((empresa) => empresa.id === activa)) {
+      this.seleccionarEmpresa(perfil.empresa_id ?? empresas[0]?.id ?? null);
+      return perfil;
+    }
+    if (activa !== perfil.empresa_id) {
+      return (await this.recargarPerfil()) ?? perfil;
+    }
+    return perfil;
+  }
+
+  /**
+   * Vuelve a pedir /auth/me y reemplaza perfil y permisos SIN pasar por null:
+   * el menú no parpadea mientras se cambia de empresa. Devuelve null SOLO si la
+   * red falló; en ese caso el perfil anterior queda intacto.
+   */
+  async recargarPerfil(): Promise<Perfil | null> {
+    try {
+      const perfil = await firstValueFrom(this.http.get<Perfil>(`${API_BASE}/auth/me`));
+      this.aplicarPerfil(perfil);
+      return perfil;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * ¿El usuario sigue siendo miembro de la empresa activa? Se pregunta cuando
+   * una petición con header X-Empresa-Id recibe 403: puede ser un permiso que
+   * le falta... o que el superadmin le quitó la membresía mientras trabajaba.
+   *
+   * Pide /auth/me SIN header (marca SIN_EMPRESA: con el header puesto la
+   * pregunta misma daría 403). Si perdió la membresía, aplica el perfil de su
+   * empresa principal y deja esa como activa; devuelve `false` para que el
+   * interceptor avise y lo lleve a /inicio. Si la red falla no se puede afirmar
+   * nada: devuelve `true` y el 403 original sigue su curso.
+   *
+   * La promesa se comparte entre los 403 concurrentes de una misma pantalla
+   * (una lista dispara varias peticiones a la vez y todas fallarían juntas).
+   */
+  revalidarMembresia(): Promise<boolean> {
+    this.revalidacionPromise ??= firstValueFrom(
+      this.http.get<Perfil>(`${API_BASE}/auth/me`, {
+        context: new HttpContext().set(SIN_EMPRESA, true),
+      }),
+    )
+      .then((perfil) => {
+        const activa = this.empresaActiva();
+        const sigueSiendoMiembro =
+          perfil.es_superadmin ||
+          (perfil.empresas ?? []).some((empresa) => empresa.id === activa);
+        if (!sigueSiendoMiembro) {
+          this.aplicarPerfil(perfil);
+          this.seleccionarEmpresa(perfil.empresa_id ?? perfil.empresas?.[0]?.id ?? null);
+        }
+        return sigueSiendoMiembro;
+      })
+      .catch(() => true)
+      .finally(() => {
+        this.revalidacionPromise = null;
+      });
+    return this.revalidacionPromise;
   }
 
   hasPermission(modulo: string, accion = 'consultar'): boolean {

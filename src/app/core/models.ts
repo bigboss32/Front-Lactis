@@ -32,6 +32,12 @@ export interface TokenResponse {
   token_type: string;
 }
 
+/** Empresa reducida a lo que necesita el selector de la barra. */
+export interface EmpresaResumen {
+  id: string;
+  nombre: string;
+}
+
 export interface Perfil {
   id: string;
   nombre: string;
@@ -39,11 +45,18 @@ export interface Perfil {
   correo: string;
   username: string;
   foto_url: string | null;
+  /** Empresa ACTIVA del contexto (la del header X-Empresa-Id o la principal). */
   empresa_id: string | null;
   sucursal_id: string | null;
+  /** Roles y permisos SOLO de la empresa activa (más los globales). */
   roles: string[];
   permisos: string[]; // "modulo:accion"
   es_superadmin: boolean;
+  /**
+   * Empresas a las que puede entrar: sus membresías, o TODAS las activas si es
+   * superadmin. Opcional porque un backend viejo no lo manda: consumir con `?? []`.
+   */
+  empresas?: EmpresaResumen[];
 }
 
 // ---------------------------------------------------------------- empresas
@@ -94,11 +107,28 @@ export interface Usuario extends AuditFields {
   telefono: string | null;
   username: string;
   foto_url: string | null;
+  /** Empresa PRINCIPAL (a la que entra sin elegir otra en el selector). */
   empresa_id: string | null;
   sucursal_id: string | null;
   ultimo_acceso: string | null;
   bloqueado: boolean;
+  /** Roles en la empresa activa del contexto (todos, para el superadmin sin header). */
   roles: RolResumen[];
+  /** Nombres de las empresas de las que es miembro. Opcional: backend viejo no lo manda. */
+  empresas?: string[];
+}
+
+/** Fila de GET /usuarios/{id}/empresas: una membresía con sus roles. */
+export interface MembresiaEmpresa {
+  empresa_id: string;
+  empresa_nombre: string;
+  roles: RolResumen[];
+}
+
+/** Membresía tal como la recibe PUT /usuarios/{id}/empresas. */
+export interface MembresiaEmpresaPayload {
+  empresa_id: string;
+  rol_ids: string[];
 }
 
 // --------------------------------------------------------------- empleados

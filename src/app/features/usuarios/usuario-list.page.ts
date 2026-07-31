@@ -1,4 +1,4 @@
-import { Component, DestroyRef, OnInit, effect, inject, signal, untracked } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -26,6 +26,7 @@ import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { AsignarRolesDialog } from './asignar-roles.dialog';
 import { RestablecerPasswordDialog } from './restablecer-password.dialog';
+import { UsuarioEmpresasDialog } from './usuario-empresas.dialog';
 import { UsuarioFormDialog } from './usuario-form.dialog';
 import { UsuariosService } from './usuarios.service';
 
@@ -85,7 +86,12 @@ export class UsuarioListPage implements OnInit {
 
   readonly auth = inject(AuthService);
 
-  readonly columnas = ['nombre', 'username', 'correo', 'roles', 'bloqueado', 'estado', 'acciones'];
+  /** La columna Empresas solo aporta al superadmin: los demás ven una empresa. */
+  readonly columnas = computed(() =>
+    this.auth.esSuperadmin()
+      ? ['nombre', 'username', 'correo', 'roles', 'empresas', 'bloqueado', 'estado', 'acciones']
+      : ['nombre', 'username', 'correo', 'roles', 'bloqueado', 'estado', 'acciones'],
+  );
   readonly filas = signal<Usuario[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -194,12 +200,31 @@ export class UsuarioListPage implements OnInit {
   }
 
   asignarRoles(item: Usuario): void {
+    // Los roles ahora son POR EMPRESA: el subtítulo del diálogo dice en cuál se
+    // están asignando. El nombre sale del perfil; el banner es el respaldo.
+    const activa = this.auth.empresaActiva();
+    const empresaNombre =
+      this.auth.empresasDisponibles().find((empresa) => empresa.id === activa)?.nombre ??
+      this.empresaNombre();
     this.dialog
-      .open(AsignarRolesDialog, { data: { usuario: item }, width: '480px' })
+      .open(AsignarRolesDialog, { data: { usuario: item, empresaNombre }, width: '480px' })
       .afterClosed()
       .subscribe((guardado) => {
         if (guardado) {
           this.snackbar.open('Roles asignados', 'OK', { duration: 3000 });
+          this.cargar();
+        }
+      });
+  }
+
+  /** Membresías y roles por empresa; solo el superadmin puede abrirlo. */
+  asignarEmpresas(item: Usuario): void {
+    this.dialog
+      .open(UsuarioEmpresasDialog, { data: { usuario: item }, width: '560px' })
+      .afterClosed()
+      .subscribe((guardado) => {
+        if (guardado) {
+          this.snackbar.open('Empresas asignadas', 'OK', { duration: 3000 });
           this.cargar();
         }
       });

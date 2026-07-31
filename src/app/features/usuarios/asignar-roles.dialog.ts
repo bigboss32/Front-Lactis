@@ -20,6 +20,11 @@ import { UsuariosService } from './usuarios.service';
   template: `
     <h2 mat-dialog-title>Asignar roles</h2>
     <mat-dialog-content>
+      <!-- Los roles se asignan POR EMPRESA (la activa del selector): el
+           subtítulo lo dice cuando se conoce su nombre. -->
+      @if (data.empresaNombre) {
+        <p class="subtitulo">Roles en <strong>{{ data.empresaNombre }}</strong></p>
+      }
       <p class="detalle">
         Roles de <strong>{{ data.usuario.nombre }} {{ data.usuario.apellido }}</strong>
         ({{ data.usuario.username }}).
@@ -39,6 +44,11 @@ import { UsuariosService } from './usuarios.service';
     </mat-dialog-actions>
   `,
   styles: `
+    .subtitulo {
+      margin: 0 0 4px;
+      font-size: 0.85rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
     .detalle { margin: 0 0 12px; }
     .full { width: 100%; }
   `,
@@ -49,7 +59,7 @@ export class AsignarRolesDialog {
   private readonly dialogRef = inject(MatDialogRef<AsignarRolesDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
-  readonly data = inject<{ usuario: Usuario }>(MAT_DIALOG_DATA);
+  readonly data = inject<{ usuario: Usuario; empresaNombre?: string | null }>(MAT_DIALOG_DATA);
   readonly roles = signal<Rol[]>([]);
   readonly guardando = signal(false);
 

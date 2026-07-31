@@ -4,6 +4,7 @@ import {
   HttpRequest,
 } from '@angular/common/http';
 import { inject } from '@angular/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
 
@@ -16,13 +17,14 @@ import {
   normalizarErrorDeRed,
   normalizarFallosDeRed,
 } from '../errores-red';
-import { AuthService } from './auth.service';
+import { AuthService, SIN_EMPRESA } from './auth.service';
 
 const SIN_TOKEN = ['/auth/login', '/auth/refresh', '/auth/recuperar-password', '/auth/reset-password'];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
+  const snackbar = inject(MatSnackBar);
 
   // Solo adjuntamos credenciales a peticiones a nuestra propia API.
   // En producción API_BASE es absoluta (https://back-lactis.onrender.com/api/v1);
@@ -53,11 +55,27 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     return enviar(req).pipe(normalizarFallosDeRed(intencion, req.url));
   }
 
+  // La condición del header se calcula UNA vez, al armar la petición, y queda
+  // capturada: el catch del 403 no la puede releer, porque para entonces
+  // revalidarMembresia() pudo haber cambiado la empresa activa y parecería que
+  // la petición nunca llevó header. El header solo va si el backend va a
+  // aceptarlo: superadmin (entra a cualquiera) o empresa dentro de las
+  // membresías del perfil. La primera llamada a /auth/me va sin header (perfil
+  // aún null) y el backend usa la principal: correcto.
+  const empresa = auth.empresaActiva();
+  const llevaEmpresa =
+    !!empresa &&
+    !req.context.get(SIN_EMPRESA) &&
+    (auth.esSuperadmin() || (auth.perfil()?.empresas?.some((e) => e.id === empresa) ?? false));
+  // Un 403 con header puesto puede significar "te quitaron la membresía": solo
+  // entonces vale la pena revalidar. El superadmin nunca pierde membresías y la
+  // petición SIN_EMPRESA es la revalidación misma (evita la recursión).
+  const revalidableAl403 = llevaEmpresa && !auth.esSuperadmin();
+
   const conCredenciales = (request: HttpRequest<unknown>, token: string | null) => {
     let headers = request.headers;
     if (token) headers = headers.set('Authorization', `Bearer ${token}`);
-    const empresa = auth.empresaActiva();
-    if (empresa && auth.esSuperadmin()) headers = headers.set('X-Empresa-Id', empresa);
+    if (llevaEmpresa) headers = headers.set('X-Empresa-Id', empresa);
     return request.clone({ headers });
   };
 
@@ -65,6 +83,25 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((error: unknown) => {
       // Un TimeoutError de rxjs también llega aquí y no es un HttpErrorResponse:
       // se comprueba el tipo antes de mirar el status.
+      if (error instanceof HttpErrorResponse && error.status === 403 && revalidableAl403) {
+        // El error original SIEMPRE se propaga y NUNCA se reintenta la petición
+        // contra otra empresa: una escritura reintentada guardaría el registro
+        // en la empresa equivocada. La revalidación solo decide si además hay
+        // que avisar y sacar al usuario de una empresa que ya no es suya.
+        return from(auth.revalidarMembresia()).pipe(
+          switchMap((sigueSiendoMiembro) => {
+            if (!sigueSiendoMiembro) {
+              snackbar.open(
+                'Ya no tienes acceso a esa empresa; volviste a tu empresa principal',
+                'OK',
+                { duration: 6000 },
+              );
+              router.navigate(['/inicio']);
+            }
+            return throwError(() => error);
+          }),
+        );
+      }
       if (!(error instanceof HttpErrorResponse) || error.status !== 401) {
         return throwError(() => error);
       }
