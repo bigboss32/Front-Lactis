@@ -157,6 +157,66 @@
   }
 }
 
+// ——— Identidad del negocio aparte ———
+// `--negocio` la pone el layout en el contenedor cuando la ruta está dentro de
+// un negocio (reventa/transporte). Banner del menú, franja de la barra superior
+// e ítem activo se pintan con ese acento: el usuario ve de una en qué libro
+// está parado sin leer nada.
+.negocio-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 6px 14px 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border-left: 4px solid var(--negocio);
+  background: color-mix(in srgb, var(--negocio) 14%, transparent);
+
+  mat-icon {
+    color: var(--negocio);
+    flex-shrink: 0;
+  }
+
+  .negocio-texto {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .negocio-nombre {
+    font-weight: 600;
+    font-size: 0.88rem;
+    line-height: 1.25;
+  }
+
+  .negocio-aparte {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.con-negocio {
+  // Franja de acento en la barra superior: es la seña que sobrevive en móvil,
+  // donde el menú (y su banner) van plegados.
+  .toolbar {
+    border-bottom: 3px solid var(--negocio);
+  }
+
+  // El ítem activo toma el acento del negocio en vez del color primario.
+  .sidenav a.activo {
+    background: color-mix(in srgb, var(--negocio) 16%, transparent);
+    color: var(--mat-sys-on-surface);
+
+    .mat-icon,
+    [matListItemIcon] {
+      color: var(--negocio);
+    }
+  }
+}
+
 .menu-perfil {
   display: flex;
   flex-direction: column;

@@ -20,7 +20,7 @@ import { Empresa, Page } from '../models';
 import { NotificacionesService } from '../notificaciones.service';
 import { ThemeService } from '../theme.service';
 import { BarraBusquedaGlobal } from '../../shared/barra-busqueda-global';
-import { NAV_GROUPS, NAV_REVENTA, NAV_TRANSPORTE, NavGroup } from './nav';
+import { NAV_GROUPS, NEGOCIOS, NavGroup, Negocio } from './nav';
 
 @Component({
   selector: 'app-layout',
@@ -63,17 +63,17 @@ export class Layout implements OnInit, OnDestroy {
   private readonly contenido = viewChild('contenido', { read: ElementRef });
 
   /**
-   * Menú base según dónde está el usuario: dentro de un negocio aparte
-   * (/reventa, /transporte) el menú es el del negocio, con su "Volver al
-   * inicio"; en el resto de la aplicación es el de la quesera. Así el menú no
-   * mezcla los dos libros contables, que era lo que confundía.
+   * Negocio aparte donde está parado el usuario (null en la quesera). De aquí
+   * salen el menú contextual y la identidad de color de la interfaz: así el
+   * menú no mezcla los dos libros contables, que era lo que confundía, y el
+   * usuario ve de una en qué negocio está.
    */
-  private readonly gruposBase = computed<NavGroup[]>(() => {
+  readonly negocio = computed<Negocio | null>(() => {
     const ruta = this.urlActual().split('?')[0];
-    if (ruta === '/transporte' || ruta.startsWith('/transporte/')) return NAV_TRANSPORTE;
-    if (ruta === '/reventa' || ruta.startsWith('/reventa/')) return NAV_REVENTA;
-    return NAV_GROUPS;
+    return NEGOCIOS.find((n) => ruta === n.prefijo || ruta.startsWith(n.prefijo + '/')) ?? null;
   });
+
+  private readonly gruposBase = computed<NavGroup[]>(() => this.negocio()?.grupos ?? NAV_GROUPS);
 
   readonly grupos = computed(() => {
     this.auth.perfil();

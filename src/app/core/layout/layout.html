@@ -1,4 +1,8 @@
-<mat-sidenav-container class="shell">
+<mat-sidenav-container
+  class="shell"
+  [class.con-negocio]="!!negocio()"
+  [style.--negocio]="negocio()?.color ?? null"
+>
   <mat-sidenav
     #sidenav
     class="sidenav"
@@ -14,6 +18,17 @@
       <img src="lactis-logo.svg" alt="Lactis" width="26" height="26" />
       <span>Lactis</span>
     </div>
+
+    <!-- Identidad del negocio aparte: el usuario ve de una en qué libro está. -->
+    @if (negocio(); as n) {
+      <div class="negocio-banner">
+        <mat-icon aria-hidden="true">{{ n.icono }}</mat-icon>
+        <div class="negocio-texto">
+          <span class="negocio-nombre">{{ n.titulo }}</span>
+          <span class="negocio-aparte">Negocio aparte</span>
+        </div>
+      </div>
+    }
 
     <mat-nav-list>
       @for (grupo of grupos(); track grupo.title) {
