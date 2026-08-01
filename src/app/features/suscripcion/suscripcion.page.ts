@@ -180,7 +180,7 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                 <button
                   mat-flat-button
                   *hasPermission="'suscripcion:crear'"
-                  [disabled]="pagando() || d.pago_pendiente || !d.fuente_pago"
+                  [disabled]="pagando() || d.pago_pendiente || !d.fuente_pago || alDia()"
                   (click)="pagar()"
                 >
                   <mat-icon>credit_card</mat-icon>
@@ -191,13 +191,21 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                 <button
                   mat-stroked-button
                   *hasPermission="'suscripcion:crear'"
-                  [disabled]="pagando() || d.pago_pendiente"
+                  [disabled]="pagando() || d.pago_pendiente || alDia()"
                   (click)="abrirPse()"
                 >
                   <mat-icon>account_balance</mat-icon> Pagar por PSE
                 </button>
               </mat-card-actions>
-              @if (!auth.hasPermission('suscripcion', 'crear')) {
+              @if (alDia()) {
+                <!-- Un botón gris sin explicación no dice nada. Y es LA pregunta
+                     que se hace quien entra: "¿por qué no me deja pagar?". -->
+                <mat-card-footer class="nota pie">
+                  El mes ya está pagado, no hay nada que cobrar. El botón se
+                  activa cuando falten {{ d.dias_aviso }} días o menos para el
+                  vencimiento, o si ya se venció.
+                </mat-card-footer>
+              } @else if (!auth.hasPermission('suscripcion', 'crear')) {
                 <mat-card-footer class="nota pie">
                   Si la suscripción está vencida, pídele al administrador de la
                   empresa que realice el pago.
@@ -458,6 +466,20 @@ export class SuscripcionPage implements OnInit {
       ) ?? null
     );
   });
+
+  /**
+   * No hay nada que pagar: la suscripción está al día y le sobra tiempo.
+   *
+   * Se apagan los botones a propósito. Pagar con un mes entero por delante no
+   * está prohibido por capricho: el dinero no se pierde (los meses se acumulan),
+   * pero nadie quiere descubrir que adelantó tres meses por darle dos veces al
+   * botón. El backend lo rechaza igual con 'suscripcion_al_dia'; esto solo
+   * evita que se llegue hasta el error.
+   *
+   * 'por_vencer', 'gracia' y 'bloqueada' sí dejan pagar: adelantarse unos días
+   * al vencimiento es justo lo que se quiere.
+   */
+  readonly alDia = computed(() => this.detalle()?.estado === 'activa');
 
   private readonly money = new MoneyPipe();
 

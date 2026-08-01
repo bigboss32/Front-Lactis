@@ -97,6 +97,8 @@ export interface SuscripcionResumen {
   /** Negativo = días vencidos; null solo para exentas. */
   dias_restantes: number | null;
   dias_gracia: number;
+  /** Días antes del vencimiento en que se avisa y se puede pagar ya. */
+  dias_aviso: number;
   tarifa: Monto;
   tiene_fuente_pago: boolean;
 }

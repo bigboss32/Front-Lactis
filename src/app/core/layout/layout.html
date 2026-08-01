@@ -37,6 +37,8 @@
             type="button"
             class="grupo-header"
             [class.abierto]="estaAbierto(grupo.title)"
+            [class.con-acento]="!!grupo.color"
+            [style.--acento]="grupo.color ?? null"
             [attr.aria-expanded]="estaAbierto(grupo.title)"
             (click)="toggleGrupo(grupo.title)"
           >
@@ -51,10 +53,15 @@
         }
         @if (!grupo.title || estaAbierto(grupo.title)) {
           @for (item of grupo.items; track item.route) {
+            <!-- El acento va en CADA ítem y no en un contenedor del grupo:
+                 mat-nav-list espera sus ítems como hijos directos y meterlos en
+                 un div rompe la semántica de lista para el lector de pantalla. -->
             <a
               mat-list-item
               [routerLink]="item.route"
               routerLinkActive="activo"
+              [class.con-acento]="!!grupo.color"
+              [style.--acento]="grupo.color ?? null"
               (click)="esMovil() && sidenav.close()"
             >
               <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>

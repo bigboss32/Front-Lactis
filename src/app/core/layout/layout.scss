@@ -110,6 +110,67 @@
       color: var(--mat-sys-on-secondary-container);
     }
   }
+
+  // ——— Acento por categoría ———
+  // `--acento` lo pone la plantilla por grupo, con EL MISMO color que la tarjeta
+  // de ese módulo en Inicio (ver NavGroup.color): quien entró por el tablero
+  // reconoce el color antes de leer la palabra.
+  //
+  // Se pinta el ÍCONO y una franja a la izquierda, no el texto. Es a propósito:
+  // el amarillo de Finanzas (el de la tarjeta de Caja) como texto no se lee en
+  // tema claro, y el color aquí es una pista, no información — la letra tiene
+  // que seguir teniendo el contraste del tema.
+  .con-acento {
+    // Los colores de la paleta son de gráfico: oscuros para fondo claro. Sobre
+    // el menú en oscuro se apagan, así que ahí se aclaran.
+    --acento-vivo: var(--acento);
+  }
+
+  .grupo-header.con-acento .grupo-icono {
+    color: var(--acento-vivo);
+    opacity: 1;
+  }
+
+  a.mat-mdc-list-item.con-acento {
+    // La franja arranca transparente para que el ítem no se mueva al teñirse.
+    border-left: 3px solid transparent;
+
+    [matListItemIcon] {
+      color: var(--acento-vivo);
+    }
+
+    // En claro la franja va más marcada: los colores de la paleta son oscuros
+    // sobre fondo claro y a media tinta se pierden. Se sube aquí y no se
+    // oscurece el color, porque oscurecerlo rompería el parecido con la tarjeta
+    // de Inicio, que es TODO el punto de pintarlos.
+    &:not(.activo) {
+      border-left-color: color-mix(in srgb, var(--acento-vivo) 60%, transparent);
+    }
+
+    // El activo se tiñe con el color del grupo en vez del secundario del tema,
+    // igual que ya hace el modo "negocio aparte" más abajo.
+    &.activo {
+      background: color-mix(in srgb, var(--acento-vivo) 18%, transparent);
+      color: var(--mat-sys-on-surface);
+      border-left-color: var(--acento-vivo);
+
+      .mat-icon,
+      [matListItemIcon] {
+        color: var(--acento-vivo);
+      }
+    }
+  }
+}
+
+:host-context(html.dark) .sidenav {
+  .con-acento {
+    --acento-vivo: color-mix(in srgb, var(--acento) 58%, white);
+  }
+
+  // Sobre el menú oscuro el color ya destaca: la franja puede ir más discreta.
+  a.mat-mdc-list-item.con-acento:not(.activo) {
+    border-left-color: color-mix(in srgb, var(--acento-vivo) 42%, transparent);
+  }
 }
 
 @keyframes nav-item-enter {

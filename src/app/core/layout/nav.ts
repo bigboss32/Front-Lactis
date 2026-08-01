@@ -14,6 +14,14 @@ export interface NavGroup {
   title: string;
   /** Ícono del grupo en el encabezado del acordeón (Material Symbols). */
   icon?: string;
+  /**
+   * Acento del grupo. Es EL MISMO color que la tarjeta de ese módulo en Inicio,
+   * a propósito: quien entra por el tablero y luego busca lo mismo en el menú
+   * reconoce el color antes de leer la palabra. Por eso los índices de
+   * CHART_COLORS de aquí abajo no son decorativos — copiarlos mal rompe justo la
+   * referencia que se busca (ver ACCIONES_RAPIDAS en inicio.page.ts).
+   */
+  color?: string;
   items: NavItem[];
 }
 
@@ -23,10 +31,16 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Inicio', icon: 'home', route: '/inicio', modulo: 'reportes', siempre: true },
       { label: 'Estadísticas', icon: 'insights', route: '/dashboard', modulo: 'reportes' },
+      // Cambiar la propia contraseña no depende de ningún permiso: TODO usuario
+      // tiene que poder. Estaba solo en el menú del nombre, arriba a la derecha,
+      // que es un sitio que nadie encuentra si no se lo dicen — y menos alguien
+      // como el cliente de reventa, cuyo menú lateral tiene dos entradas.
+      { label: 'Mi perfil', icon: 'account_circle', route: '/perfil', modulo: 'usuarios', siempre: true },
     ],
   },
   {
     title: 'Leche',
+    color: CHART_COLORS[0], // el de la tarjeta "Registrar leche de hoy"
     icon: 'water_drop',
     items: [
       { label: 'Recepción diaria', icon: 'water_drop', route: '/recepciones', modulo: 'recepcion' },
@@ -39,6 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Operación',
+    color: CHART_COLORS[4], // el de la tarjeta "Ver inventario"
     icon: 'settings',
     items: [
       { label: 'Producción', icon: 'factory', route: '/produccion', modulo: 'produccion' },
@@ -48,6 +63,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Comercial',
+    color: CHART_COLORS[1], // el de la tarjeta "Registrar venta"
     icon: 'storefront',
     items: [
       { label: 'Ventas', icon: 'point_of_sale', route: '/ventas', modulo: 'ventas' },
@@ -57,6 +73,11 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Finanzas',
+    // El de "Movimiento de caja", que es la tarjeta de Inicio que cae DENTRO de
+    // este grupo. Ojo con la tentación de poner el naranja de "Registrar gasto":
+    // Gastos vive en Comercial, no aquí, y el color acabaría señalando a otro
+    // sitio — que es justo lo contrario de lo que se busca.
+    color: CHART_COLORS[2],
     icon: 'account_balance_wallet',
     items: [
       { label: 'Caja', icon: 'savings', route: '/caja', modulo: 'caja' },
@@ -66,6 +87,9 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'Administración',
+    // No tiene tarjeta en Inicio (no es una tarea del día), así que se le da
+    // un color propio que no choque con los otros cuatro.
+    color: CHART_COLORS[9],
     icon: 'admin_panel_settings',
     items: [
       { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
