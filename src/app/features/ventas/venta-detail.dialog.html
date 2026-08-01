@@ -90,8 +90,10 @@
 </mat-dialog-content>
 <mat-dialog-actions align="end">
   @if (puedeEditar()) {
+    <!-- Con pagos ya solo se corrige el flete: se dice en el botón para que el
+         usuario no abra el formulario esperando poder cambiar los productos. -->
     <button mat-button *hasPermission="'ventas:editar'" (click)="editar()">
-      <mat-icon>edit</mat-icon> Editar
+      <mat-icon>edit</mat-icon> {{ edicionLimitada() ? 'Corregir flete' : 'Editar' }}
     </button>
   }
   @if (puedeAnular()) {

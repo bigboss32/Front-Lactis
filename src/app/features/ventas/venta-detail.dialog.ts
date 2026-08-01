@@ -96,8 +96,14 @@ export class VentaDetailDialog {
   readonly puedeAnular = computed(
     () => this.venta().estado !== 'anulada' && Number(this.venta().pagado) === 0,
   );
-  // Editar productos/importes solo si no está anulada y aún no tiene pagos.
-  readonly puedeEditar = this.puedeAnular;
+  // Editar NO es lo mismo que anular: una venta ya cobrada igual se puede corregir
+  // en lo que no mueve la plata del cliente (el flete del despacho y las
+  // observaciones). El transporte lo paga la quesera, no entra en el total ni en
+  // la cartera, así que agregarlo después no descuadra nada de lo ya cobrado.
+  // Lo que sí queda cerrado es una venta anulada: esa el backend la rechaza.
+  readonly puedeEditar = computed(() => this.venta().estado !== 'anulada');
+  /** Con pagos ya solo se corrige el flete: el formulario bloquea el resto. */
+  readonly edicionLimitada = computed(() => Number(this.venta().pagado) > 0);
 
   constructor() {
     // Se controla el cierre manualmente para devolver siempre `huboCambios`

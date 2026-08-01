@@ -1,6 +1,19 @@
 <h2 mat-dialog-title>{{ esEdicion ? 'Editar venta Nº ' + data!.venta!.numero : 'Nueva venta' }}</h2>
 <mat-dialog-content>
   <form [formGroup]="form" id="form-venta" (ngSubmit)="guardar()">
+    @if (ventaConPagos) {
+      <!-- Se explica en plata, no en reglas: el flete lo paga la quesera, por eso
+           sí se puede corregir después de cobrar. Lo demás movería lo ya cobrado. -->
+      <p class="aviso-pagos">
+        <mat-icon>lock</mat-icon>
+        <span>
+          Esta venta ya tiene pagos: solo se puede corregir el flete y las
+          observaciones. Para cambiar productos o descuento hay que anularla y
+          rehacerla.
+        </span>
+      </p>
+    }
+
     <div class="form-grid">
       <mat-form-field>
         <mat-label>Tipo</mat-label>
@@ -49,7 +62,7 @@
             mat-icon-button
             type="button"
             matTooltip="Quitar línea"
-            [disabled]="lineas.length === 1"
+            [disabled]="lineas.length === 1 || ventaConPagos"
             (click)="eliminarLinea(i)"
           >
             <mat-icon>delete</mat-icon>
@@ -58,9 +71,11 @@
       }
     </div>
 
-    <button mat-stroked-button type="button" class="agregar" (click)="agregarLinea()">
-      <mat-icon>add</mat-icon> Agregar línea
-    </button>
+    @if (!ventaConPagos) {
+      <button mat-stroked-button type="button" class="agregar" (click)="agregarLinea()">
+        <mat-icon>add</mat-icon> Agregar línea
+      </button>
+    }
 
     <h3 class="seccion">Transporte del despacho</h3>
     <p class="ayuda">

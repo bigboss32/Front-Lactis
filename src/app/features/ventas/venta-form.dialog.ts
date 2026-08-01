@@ -115,6 +115,22 @@ import { VentaPayload, VentasService } from './ventas.service';
     }
     mat-checkbox { display: block; margin-bottom: 8px; }
     .obs { width: 100%; margin-top: 8px; }
+    /* Aviso de venta ya cobrada: los campos quedan a la vista pero apagados, así
+       que hay que decir por qué antes de que el usuario intente escribir en ellos. */
+    .aviso-pagos {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--mat-sys-secondary-container);
+      color: var(--mat-sys-on-secondary-container);
+      font-size: 0.86rem;
+      line-height: 1.45;
+
+      mat-icon { flex: none; font-size: 20px; width: 20px; height: 20px; }
+    }
   `,
 })
 export class VentaFormDialog {
@@ -126,6 +142,14 @@ export class VentaFormDialog {
 
   readonly data = inject<{ venta?: Venta } | null>(MAT_DIALOG_DATA, { optional: true });
   readonly esEdicion = !!this.data?.venta;
+  /**
+   * La venta ya tiene plata cobrada (abono o pago completo). En ese caso solo se
+   * deja corregir el flete y las observaciones: el transporte es un costo de la
+   * quesera, NO se le suma al total que paga el cliente ni le mueve la cartera,
+   * así que ponerlo después de cobrar no descuadra nada. Cambiar productos o
+   * descuento sí movería lo ya cobrado, y para eso hay que anular y rehacer.
+   */
+  readonly ventaConPagos = Number(this.data?.venta?.pagado ?? 0) > 0;
 
   readonly clientes = signal<Cliente[]>([]);
   readonly productos = signal<Producto[]>([]);
@@ -210,6 +234,18 @@ export class VentaFormDialog {
           }),
         );
       }
+
+      // Con pagos encima se bloquea todo lo que cambiaría lo ya cobrado: cliente,
+      // fecha, tipo, descuento y renglones. Se dejan VISIBLES (deshabilitados, no
+      // escondidos) para que el usuario siga viendo qué vendió mientras corrige el
+      // flete. Queda editable solo lo que no toca la plata del cliente.
+      if (this.ventaConPagos) {
+        this.form.controls.tipo.disable();
+        this.form.controls.cliente_id.disable();
+        this.form.controls.fecha.disable();
+        this.form.controls.descuento.disable();
+        this.lineas.disable();
+      }
     }
 
     protegerCambios(this.dialogRef, () => this.form);
@@ -245,7 +281,19 @@ export class VentaFormDialog {
         cantidad: Number(linea.cantidad),
         precio_unitario: Number(linea.precio_unitario),
       }));
-      if (this.data?.venta) {
+      if (this.data?.venta && this.ventaConPagos) {
+        // Venta ya cobrada: se manda SOLO el flete y las observaciones. Ni siquiera
+        // se reenvían `detalles` ni `descuento` con los mismos valores, porque el
+        // backend rechaza cualquier edición que traiga esos campos cuando hay pagos
+        // (mira si vienen, no si cambiaron). Lo que va aquí no mueve la cartera.
+        await firstValueFrom(
+          this.servicio.update(this.data.venta.id, {
+            gasto_concepto: valor.gasto_concepto?.trim() || null,
+            gasto_por_kilo: Number(valor.gasto_por_kilo || 0),
+            observaciones: valor.observaciones || null,
+          }),
+        );
+      } else if (this.data?.venta) {
         // Editar: no se reenvía descontar_inventario (el backend reajusta el stock).
         await firstValueFrom(
           this.servicio.update(this.data.venta.id, {
