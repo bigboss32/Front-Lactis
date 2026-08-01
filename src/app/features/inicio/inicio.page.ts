@@ -51,10 +51,16 @@ interface AccionRapida {
             </div>
           </a>
         } @empty {
-          <p class="sin-acciones">
-            Tu usuario no tiene accesos directos para mostrar aquí. Abre el menú lateral
-            para entrar a los módulos que tienes habilitados.
-          </p>
+          <!-- Sin accesos de la quesera pero CON un negocio aparte: es el caso
+               del cliente de reventa, que no usa el resto del ERP. Mandarlo al
+               menú lateral sería mandarlo a donde no tiene nada; lo suyo está
+               justo debajo, en "Negocios aparte". -->
+          @if (!negocios().length) {
+            <p class="sin-acciones">
+              Tu usuario no tiene accesos directos para mostrar aquí. Abre el menú lateral
+              para entrar a los módulos que tienes habilitados.
+            </p>
+          }
         }
       </div>
 
