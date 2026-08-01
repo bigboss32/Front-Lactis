@@ -4,6 +4,7 @@ import { Observable, firstValueFrom, timeout } from 'rxjs';
 
 import { ApiService, ListOpts } from '../../core/api.service';
 import {
+  ActualizarEstadoRespuesta,
   BancoPSE,
   FuentePago,
   Page,
@@ -92,6 +93,17 @@ export class SuscripcionService {
   /** Estado completo de la suscripción de la empresa activa. */
   resumen(): Observable<SuscripcionDetalle> {
     return this.api.get<SuscripcionDetalle>('/suscripcion');
+  }
+
+  /**
+   * Le pregunta a la pasarela AHORA cómo quedó el pago en curso.
+   *
+   * Es la salida cuando el webhook no llega: Wompi lo reintenta tres veces en
+   * 24 horas y si el backend estaba dormido en las tres, el pago se queda
+   * pendiente en la pantalla aunque el banco ya haya debitado.
+   */
+  actualizarEstado(): Observable<ActualizarEstadoRespuesta> {
+    return this.api.post<ActualizarEstadoRespuesta>('/suscripcion/actualizar-estado');
   }
 
   /** Historial de pagos (más recientes primero). */

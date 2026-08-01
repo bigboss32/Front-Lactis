@@ -20,6 +20,7 @@ import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { PseFormDialog } from './pse-form.dialog';
 import {
   ETIQUETAS_ESTADO_PAGO,
@@ -40,7 +41,7 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
   imports: [
     DatePipe, MatCardModule, MatTableModule, MatPaginatorModule, MatButtonModule,
     MatIconModule, MatProgressBarModule,
-    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
+    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective, SpinnerBoton,
   ],
   template: `
     <div class="page">
@@ -77,18 +78,29 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
               está esperando que lo apruebes en el portal de tu banco.
             </p>
           </div>
-          @if (pse.url_banco) {
-            <a mat-flat-button [href]="pse.url_banco" target="_blank" rel="noopener">
-              <mat-icon>open_in_new</mat-icon> Continuar en el banco
-            </a>
-          } @else {
-            <!-- Wompi publica el enlace del banco un instante DESPUÉS de crear
-                 la transacción; el backend lo rescata al consultar el estado,
-                 así que recargar es literalmente lo que hay que hacer. -->
-            <button mat-stroked-button (click)="cargar()">
-              <mat-icon>refresh</mat-icon> Buscar el enlace del banco
+          <div class="acciones-retomar">
+            @if (pse.url_banco) {
+              <a mat-flat-button [href]="pse.url_banco" target="_blank" rel="noopener">
+                <mat-icon>open_in_new</mat-icon> Continuar en el banco
+              </a>
+            } @else {
+              <!-- Wompi publica el enlace del banco un instante DESPUÉS de crear
+                   la transacción; el backend lo rescata al consultar el estado. -->
+              <button mat-flat-button [disabled]="consultando()" (click)="actualizarEstado()">
+                <mat-icon>refresh</mat-icon> Buscar el enlace del banco
+              </button>
+            }
+            <!-- Para cuando el webhook no llega: pregunta a la pasarela AHORA.
+                 Sin esto, quien ya pagó en el banco se queda mirando un
+                 "pendiente" que puede no moverse nunca. -->
+            <button mat-stroked-button [disabled]="consultando()" (click)="actualizarEstado()">
+              @if (consultando()) {
+                <app-spinner-boton /> Consultando…
+              } @else {
+                <mat-icon>sync</mat-icon> Ya pagué, actualizar
+              }
             </button>
-          }
+          </div>
         </div>
       }
 
@@ -140,8 +152,26 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                 </div>
                 @if (d.pago_pendiente) {
                   <p class="nota pendiente">
-                    Hay un pago en proceso; el resultado se confirmará en unos minutos.
+                    Hay un pago en proceso; normalmente se confirma solo en unos
+                    minutos.
                   </p>
+                  <!-- Si es un PSE, el aviso de arriba ya trae este botón: no se
+                       repite. Este es para el pago con tarjeta que se quedó
+                       colgado, que también puede pasar. -->
+                  @if (!psePendiente()) {
+                    <button
+                      mat-stroked-button
+                      class="consultar"
+                      [disabled]="consultando()"
+                      (click)="actualizarEstado()"
+                    >
+                      @if (consultando()) {
+                        <app-spinner-boton /> Consultando…
+                      } @else {
+                        <mat-icon>sync</mat-icon> Actualizar estado
+                      }
+                    </button>
+                  }
                 }
               }
             </mat-card-content>
@@ -318,6 +348,14 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
     }
     :host-context(html.dark) .paywall { color: #e57373; }
 
+    .acciones-retomar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .consultar { margin-top: 10px; }
+
     .retomar {
       display: flex;
       align-items: center;
@@ -390,6 +428,8 @@ export class SuscripcionPage implements OnInit {
   readonly pageSize = signal(10);
   readonly cargando = signal(false);
   readonly pagando = signal(false);
+  /** Preguntándole a la pasarela cómo quedó el pago (el botón "Ya pagué"). */
+  readonly consultando = signal(false);
   /** GET /suscripcion devolvió 403: sin `suscripcion:consultar`. */
   readonly sinPermiso = signal(false);
   readonly error = signal(false);
@@ -464,6 +504,62 @@ export class SuscripcionPage implements OnInit {
       }
     } finally {
       this.cargando.set(false);
+    }
+  }
+
+  /**
+   * "Ya pagué, actualizar": le pregunta a la pasarela cómo quedó el pago sin
+   * esperar al webhook.
+   *
+   * Hace falta porque el webhook se puede perder: Wompi lo reintenta tres veces
+   * en 24 horas y si el servidor estaba dormido en las tres, el pago se queda
+   * en "pendiente" para siempre aunque el banco ya haya debitado. Antes de esto
+   * la única salida era esperar.
+   */
+  async actualizarEstado(): Promise<void> {
+    if (this.consultando()) return;
+    this.consultando.set(true);
+    const estabaBloqueada = this.estado() === 'bloqueada';
+    try {
+      const r = await firstValueFrom(this.servicio.actualizarEstado());
+      this.detalle.set(r.suscripcion);
+      this.page.set(1);
+      await this.cargarPagos();
+      // El banner del layout y el guard del paywall leen el PERFIL: si el pago
+      // acaba de entrar, hay que refrescarlo para que el sistema se desbloquee.
+      if (r.cambio) await this.auth.recargarPerfil();
+      this.snackbar.open(this.mensajeDelEstado(r.cambio, r.estado_pago), 'OK', {
+        duration: 7000,
+      });
+      if (r.estado_pago === 'APPROVED' && estabaBloqueada) {
+        this.router.navigate(['/inicio']);
+      }
+    } catch (err) {
+      this.snackbar.open(
+        detalleDeError(err, 'No fue posible consultar el estado del pago'),
+        'OK',
+        { duration: 6000 },
+      );
+    } finally {
+      this.consultando.set(false);
+    }
+  }
+
+  /** Lo que se le dice a la persona según lo que contestó la pasarela. */
+  private mensajeDelEstado(cambio: boolean, estado: string | null): string {
+    if (!estado) return 'No hay ningún pago en proceso.';
+    if (!cambio) {
+      return 'El banco todavía no ha confirmado el pago. Vuelve a intentar en unos minutos.';
+    }
+    switch (estado) {
+      case 'APPROVED':
+        return '¡Listo! El pago entró y la suscripción quedó al día.';
+      case 'DECLINED':
+        return 'El banco RECHAZÓ el pago. No se debitó nada: puedes volver a intentar.';
+      case 'VOIDED':
+        return 'El pago fue anulado. Puedes volver a intentar.';
+      default:
+        return 'El pago no se pudo completar. Puedes volver a intentar.';
     }
   }
 

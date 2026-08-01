@@ -196,6 +196,18 @@ export interface ResultadoPse {
   suscripcion: SuscripcionDetalle;
 }
 
+/**
+ * Respuesta de POST /suscripcion/actualizar-estado: qué contestó la pasarela
+ * sobre el pago que estaba en curso.
+ */
+export interface ActualizarEstadoRespuesta {
+  suscripcion: SuscripcionDetalle;
+  /** ¿El pago que estaba pendiente se resolvió? */
+  cambio: boolean;
+  /** Cómo quedó, o null si no había nada en curso. */
+  estado_pago: string | null;
+}
+
 /** Respuesta de POST /suscripcion/pagar (DECLINED también llega aquí, con 200). */
 export interface ResultadoPagoSuscripcion {
   pago: PagoSuscripcion;
