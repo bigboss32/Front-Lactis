@@ -177,6 +177,12 @@ export interface PagarPsePayload {
   tipo_persona: '0' | '1';
   tipo_documento: 'CC' | 'CE' | 'NIT' | 'TI' | 'PP';
   documento: string;
+  /**
+   * Los dos van al `customer_data` que PSE exige. Si no se mandan, el backend
+   * los completa con lo que sepa del usuario o de la empresa.
+   */
+  nombre_completo?: string;
+  telefono?: string;
 }
 
 /**

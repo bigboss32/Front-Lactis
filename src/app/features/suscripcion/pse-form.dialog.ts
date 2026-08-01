@@ -12,6 +12,7 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
+import { AuthService } from '../../core/auth/auth.service';
 import { BancoPSE, ResultadoPse, SuscripcionConfig } from '../../core/models';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { MoneyPipe } from '../../shared/pipes';
@@ -157,6 +158,29 @@ const TIPOS_DOCUMENTO = [
               }
             </mat-form-field>
 
+            <!-- Los dos siguientes los exige PSE. El nombre viene puesto del
+                 perfil; el teléfono hay que escribirlo la primera vez si no
+                 está en los datos de la empresa. -->
+            <mat-form-field class="full">
+              <mat-label>Nombre de quien paga</mat-label>
+              <input matInput autocomplete="name" maxlength="100"
+                     formControlName="nombre_completo" required />
+              @if (form.controls.nombre_completo.hasError('minlength')) {
+                <mat-error>Escribe el nombre completo</mat-error>
+              }
+            </mat-form-field>
+
+            <mat-form-field class="full">
+              <mat-label>Teléfono de contacto</mat-label>
+              <input matInput [attr.inputmode]="'tel'" autocomplete="tel"
+                     maxlength="20" formControlName="telefono" required />
+              <mat-hint>Lo pide el banco para el comprobante</mat-hint>
+              @if (form.controls.telefono.hasError('pattern')
+                   || form.controls.telefono.hasError('minlength')) {
+                <mat-error>Un número de al menos 7 dígitos</mat-error>
+              }
+            </mat-form-field>
+
             <!-- Wompi exige aceptar los dos documentos también en PSE. -->
             <mat-checkbox class="full acepta" formControlName="acepta">
               Acepto los
@@ -254,6 +278,7 @@ const TIPOS_DOCUMENTO = [
 })
 export class PseFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
+  private readonly auth = inject(AuthService);
   private readonly servicio = inject(SuscripcionService);
   private readonly dialogRef = inject(MatDialogRef<PseFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
@@ -289,6 +314,17 @@ export class PseFormDialog {
       // lo rechaza el banco, y es el error típico. Letras sí, porque un
       // pasaporte y muchas cédulas de extranjería las llevan.
       [Validators.required, Validators.minLength(4), Validators.pattern(/^[A-Za-z0-9]+$/)],
+    ],
+    // Prefill con el nombre del perfil: casi siempre paga quien está sentado ahí.
+    nombre_completo: [
+      `${this.auth.perfil()?.nombre ?? ''} ${this.auth.perfil()?.apellido ?? ''}`.trim(),
+      [Validators.required, Validators.minLength(3)],
+    ],
+    // El teléfono no viaja en el perfil, así que se escribe. El backend lo
+    // completa con el de la empresa si el campo llegara vacío.
+    telefono: [
+      '',
+      [Validators.required, Validators.minLength(7), Validators.pattern(/^[\d\s()+-]+$/)],
     ],
     acepta: [false, Validators.requiredTrue],
   });
@@ -330,6 +366,8 @@ export class PseFormDialog {
           tipo_persona: v.tipo_persona,
           tipo_documento: v.tipo_documento,
           documento: v.documento.trim(),
+          nombre_completo: v.nombre_completo.trim(),
+          telefono: v.telefono.trim(),
         }),
       );
       // No se redirige solo: el paso 2 pinta un enlace de verdad para que el
