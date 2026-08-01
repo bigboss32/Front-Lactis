@@ -1,4 +1,5 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -9,7 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 
 import { dateToIso, isoToDate } from '../../shared/date-utils';
-import { Temporada, TemporadaPayload } from './reventa.service';
+import { ReventaService, Temporada, TemporadaPayload } from './reventa.service';
 
 export interface TemporadaFormData {
   /** Si viene, se edita esa temporada; si no, se crea una nueva. */
@@ -46,22 +47,26 @@ export interface TemporadaFormData {
           }
         </mat-form-field>
 
-        <mat-form-field>
-          <mat-label>Empezó</mat-label>
-          <input matInput [matDatepicker]="pInicio" (click)="pInicio.open()" formControlName="fecha_inicio" />
-          <mat-datepicker-toggle matSuffix [for]="pInicio" />
-          <mat-datepicker #pInicio />
+        <!-- Un solo calendario para las dos fechas: la temporada ES un rango, y
+             marcando el primer día y el último de una pasada no hay que abrir
+             dos calendarios ni acordarse de cuál campo era cuál. -->
+        <mat-form-field class="ancho-total">
+          <mat-label>Fechas de la temporada</mat-label>
+          <mat-date-range-input [rangePicker]="calendario">
+            <input matStartDate placeholder="Empezó" formControlName="fecha_inicio" />
+            <!-- Sin fecha de fin el rótulo dice por qué está vacío: en blanco a
+                 secas no se sabe si falta el dato o si es que no ha terminado. -->
+            <input matEndDate formControlName="fecha_fin"
+                   [placeholder]="sigueAbierta.value ? 'Sigue abierta' : 'Terminó'" />
+          </mat-date-range-input>
+          <mat-datepicker-toggle matIconSuffix [for]="calendario" />
+          <mat-date-range-picker #calendario [dateClass]="claseDia" />
+          <mat-hint>
+            Los días con punto son en los que entró queso
+          </mat-hint>
           @if (form.controls.fecha_inicio.hasError('required') && form.controls.fecha_inicio.touched) {
             <mat-error>Falta la fecha de inicio</mat-error>
-          }
-        </mat-form-field>
-
-        <mat-form-field [class.oculto]="sigueAbierta.value">
-          <mat-label>Terminó</mat-label>
-          <input matInput [matDatepicker]="pFin" (click)="pFin.open()" formControlName="fecha_fin" />
-          <mat-datepicker-toggle matSuffix [for]="pFin" />
-          <mat-datepicker #pFin />
-          @if (rangoAlReves()) {
+          } @else if (rangoAlReves()) {
             <mat-error>No puede terminar antes de empezar</mat-error>
           }
         </mat-form-field>
@@ -106,9 +111,6 @@ export interface TemporadaFormData {
       min-width: min(460px, 78vw);
     }
     .ancho-total { grid-column: 1 / -1; }
-    /* La fecha de fin no se quita del DOM al marcar "sigue abierta": si se
-       quitara, el formulario daría un salto y el diálogo cambiaría de alto. */
-    .oculto { visibility: hidden; }
     .nota {
       display: flex;
       align-items: flex-start;
@@ -126,13 +128,13 @@ export interface TemporadaFormData {
     }
     @media (max-width: 560px) {
       .formulario { grid-template-columns: 1fr; }
-      .oculto { display: none; }
     }
   `,
 })
 export class TemporadaFormDialog {
   private readonly fb = inject(FormBuilder);
   private readonly ref = inject(MatDialogRef<TemporadaFormDialog>);
+  private readonly servicio = inject(ReventaService);
   readonly data = inject<TemporadaFormData>(MAT_DIALOG_DATA, { optional: true }) ?? {};
 
   readonly editando = signal(!!this.data.temporada);
@@ -152,17 +154,63 @@ export class TemporadaFormDialog {
     this.data.temporada ? this.data.temporada.abierta : true,
   );
 
-  /** El backend también lo valida; esto es para no mandar el viaje en balde. */
-  readonly rangoAlReves = computed(() => {
+  /**
+   * Los días en que ENTRÓ queso, para marcarlos con un punto en el calendario:
+   * la temporada se delimita sobre los días que hubo movimiento, y así se ve
+   * dónde empezó y dónde paró la entrada en vez de adivinar las fechas.
+   *
+   * Se pide una sola vez al abrir el diálogo. No hace falta refrescarlo: el
+   * diálogo dura lo que dura llenar el formulario y las compras no cambian
+   * mientras tanto. Si la consulta falla no se avisa nada, porque el punto es
+   * una ayuda: sin él el formulario se llena igual.
+   */
+  private readonly diasConEntrada = signal<ReadonlySet<string>>(new Set());
+
+  /**
+   * Campo y no método: el calendario guarda la referencia, y un método suelto
+   * perdería el `this` al llamarlo desde dentro del componente de Material.
+   *
+   * `dateToIso` arma la fecha con los componentes LOCALES (no con
+   * toISOString(), que pasa a UTC y en Colombia devolvería el día anterior
+   * antes de las 7 p.m.), así que el punto cae en el día que es.
+   */
+  readonly claseDia = (d: Date): string =>
+    this.diasConEntrada().has(dateToIso(d)) ? 'dia-con-entrada' : '';
+
+  constructor() {
+    this.servicio.lotes().subscribe({
+      next: (p) => this.diasConEntrada.set(new Set(p.lotes.map((l) => l.fecha))),
+      error: () => {},
+    });
+
+    // Poner fecha de fin es justo lo contrario de que la temporada siga
+    // abierta, así que la casilla se desmarca sola. Con un solo calendario el
+    // usuario marca el rango completo de una vez, y sin esto la fecha que
+    // acaba de elegir se descartaría al guardar sin que él se diera cuenta.
+    this.form.controls.fecha_fin.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((fin) => {
+        if (fin && this.sigueAbierta.value) this.sigueAbierta.setValue(false);
+      });
+  }
+
+  /**
+   * El backend también lo valida; esto es para no mandar el viaje en balde.
+   *
+   * Método y no `computed`: lo que compara son controles de formulario, que no
+   * son señales, así que un `computed` se quedaría pegado en el primer valor y
+   * el aviso no saldría nunca.
+   */
+  rangoAlReves(): boolean {
     if (this.sigueAbierta.value) return false;
     const inicio = this.form.controls.fecha_inicio.value;
     const fin = this.form.controls.fecha_fin.value;
     return !!inicio && !!fin && fin < inicio;
-  });
+  }
 
   alCambiarAbierta(): void {
-    // Al marcar "sigue abierta" se limpia la fecha de fin: si se quedara puesta y
-    // oculta, el usuario creería que guardó esa fecha.
+    // Al marcar "sigue abierta" se limpia la fecha de fin: si se quedara puesta,
+    // el usuario creería que guardó esa fecha.
     if (this.sigueAbierta.value) this.form.controls.fecha_fin.setValue(null);
   }
 
