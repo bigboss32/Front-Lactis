@@ -155,6 +155,39 @@ export interface LoteResumen {
   detalle_ventas: VentaDelLote[];
 }
 
+/** Un día del informe "cuánto gané": lo vendido ese día menos lo que costó. */
+export interface GananciaDia {
+  fecha: string;
+  kilos: Monto;
+  ingresos: Monto;
+  /** Lo que había costado ESE queso (reparto FIFO exacto, no un promedio). */
+  costo: Monto;
+  gastos: Monto;
+  ganancia: Monto;
+}
+
+/**
+ * GET /reventa/ganancia-por-dia: la ganancia REAL entre dos fechas.
+ *
+ * No confundir con la del resumen ("ventas menos compras del período"), que sale
+ * negativa cuando se compra mucho y se vende poco aunque no se haya perdido
+ * nada: el queso está en la bodega. Aquí las compras no restan, porque comprar
+ * es cambiar plata por queso, no gastarla.
+ *
+ * Los días SUMAN los totales: el total se calcula sumándolos, así que el
+ * desglose cuadra por construcción.
+ */
+export interface GananciaPorDia {
+  desde: string;
+  hasta: string;
+  dias: GananciaDia[];
+  kilos: Monto;
+  ingresos: Monto;
+  costo: Monto;
+  gastos: Monto;
+  ganancia: Monto;
+}
+
 export interface LotesPanel {
   lotes: LoteResumen[];
   total_ganancia: Monto;
@@ -662,6 +695,17 @@ export class ReventaService {
     if (desde) params['desde'] = desde;
     if (hasta) params['hasta'] = hasta;
     return this.api.get<LotesPanel>(`${this.base}/lotes`, params);
+  }
+
+  /**
+   * Cuánto se ganó DE VERDAD entre dos fechas, día por día.
+   *
+   * Distinto del resumen: allá se restan las compras del período y por eso un
+   * mes de mucha compra sale en pérdida. Aquí solo cuentan las ventas de esos
+   * días, con el costo exacto del queso que salió en cada una.
+   */
+  gananciaPorDia(desde: string, hasta: string): Observable<GananciaPorDia> {
+    return this.api.get<GananciaPorDia>(`${this.base}/ganancia-por-dia`, { desde, hasta });
   }
 
   // -------------------------------------------------------------- temporadas

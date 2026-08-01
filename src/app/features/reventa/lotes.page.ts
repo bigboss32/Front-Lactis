@@ -2,7 +2,9 @@ import { DatePipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -11,9 +13,25 @@ import { isoToDate } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
-import { LoteResumen, LotesPanel, ReventaService } from './reventa.service';
+import {
+  GananciaPorDia,
+  LoteResumen,
+  LotesPanel,
+  ReventaService,
+} from './reventa.service';
 
 /** Número a partir de un Monto, que llega como texto cuando es Decimal. */
+/** Hoy en ISO (yyyy-mm-dd), que es lo que espera un <input type="date">. */
+function hoyIso(): string {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+/** El primero del mes corrido, en ISO. */
+function primerDiaDelMes(): string {
+  const h = new Date();
+  return new Date(h.getFullYear(), h.getMonth(), 1).toLocaleDateString('en-CA');
+}
+
 function n(valor: Monto | null | undefined): number {
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : 0;
@@ -40,7 +58,8 @@ function n(valor: Monto | null | undefined): number {
   selector: 'app-reventa-lotes',
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    MatTooltipModule, PageHeader, MoneyPipe, CantidadPipe,
+    MatTooltipModule, MatFormFieldModule, MatInputModule,
+    PageHeader, MoneyPipe, CantidadPipe,
   ],
   template: `
     <div class="page">
@@ -52,6 +71,97 @@ function n(valor: Monto | null | undefined): number {
       @if (cargando()) {
         <mat-progress-bar mode="indeterminate" />
       }
+
+      <!-- Cuánto se ganó en unos días concretos. Es OTRA cuenta que la de los
+           lotes de abajo: aquí se pregunta por fechas de VENTA, no por tandas de
+           compra. La pidió el dueño tal cual: "cuánto gané en determinados días". -->
+      <mat-card class="por-dia">
+        <div class="cabecera-dia">
+          <div>
+            <h3>¿Cuánto gané en estos días?</h3>
+            <p>
+              De lo que vendió esos días, menos lo que le había costado ese queso
+              y menos los fletes. Las compras de esos días no restan aquí: comprar
+              no es gastar, es cambiar plata por queso.
+            </p>
+          </div>
+          <div class="rango">
+            <mat-form-field appearance="outline">
+              <mat-label>Desde</mat-label>
+              <input matInput type="date" [value]="desde()"
+                     (change)="desde.set($any($event.target).value)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Hasta</mat-label>
+              <input matInput type="date" [value]="hasta()"
+                     (change)="hasta.set($any($event.target).value)" />
+            </mat-form-field>
+            <button mat-flat-button [disabled]="cargandoDias()" (click)="cargarDias()">
+              <mat-icon>calculate</mat-icon> Calcular
+            </button>
+          </div>
+        </div>
+
+        @if (errorDias()) {
+          <p class="error-dia">{{ errorDias() }}</p>
+        } @else if (cargandoDias()) {
+          <mat-progress-bar mode="indeterminate" />
+        } @else if (porDia(); as g) {
+          @if (g.dias.length === 0) {
+            <p class="vacio-dia">No hubo ventas en esos días.</p>
+          } @else {
+            <div class="total-dia" [class.perdida]="n(g.ganancia) < 0">
+              <span>{{ n(g.ganancia) < 0 ? 'Perdió' : 'Ganó' }}</span>
+              <strong>{{ g.ganancia | money }}</strong>
+              <small>
+                vendiendo {{ g.kilos | cantidad: ' kg' }} en
+                {{ g.dias.length }} {{ g.dias.length === 1 ? 'día' : 'días' }}
+              </small>
+            </div>
+            <div class="tabla-dia">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Día</th>
+                    <th class="num">Kilos</th>
+                    <th class="num">Entró</th>
+                    <th class="num">(−) Le costó</th>
+                    <th class="num">(−) Fletes</th>
+                    <th class="num">Ganó</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (d of g.dias; track d.fecha) {
+                    <tr>
+                      <td>{{ isoADate(d.fecha) | date: 'EEE d MMM' }}</td>
+                      <td class="num">{{ d.kilos | cantidad: ' kg' }}</td>
+                      <td class="num">{{ d.ingresos | money }}</td>
+                      <td class="num">{{ d.costo | money }}</td>
+                      <td class="num">{{ d.gastos | money }}</td>
+                      <td class="num" [class.perdida]="n(d.ganancia) < 0">
+                        {{ d.ganancia | money }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th>Total</th>
+                    <th class="num">{{ g.kilos | cantidad: ' kg' }}</th>
+                    <th class="num">{{ g.ingresos | money }}</th>
+                    <th class="num">{{ g.costo | money }}</th>
+                    <th class="num">{{ g.gastos | money }}</th>
+                    <th class="num" [class.perdida]="n(g.ganancia) < 0">
+                      {{ g.ganancia | money }}
+                    </th>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          }
+        }
+      </mat-card>
+
 
       @if (error()) {
         <mat-card class="aviso malo">
@@ -488,6 +598,79 @@ function n(valor: Monto | null | undefined): number {
     </div>
   `,
   styles: `
+    .por-dia {
+      margin-bottom: 18px;
+      padding: 16px;
+
+      h3 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+      p {
+        margin: 4px 0 0;
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.86rem;
+        line-height: 1.4;
+        max-width: 52ch;
+      }
+    }
+
+    .cabecera-dia {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .rango {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+
+      mat-form-field { width: 150px; }
+    }
+
+    .total-dia {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 14px 0 6px;
+
+      strong { font-size: 1.6rem; font-weight: 600; }
+      small { color: var(--mat-sys-on-surface-variant); }
+      &.perdida strong { color: #c62828; }
+    }
+    :host-context(html.dark) .total-dia.perdida strong { color: #ef9a9a; }
+
+    // La tabla se desplaza sola en pantallas angostas en vez de desbordar.
+    .tabla-dia {
+      overflow-x: auto;
+
+      table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+      th, td { padding: 7px 10px; text-align: left; white-space: nowrap; }
+      .num { text-align: right; font-variant-numeric: tabular-nums; }
+      thead th {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--mat-sys-on-surface-variant);
+        border-bottom: 1px solid var(--mat-sys-outline-variant);
+      }
+      tbody tr:nth-child(even) { background: var(--mat-sys-surface-container-low); }
+      tfoot th {
+        border-top: 2px solid var(--mat-sys-outline-variant);
+        font-weight: 600;
+      }
+      .perdida { color: #c62828; }
+    }
+    :host-context(html.dark) .tabla-dia .perdida { color: #ef9a9a; }
+
+    .error-dia, .vacio-dia {
+      margin: 14px 0 0;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .error-dia { color: #c62828; }
+
     .aviso {
       display: flex;
       align-items: center;
@@ -872,8 +1055,40 @@ export class ReventaLotesPage implements OnInit {
     return Math.max(...valores, 0);
   });
 
+  // ——— Cuánto gané en estos días ———
+  // Arranca en el mes corrido, que es lo que la gente quiere ver al entrar.
+  readonly desde = signal(primerDiaDelMes());
+  readonly hasta = signal(hoyIso());
+  readonly porDia = signal<GananciaPorDia | null>(null);
+  readonly cargandoDias = signal(false);
+  readonly errorDias = signal<string | null>(null);
+
   ngOnInit(): void {
     this.cargar();
+    this.cargarDias();
+  }
+
+  cargarDias(): void {
+    const desde = this.desde();
+    const hasta = this.hasta();
+    if (!desde || !hasta) return;
+    if (hasta < desde) {
+      this.errorDias.set('La fecha final no puede ser anterior a la inicial.');
+      this.porDia.set(null);
+      return;
+    }
+    this.cargandoDias.set(true);
+    this.errorDias.set(null);
+    this.servicio.gananciaPorDia(desde, hasta).subscribe({
+      next: (g) => {
+        this.porDia.set(g);
+        this.cargandoDias.set(false);
+      },
+      error: (err) => {
+        this.errorDias.set(detalleDeError(err, 'No fue posible calcular la ganancia'));
+        this.cargandoDias.set(false);
+      },
+    });
   }
 
   cargar(): void {
