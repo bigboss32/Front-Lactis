@@ -162,6 +162,35 @@
   }
 }
 
+// ——— El color de la categoría, también en el contenido ———
+// El menú ya se pinta por grupo; esto lleva el mismo color a la pantalla en la
+// que se está parado, para saber en qué parte del sistema se anda sin leer el
+// título. Dos señas y nada más: una franja bajo la barra superior (la que
+// sobrevive en móvil, donde el menú va plegado) y una barrita junto al título.
+// Ni fondos ni bordes de más: esto es una pista de orientación, no decoración.
+.con-seccion {
+  --seccion-viva: var(--seccion);
+
+  .toolbar {
+    border-bottom: 3px solid var(--seccion-viva);
+  }
+  // La barrita junto al título NO se puede pintar desde aquí: los estilos de un
+  // componente no entran en otro. Vive en page-header.ts y lee esta misma
+  // variable, que sí atraviesa los límites de componente.
+}
+
+// Estar DENTRO de un negocio aparte manda sobre la categoría: ahí lo que hay
+// que recordar es en qué libro se está, que es una distinción más gorda.
+.con-negocio.con-seccion .toolbar {
+  border-bottom-color: var(--negocio);
+}
+
+:host-context(html.dark) .con-seccion {
+  // Mismo aclarado que en el menú: la paleta es de gráfico, pensada para fondo
+  // claro, y sobre el oscuro estos colores se apagan.
+  --seccion-viva: color-mix(in srgb, var(--seccion) 58%, white);
+}
+
 :host-context(html.dark) .sidenav {
   .con-acento {
     --acento-vivo: color-mix(in srgb, var(--acento) 58%, white);

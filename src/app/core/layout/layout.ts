@@ -150,15 +150,33 @@ export class Layout implements OnInit, OnDestroy {
 
   /** Título del grupo cuyo ítem coincide con la ruta dada (null si ninguno). */
   private grupoDeRuta(url: string): string | null {
+    return this.grupoObjetoDeRuta(url)?.title ?? null;
+  }
+
+  /** El grupo entero, para poder sacarle además el color. */
+  private grupoObjetoDeRuta(url: string): NavGroup | null {
     const ruta = url.split('?')[0];
     for (const grupo of this.gruposBase()) {
       if (!grupo.title) continue;
       if (grupo.items.some((it) => ruta === it.route || ruta.startsWith(it.route + '/'))) {
-        return grupo.title;
+        return grupo;
       }
     }
     return null;
   }
+
+  /**
+   * El color de la categoría donde está parado el usuario, para teñir también
+   * el CONTENIDO y no solo el menú.
+   *
+   * Es el mismo color de la tarjeta de ese módulo en Inicio y del grupo en el
+   * menú: la idea es que con el rabillo del ojo se sepa en qué parte del
+   * sistema se está, sin leer el título. Null en Inicio, Estadísticas y Mi
+   * perfil, que no son de ninguna categoría — ahí no se pinta nada.
+   */
+  readonly colorSeccion = computed(
+    () => this.grupoObjetoDeRuta(this.urlActual())?.color ?? null,
+  );
 
   estaAbierto(title: string): boolean {
     return this.abiertos().has(title);

@@ -2,6 +2,8 @@
   class="shell"
   [class.con-negocio]="!!negocio()"
   [style.--negocio]="negocio()?.color ?? null"
+  [class.con-seccion]="!!colorSeccion()"
+  [style.--seccion]="colorSeccion()"
 >
   <mat-sidenav
     #sidenav
