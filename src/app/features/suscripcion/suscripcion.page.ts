@@ -20,9 +20,11 @@ import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { PseFormDialog } from './pse-form.dialog';
 import {
   ETIQUETAS_ESTADO_PAGO,
   ETIQUETAS_ESTADO_SUSCRIPCION,
+  ETIQUETAS_METODO_PAGO,
   ETIQUETAS_ORIGEN_PAGO,
   SuscripcionService,
 } from './suscripcion.service';
@@ -59,6 +61,34 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
               pantalla y tu perfil siguen disponibles.
             </p>
           </div>
+        </div>
+      }
+
+      <!-- PSE dejado a medias: el pago existe y está esperando en el banco.
+           Sin esto la persona queda atascada: no puede pagar otra vez (hay uno
+           pendiente) y no sabe que le falta un clic para terminar. -->
+      @if (psePendiente(); as pse) {
+        <div class="retomar">
+          <mat-icon aria-hidden="true">account_balance</mat-icon>
+          <div>
+            <strong>Tienes un pago por PSE sin aprobar.</strong>
+            <p>
+              Quedó registrado {{ pse.created_at | date: 'dd/MM/yyyy HH:mm' }} y
+              está esperando que lo apruebes en el portal de tu banco.
+            </p>
+          </div>
+          @if (pse.url_banco) {
+            <a mat-flat-button [href]="pse.url_banco" target="_blank" rel="noopener">
+              <mat-icon>open_in_new</mat-icon> Continuar en el banco
+            </a>
+          } @else {
+            <!-- Wompi publica el enlace del banco un instante DESPUÉS de crear
+                 la transacción; el backend lo rescata al consultar el estado,
+                 así que recargar es literalmente lo que hay que hacer. -->
+            <button mat-stroked-button (click)="cargar()">
+              <mat-icon>refresh</mat-icon> Buscar el enlace del banco
+            </button>
+          }
         </div>
       }
 
@@ -123,8 +153,18 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                   [disabled]="pagando() || d.pago_pendiente || !d.fuente_pago"
                   (click)="pagar()"
                 >
-                  <mat-icon>payments</mat-icon>
-                  {{ pagando() ? 'Procesando…' : 'Pagar ahora' }}
+                  <mat-icon>credit_card</mat-icon>
+                  {{ pagando() ? 'Procesando…' : 'Pagar con la tarjeta' }}
+                </button>
+                <!-- PSE no necesita tarjeta guardada: es el camino para quien no
+                     tiene ninguna, y el único si su banco no le da tarjetas. -->
+                <button
+                  mat-stroked-button
+                  *hasPermission="'suscripcion:crear'"
+                  [disabled]="pagando() || d.pago_pendiente"
+                  (click)="abrirPse()"
+                >
+                  <mat-icon>account_balance</mat-icon> Pagar por PSE
                 </button>
               </mat-card-actions>
               @if (!auth.hasPermission('suscripcion', 'crear')) {
@@ -134,7 +174,8 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                 </mat-card-footer>
               } @else if (!d.fuente_pago) {
                 <mat-card-footer class="nota pie">
-                  Guarda una tarjeta para poder pagar (y para el cobro automático mensual).
+                  Sin tarjeta guardada puedes pagar por PSE, que debita de tu banco.
+                  La tarjeta solo hace falta para el cobro automático mensual.
                 </mat-card-footer>
               }
             }
@@ -161,8 +202,8 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                 </p>
               } @else {
                 <p class="nota">
-                  Sin tarjeta guardada. Guarda una para que la mensualidad se cobre
-                  automáticamente y para poder usar "Pagar ahora".
+                  Sin tarjeta guardada. La mensualidad no se cobra sola: hay que
+                  pagarla a mano cada mes, con tarjeta o por PSE.
                 </p>
               }
             </mat-card-content>
@@ -213,6 +254,11 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
               <td mat-cell *matCellDef="let fila">
                 <app-estado-chip [estado]="etiquetaPago(fila.estado_transaccion)" />
               </td>
+            </ng-container>
+
+            <ng-container matColumnDef="metodo">
+              <th mat-header-cell *matHeaderCellDef>Medio</th>
+              <td mat-cell *matCellDef="let fila">{{ etiquetaMetodo(fila.metodo) }}</td>
             </ng-container>
 
             <ng-container matColumnDef="origen">
@@ -272,6 +318,26 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
     }
     :host-context(html.dark) .paywall { color: #e57373; }
 
+    .retomar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border-left: 4px solid #b26a00;
+      background: color-mix(in srgb, #b26a00 12%, transparent);
+
+      > div { flex: 1 1 260px; }
+      strong { color: #b26a00; }
+      p { margin: 2px 0 0; color: var(--mat-sys-on-surface-variant); }
+      > mat-icon { flex-shrink: 0; color: #b26a00; }
+    }
+    :host-context(html.dark) .retomar {
+      strong, > mat-icon { color: #ffb74d; }
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -315,7 +381,7 @@ export class SuscripcionPage implements OnInit {
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
 
-  readonly columnas = ['fecha', 'monto', 'estado', 'origen', 'periodo'];
+  readonly columnas = ['fecha', 'monto', 'estado', 'metodo', 'origen', 'periodo'];
 
   readonly detalle = signal<SuscripcionDetalle | null>(null);
   readonly pagos = signal<PagoSuscripcion[]>([]);
@@ -336,6 +402,22 @@ export class SuscripcionPage implements OnInit {
   readonly estado = computed(
     () => this.detalle()?.estado ?? this.auth.perfil()?.suscripcion?.estado ?? null,
   );
+
+  /**
+   * El pago por PSE que quedó esperando aprobación en el banco, si lo hay.
+   *
+   * Se busca en la PRIMERA página del historial (que viene de más nuevo a
+   * más viejo): un PSE a medias es necesariamente reciente, y lo que importa
+   * que solo puede haber uno pendiente a la vez.
+   */
+  readonly psePendiente = computed(() => {
+    if (!this.detalle()?.pago_pendiente) return null;
+    return (
+      this.pagos().find(
+        (p) => p.metodo === 'PSE' && p.estado_transaccion === 'PENDING' && !!p.url_banco,
+      ) ?? null
+    );
+  });
 
   private readonly money = new MoneyPipe();
 
@@ -358,10 +440,19 @@ export class SuscripcionPage implements OnInit {
     return ETIQUETAS_ORIGEN_PAGO[origen] ?? origen;
   }
 
+  etiquetaMetodo(metodo: string): string {
+    return ETIQUETAS_METODO_PAGO[metodo] ?? metodo;
+  }
+
   async cargar(): Promise<void> {
     this.cargando.set(true);
     this.sinPermiso.set(false);
     this.error.set(false);
+    // Se vuelve a la primera página del historial. No es cosmético: el aviso de
+    // "continuar en el banco" busca el pago pendiente en lo que esté cargado, y
+    // si el usuario se había ido a la página 3 el pago recién creado no estaría
+    // ahí — el aviso desaparecería justo cuando más falta hace.
+    this.page.set(1);
     try {
       this.detalle.set(await firstValueFrom(this.servicio.resumen()));
       await this.cargarPagos();
@@ -415,6 +506,35 @@ export class SuscripcionPage implements OnInit {
         });
     } catch (err) {
       // wompi_no_configurado (llaves sin poner) llega con su propio detalle.
+      this.snackbar.open(
+        detalleDeError(err, 'La pasarela de pagos no está disponible'),
+        'OK',
+        { duration: 6000 },
+      );
+    }
+  }
+
+  /**
+   * Pago por PSE. La config de Wompi se pide igual que para la tarjeta: los
+   * permalinks de los términos que hay que aceptar salen de ahí y son frescos.
+   */
+  async abrirPse(): Promise<void> {
+    const d = this.detalle();
+    if (!d) return;
+    try {
+      const config = await firstValueFrom(this.servicio.config());
+      this.dialog
+        .open(PseFormDialog, { data: { config, tarifa: d.tarifa }, width: '560px' })
+        .afterClosed()
+        .subscribe(() => {
+          // Se recarga SIEMPRE, se haya pagado o no. Aunque el diálogo devuelve
+          // el resultado por los dos botones que lo cierran, condicionar la
+          // recarga a ese valor deja la puerta abierta a que un cierre por otra
+          // vía esconda un pago que ya existe. Recargar de más no cuesta nada;
+          // no enterarse de un pago sí.
+          this.cargar();
+        });
+    } catch (err) {
       this.snackbar.open(
         detalleDeError(err, 'La pasarela de pagos no está disponible'),
         'OK',

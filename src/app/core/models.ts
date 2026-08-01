@@ -132,6 +132,13 @@ export interface PagoSuscripcion {
   moneda: string;
   estado_transaccion: 'PENDING' | 'APPROVED' | 'DECLINED' | 'VOIDED' | 'ERROR' | string;
   origen: 'manual' | 'automatico' | 'cron' | string;
+  /** Con qué se pagó. Los pagos viejos, de cuando solo había tarjeta, son 'CARD'. */
+  metodo: 'CARD' | 'PSE' | string;
+  /**
+   * Solo en PSE y mientras esté PENDING: el portal del banco donde quedó el
+   * pago a medias. Sirve para RETOMARLO si cerró la pestaña.
+   */
+  url_banco: string | null;
   /** Período de vigencia que compró el pago (null si no fue APPROVED). */
   periodo_desde: string | null;
   periodo_hasta: string | null;
@@ -151,6 +158,36 @@ export interface SuscripcionConfig {
   tokenizacion_url: string;
   acceptance: AceptacionWompi;
   personal_data_auth: AceptacionWompi;
+}
+
+/** Un banco habilitado para PSE (GET /suscripcion/pse/bancos, viene de Wompi). */
+export interface BancoPSE {
+  financial_institution_code: string;
+  financial_institution_name: string;
+}
+
+/**
+ * Body de POST /suscripcion/pse/pagar. Son los datos que exige PSE: el banco
+ * al que se manda a la persona y el documento con el que el banco la
+ * identifica.
+ */
+export interface PagarPsePayload {
+  banco: string;
+  /** PSE lo maneja así: '0' natural, '1' jurídica. */
+  tipo_persona: '0' | '1';
+  tipo_documento: 'CC' | 'CE' | 'NIT' | 'TI' | 'PP';
+  documento: string;
+}
+
+/**
+ * Respuesta de POST /suscripcion/pse/pagar. No hay resultado todavía: el pago
+ * nace PENDING y `url_banco` es a donde hay que mandar a la persona para que
+ * lo apruebe. El resultado llega después por el webhook.
+ */
+export interface ResultadoPse {
+  pago: PagoSuscripcion;
+  url_banco: string | null;
+  suscripcion: SuscripcionDetalle;
 }
 
 /** Respuesta de POST /suscripcion/pagar (DECLINED también llega aquí, con 200). */

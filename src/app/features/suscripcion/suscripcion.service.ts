@@ -4,10 +4,13 @@ import { Observable, firstValueFrom, timeout } from 'rxjs';
 
 import { ApiService, ListOpts } from '../../core/api.service';
 import {
+  BancoPSE,
   FuentePago,
   Page,
+  PagarPsePayload,
   PagoSuscripcion,
   ResultadoPagoSuscripcion,
+  ResultadoPse,
   SuscripcionConfig,
   SuscripcionDetalle,
 } from '../../core/models';
@@ -31,6 +34,12 @@ export const ETIQUETAS_ESTADO_PAGO: Record<string, string> = {
   DECLINED: 'rechazado',
   VOIDED: 'anulado',
   ERROR: 'error',
+};
+
+/** Con qué se pagó. Los pagos de antes de PSE vienen todos como 'CARD'. */
+export const ETIQUETAS_METODO_PAGO: Record<string, string> = {
+  CARD: 'tarjeta',
+  PSE: 'PSE',
 };
 
 /** Y para el origen del cobro. */
@@ -107,6 +116,24 @@ export class SuscripcionService {
   /** Cobra la mensualidad YA con la tarjeta guardada. DECLINED también es 200. */
   pagar(): Observable<ResultadoPagoSuscripcion> {
     return this.api.post<ResultadoPagoSuscripcion>('/suscripcion/pagar');
+  }
+
+  /**
+   * Bancos habilitados para PSE. Se piden FRESCOS cada vez que se abre el
+   * formulario: los bancos entran, salen y se ponen en mantenimiento, y una
+   * lista vieja mandaría a la persona a un banco que hoy no funciona.
+   */
+  bancosPse(): Observable<BancoPSE[]> {
+    return this.api.get<BancoPSE[]>('/suscripcion/pse/bancos');
+  }
+
+  /**
+   * Arranca un pago por PSE. NO cobra nada: crea la transacción (que nace
+   * PENDING) y devuelve la URL del portal del banco, que es a donde hay que
+   * mandar a la persona para que lo apruebe.
+   */
+  pagarPse(payload: PagarPsePayload): Observable<ResultadoPse> {
+    return this.api.post<ResultadoPse>('/suscripcion/pse/pagar', payload);
   }
 
   /** ¿Las llaves son de pruebas? Manda la llave pública, no el entorno de Angular. */
