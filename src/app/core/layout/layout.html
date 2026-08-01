@@ -149,6 +149,18 @@
       </button>
     </mat-menu>
 
+    <!-- Aviso de la suscripción: ámbar (por vencer) o rojo (días de gracia).
+         Nunca lo ve el superadmin; el bloqueo total va por el paywall. -->
+    @if (avisoSuscripcion(); as aviso) {
+      <div class="aviso-suscripcion" [class.rojo]="aviso.tono === 'rojo'">
+        <mat-icon aria-hidden="true">{{ aviso.tono === 'rojo' ? 'error' : 'schedule' }}</mat-icon>
+        <span>{{ aviso.texto }}</span>
+        <button mat-stroked-button routerLink="/suscripcion">
+          <mat-icon>payments</mat-icon> Pagar
+        </button>
+      </div>
+    }
+
     <main>
       <router-outlet />
     </main>

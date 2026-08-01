@@ -83,6 +83,39 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
     catchError((error: unknown) => {
       // Un TimeoutError de rxjs también llega aquí y no es un HttpErrorResponse:
       // se comprueba el tipo antes de mirar el status.
+      //
+      // Bloqueo por suscripción vencida. Va ANTES de la rama de membresías: es
+      // un 403 con header puesto, pero revalidar la membresía no aporta nada
+      // (el usuario sigue siendo miembro; es la EMPRESA la que no pagó) y su
+      // aviso "volviste a tu empresa principal" sería mentira. Se excluyen las
+      // URLs de /suscripcion por si acaso —el backend exime ese módulo del
+      // bloqueo, así que no deberían traer este code— para no redirigir al
+      // paywall desde el paywall. El perfil se recarga para que el guard y el
+      // banner del layout vean el bloqueo (el backend es la verdad y el perfil
+      // quedó viejo), se navega UNA sola vez (los 403 concurrentes de una misma
+      // pantalla comprueban router.url) y el error SIEMPRE se propaga para que
+      // la pantalla que llamó no se quede esperando.
+      if (
+        error instanceof HttpErrorResponse &&
+        error.status === 403 &&
+        error.error?.error?.code === 'suscripcion_vencida' &&
+        !req.url.includes('/suscripcion')
+      ) {
+        if (router.url.startsWith('/suscripcion')) {
+          return throwError(() => error);
+        }
+        return from(auth.recargarPerfil()).pipe(
+          switchMap(() => {
+            snackbar.open(
+              'La suscripción de la empresa está vencida. Regulariza el pago para continuar.',
+              'OK',
+              { duration: 6000 },
+            );
+            router.navigate(['/suscripcion']);
+            return throwError(() => error);
+          }),
+        );
+      }
       if (error instanceof HttpErrorResponse && error.status === 403 && revalidableAl403) {
         // El error original SIEMPRE se propaga y NUNCA se reintenta la petición
         // contra otra empresa: una escritura reintentada guardaría el registro

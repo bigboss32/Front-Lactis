@@ -16,6 +16,17 @@ export interface EmpresaPayload {
   estado?: string;
 }
 
+/**
+ * Body de PUT /empresas/{id}/suscripcion. Los null explícitos APLICAN (el
+ * backend usa exclude_unset): tarifa_mensual null = volver a la tarifa global
+ * del sistema; pagada_hasta null = volver al período de prueba.
+ */
+export interface SuscripcionEmpresaPayload {
+  tarifa_mensual: number | null;
+  exenta: boolean;
+  pagada_hasta: string | null;
+}
+
 @Injectable({ providedIn: 'root' })
 export class EmpresasService extends CrudService<Empresa, EmpresaPayload> {
   constructor() {
@@ -33,5 +44,17 @@ export class EmpresasService extends CrudService<Empresa, EmpresaPayload> {
       `/empresas/${empresaId}/reiniciar`,
       { confirmacion },
     );
+  }
+
+  /**
+   * Tarifa, exención y vigencia de la suscripción de una empresa.
+   * Únicamente permitida al superadmin (lo valida el backend en el service,
+   * mismo patrón que reiniciar). Devuelve la empresa ya actualizada.
+   */
+  actualizarSuscripcion(
+    empresaId: string,
+    payload: SuscripcionEmpresaPayload,
+  ): Observable<Empresa> {
+    return this.api.put<Empresa>(`/empresas/${empresaId}/suscripcion`, payload);
   }
 }

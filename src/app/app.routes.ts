@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 
 import { authGuard } from './core/auth/auth.guard';
 import { permisoGuard } from './core/auth/permiso.guard';
+import { suscripcionGuard } from './core/auth/suscripcion.guard';
 import { Layout } from './core/layout/layout';
 
 /**
@@ -21,8 +22,8 @@ import { Layout } from './core/layout/layout';
  *
  * Van SIN permisoGuard, a propósito: /login (todavía no hay sesión), /inicio
  * (bienvenida sin datos, es el sitio al que se devuelve a quien no tiene
- * permiso), /perfil (los datos del propio usuario) y el comodín de "no
- * encontrado".
+ * permiso), /perfil (los datos del propio usuario), /suscripcion (el paywall;
+ * ver el comentario en su ruta) y el comodín de "no encontrado".
  */
 export const routes: Routes = [
   {
@@ -34,6 +35,11 @@ export const routes: Routes = [
     path: '',
     component: Layout,
     canActivate: [authGuard],
+    // El paywall va aquí, en canActivateChild, y no guard por guard en cada
+    // módulo: el bloqueo por suscripción vencida es del sistema entero, así
+    // que toda ruta hija —incluida una que se añada mañana— nace protegida.
+    // Sus excepciones (/suscripcion, /perfil) viven dentro del propio guard.
+    canActivateChild: [suscripcionGuard],
     children: [
       { path: '', pathMatch: 'full', redirectTo: 'inicio' },
       {
@@ -151,6 +157,17 @@ export const routes: Routes = [
         path: 'empresas',
         canMatch: [permisoGuard('empresas')],
         loadChildren: () => import('./features/empresas/empresas.routes').then((m) => m.EMPRESAS_ROUTES),
+      },
+      {
+        // SIN permisoGuard, a propósito (anti-bucle): es el PAYWALL. Cuando la
+        // empresa está bloqueada, suscripcionGuard desvía aquí TODA navegación;
+        // si esta ruta exigiera `suscripcion:consultar`, al usuario sin ese
+        // permiso permisoGuard lo devolvería a /inicio y suscripcionGuard lo
+        // traería de vuelta: bucle /suscripcion↔/inicio infinito. La página
+        // misma le explica a quién pedir el pago y el backend protege los
+        // datos igual (GET /suscripcion responde 403 sin el permiso).
+        path: 'suscripcion',
+        loadChildren: () => import('./features/suscripcion/suscripcion.routes').then((m) => m.SUSCRIPCION_ROUTES),
       },
       {
         path: 'sucursales',

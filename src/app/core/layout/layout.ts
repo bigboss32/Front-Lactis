@@ -79,6 +79,41 @@ export class Layout implements OnInit, OnDestroy {
 
   private readonly gruposBase = computed<NavGroup[]>(() => this.negocio()?.grupos ?? NAV_GROUPS);
 
+  /**
+   * Aviso de la suscripción de la empresa activa (franja entre la barra y el
+   * contenido): ámbar cuando está por vencer, rojo en los días de gracia. El
+   * superadmin no lo ve nunca (las empresas no son "suyas" y él no se bloquea)
+   * y el bloqueo total tampoco lo necesita: de ese se encargan el guard y el
+   * paywall (features/suscripcion/suscripcion.page.ts).
+   */
+  readonly avisoSuscripcion = computed<{ tono: 'ambar' | 'rojo'; texto: string } | null>(() => {
+    const perfil = this.auth.perfil();
+    const suscripcion = perfil?.suscripcion;
+    if (!perfil || perfil.es_superadmin || !suscripcion) return null;
+    const dias = suscripcion.dias_restantes;
+    if (suscripcion.estado === 'por_vencer' && dias !== null) {
+      return {
+        tono: 'ambar',
+        texto:
+          dias === 0
+            ? 'La suscripción vence hoy.'
+            : `La suscripción vence en ${enDias(dias)}.`,
+      };
+    }
+    if (suscripcion.estado === 'gracia' && dias !== null) {
+      // En gracia los días restantes vienen NEGATIVOS: -2 con 5 de gracia
+      // significa que venció hace 2 días y el bloqueo cae en 3.
+      const paraBloqueo = suscripcion.dias_gracia + dias;
+      return {
+        tono: 'rojo',
+        texto:
+          `La suscripción venció hace ${enDias(-dias)}. ` +
+          `El sistema se bloqueará en ${enDias(paraBloqueo)}.`,
+      };
+    }
+    return null;
+  });
+
   readonly grupos = computed(() => {
     this.auth.perfil();
     return this.gruposBase().map((grupo) => ({
@@ -100,6 +135,8 @@ export class Layout implements OnInit, OnDestroy {
   );
 
   private pollId: ReturnType<typeof setInterval> | null = null;
+  /** Ticks del polling de notificaciones (uno por minuto). */
+  private ticksPoll = 0;
 
   constructor() {
     // Abre el grupo del módulo actual (sin cerrar los que el usuario abrió).
@@ -145,7 +182,13 @@ export class Layout implements OnInit, OnDestroy {
       if (primera) this.auth.seleccionarEmpresa(primera.id);
     }
     this.notificaciones.refrescar();
-    this.pollId = setInterval(() => this.notificaciones.refrescar(), 60_000);
+    this.pollId = setInterval(() => {
+      this.notificaciones.refrescar();
+      // Cada 15 ticks (15 min) se recarga también el perfil: el estado de la
+      // suscripción cambia solo con el paso de los días (o por el webhook de
+      // la pasarela) y el aviso debe seguirlo sin que nadie pulse F5.
+      if (++this.ticksPoll % 15 === 0) this.auth.recargarPerfil();
+    }, 60_000);
   }
 
   ngOnDestroy(): void {
@@ -237,4 +280,9 @@ export class Layout implements OnInit, OnDestroy {
       }
     }
   }
+}
+
+/** '1 día' / 'N días', para que el aviso de la suscripción no diga "1 días". */
+function enDias(dias: number): string {
+  return dias === 1 ? '1 día' : `${dias} días`;
 }

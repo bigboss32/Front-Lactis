@@ -19,6 +19,7 @@ import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Empresa } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
@@ -26,6 +27,7 @@ import { AdminEmpresaDialog } from './admin-empresa.dialog';
 import { EmpresaFormDialog } from './empresa-form.dialog';
 import { EmpresasService } from './empresas.service';
 import { ReiniciarEmpresaDialog } from './reiniciar-empresa.dialog';
+import { SuscripcionEmpresaDialog } from './suscripcion-empresa.dialog';
 
 @Component({
   selector: 'app-empresa-list',
@@ -45,7 +47,7 @@ export class EmpresaListPage implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
 
-  readonly columnas = ['nombre', 'nit', 'ciudad', 'telefono', 'correo', 'estado', 'acciones'];
+  readonly columnas = ['nombre', 'nit', 'ciudad', 'telefono', 'correo', 'suscripcion', 'estado', 'acciones'];
   readonly filas = signal<Empresa[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -134,6 +136,32 @@ export class EmpresaListPage implements OnInit {
 
   crearAdministrador(empresa: Empresa): void {
     this.dialog.open(AdminEmpresaDialog, { data: { empresa }, width: '560px' });
+  }
+
+  /**
+   * Etiqueta del chip de suscripción, calculada con los campos de la fila
+   * (EmpresaRead trae exenta y pagada_hasta pero no un estado ya cocinado).
+   * Es la vista del superadmin: basta exenta / prueba / vigente / vencida,
+   * sin el matiz de gracia/por vencer que sí da GET /suscripcion.
+   */
+  estadoSuscripcion(fila: Empresa): string {
+    if (fila.exenta ?? false) return 'exenta';
+    const pagadaHasta = fila.pagada_hasta ?? null;
+    if (!pagadaHasta) return 'prueba';
+    // Las fechas ISO (yyyy-MM-dd) se comparan bien como texto.
+    return pagadaHasta < dateToIso(hoyDate()) ? 'vencida' : 'vigente';
+  }
+
+  /** Tarifa, exención y vigencia de la suscripción (solo superadmin). */
+  editarSuscripcion(item: Empresa): void {
+    this.dialog
+      .open(SuscripcionEmpresaDialog, { data: { empresa: item }, width: '520px' })
+      .afterClosed()
+      .subscribe((actualizada) => {
+        if (!actualizada) return;
+        this.snackbar.open('Suscripción actualizada', 'OK', { duration: 3000 });
+        this.cargar();
+      });
   }
 
   /** Reinicia los datos transaccionales de la empresa (solo superadmin). */

@@ -70,6 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
       { label: 'Empresas', icon: 'business', route: '/empresas', modulo: 'empresas' },
+      { label: 'Suscripción', icon: 'card_membership', route: '/suscripcion', modulo: 'suscripcion' },
       { label: 'Sucursales', icon: 'store', route: '/sucursales', modulo: 'sucursales' },
       { label: 'Usuarios', icon: 'manage_accounts', route: '/usuarios', modulo: 'usuarios' },
       { label: 'Roles y permisos', icon: 'admin_panel_settings', route: '/roles', modulo: 'roles' },

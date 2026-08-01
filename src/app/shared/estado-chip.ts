@@ -19,6 +19,18 @@ const COLORES: Record<string, string> = {
   vigente: 'verde',
   'por vencer': 'ambar',
   vencido: 'rojo',
+  // Suscripción: estado de la empresa (el backend manda 'por_vencer'; la vista
+  // pasa la etiqueta legible de ETIQUETAS_ESTADO_SUSCRIPCION) y estado de los
+  // pagos de la pasarela ('por vencer' y 'vencida' reutilizan las de arriba).
+  exenta: 'azul',
+  activa: 'verde',
+  gracia: 'rojo',
+  bloqueada: 'rojo',
+  prueba: 'azul',
+  vencida: 'rojo',
+  aprobado: 'verde',
+  rechazado: 'rojo',
+  error: 'rojo',
 };
 
 /** Chip de color según el estado del registro o del flujo de trabajo. */

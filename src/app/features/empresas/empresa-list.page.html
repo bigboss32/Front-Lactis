@@ -61,6 +61,13 @@
         <td mat-cell *matCellDef="let fila">{{ fila.correo ?? '—' }}</td>
       </ng-container>
 
+      <ng-container matColumnDef="suscripcion">
+        <th mat-header-cell *matHeaderCellDef>Suscripción</th>
+        <td mat-cell *matCellDef="let fila">
+          <app-estado-chip [estado]="estadoSuscripcion(fila)" />
+        </td>
+      </ng-container>
+
       <ng-container matColumnDef="estado">
         <th mat-header-cell *matHeaderCellDef>Estado</th>
         <td mat-cell *matCellDef="let fila"><app-estado-chip [estado]="fila.estado" /></td>
@@ -94,6 +101,13 @@
             <mat-icon>delete</mat-icon>
           </button>
           @if (auth.esSuperadmin()) {
+            <button
+              mat-icon-button
+              matTooltip="Suscripción (tarifa, exención, vigencia)"
+              (click)="editarSuscripcion(fila)"
+            >
+              <mat-icon>card_membership</mat-icon>
+            </button>
             <button
               mat-icon-button
               matTooltip="Reiniciar datos"

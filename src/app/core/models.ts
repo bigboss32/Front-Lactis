@@ -57,6 +57,12 @@ export interface Perfil {
    * superadmin. Opcional porque un backend viejo no lo manda: consumir con `?? []`.
    */
   empresas?: EmpresaResumen[];
+  /**
+   * Estado de la suscripción de la empresa ACTIVA (alimenta el banner del
+   * layout y el guard del paywall). Null para el superadmin sin empresa;
+   * opcional porque un backend viejo no lo manda: consumir con `??`.
+   */
+  suscripcion?: SuscripcionResumen | null;
 }
 
 // ---------------------------------------------------------------- empresas
@@ -70,6 +76,87 @@ export interface Empresa extends AuditFields {
   telefono: string | null;
   correo: string | null;
   logo_url: string | null;
+  // Suscripción (los edita solo el superadmin). Opcionales porque un backend
+  // viejo no los manda: consumir con `??`.
+  /** Tarifa mensual propia; null = usa la tarifa global del sistema. */
+  tarifa_mensual?: Monto | null;
+  /** Empresa exenta de pago: no se le cobra ni se bloquea. */
+  exenta?: boolean;
+  /** Hasta cuándo está pagada; null = período de prueba desde su creación. */
+  pagada_hasta?: string | null;
+}
+
+// ------------------------------------------------------------- suscripción
+export type EstadoSuscripcion = 'exenta' | 'activa' | 'por_vencer' | 'gracia' | 'bloqueada';
+
+/** Bloque `suscripcion` de GET /auth/me: lo mínimo para el banner y el guard. */
+export interface SuscripcionResumen {
+  estado: EstadoSuscripcion;
+  /** Límite EFECTIVO de vigencia (incluye la prueba); null solo para exentas. */
+  pagada_hasta: string | null;
+  /** Negativo = días vencidos; null solo para exentas. */
+  dias_restantes: number | null;
+  dias_gracia: number;
+  tarifa: Monto;
+  tiene_fuente_pago: boolean;
+}
+
+/**
+ * Tarjeta tokenizada en Wompi con la que se cobra la mensualidad.
+ * Los datos públicos son nullables en el backend (dependen de lo que Wompi
+ * devuelva al tokenizar); en la práctica siempre vienen, pero el tipo refleja
+ * el contrato de FuentePagoRead.
+ */
+export interface FuentePago {
+  id: string;
+  marca: string | null;
+  ultimos4: string | null;
+  exp_mes: string | null;
+  exp_anio: string | null;
+  customer_email: string | null;
+}
+
+/** GET /suscripcion: el detalle completo de la pantalla de suscripción. */
+export interface SuscripcionDetalle extends SuscripcionResumen {
+  exenta: boolean;
+  /** Hay un pago PENDING en curso: no se permite otro hasta que se resuelva. */
+  pago_pendiente: boolean;
+  fuente_pago: FuentePago | null;
+}
+
+export interface PagoSuscripcion {
+  id: string;
+  referencia: string;
+  wompi_transaction_id: string | null;
+  monto: Monto;
+  moneda: string;
+  estado_transaccion: 'PENDING' | 'APPROVED' | 'DECLINED' | 'VOIDED' | 'ERROR' | string;
+  origen: 'manual' | 'automatico' | 'cron' | string;
+  /** Período de vigencia que compró el pago (null si no fue APPROVED). */
+  periodo_desde: string | null;
+  periodo_hasta: string | null;
+  created_at: string;
+}
+
+/** Tokens de aceptación de Wompi (JWT frescos, con su página de términos). */
+export interface AceptacionWompi {
+  acceptance_token: string;
+  permalink: string;
+}
+
+/** GET /suscripcion/config: llave pública y tokens frescos para tokenizar. */
+export interface SuscripcionConfig {
+  public_key: string;
+  /** URL de tokenización de Wompi: el navegador manda la tarjeta DIRECTO allá. */
+  tokenizacion_url: string;
+  acceptance: AceptacionWompi;
+  personal_data_auth: AceptacionWompi;
+}
+
+/** Respuesta de POST /suscripcion/pagar (DECLINED también llega aquí, con 200). */
+export interface ResultadoPagoSuscripcion {
+  pago: PagoSuscripcion;
+  suscripcion: SuscripcionDetalle;
 }
 
 export interface Sucursal extends TenantFields {
