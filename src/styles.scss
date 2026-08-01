@@ -459,3 +459,33 @@ html.dark {
     --mat-sys-on-primary-container: color-mix(in srgb, var(--tema) 40%, white);
   }
 }
+
+
+/* ——— Días con entrada de queso, marcados en el calendario ———
+   Un punto bajo el número en los días en que entró queso (las fechas de lote),
+   para ver de un vistazo qué días hay algo que mirar en vez de probar a ciegas.
+
+   Va en los estilos GLOBALES porque el calendario se monta en la capa de
+   superposición, colgada del body: los estilos de la pantalla no lo alcanzan. */
+.mat-calendar-body-cell.dia-con-entrada .mat-calendar-body-cell-content {
+  position: relative;
+  font-weight: 600;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--mat-sys-primary);
+  }
+}
+
+/* En el día seleccionado el punto se pierde contra el relleno: se pone claro. */
+.mat-calendar-body-cell.dia-con-entrada
+  .mat-calendar-body-selected.mat-calendar-body-cell-content::after {
+  background: var(--mat-sys-on-primary);
+}

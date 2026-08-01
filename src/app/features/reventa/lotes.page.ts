@@ -123,23 +123,26 @@ function n(valor: Monto | null | undefined): number {
               y menos los fletes. Las compras de esos días no restan aquí: comprar
               no es gastar, es cambiar plata por queso.
             </p>
+            <p class="pista-punto">
+              <span class="punto"></span>
+              En el calendario, los días con punto son en los que entró queso.
+            </p>
           </div>
           <div class="rango">
-            <!-- Calendario, no teclado: escribir la fecha a mano cansa. Y la
-                 cuenta se rehace sola al elegir, sin tener que darle a nada. -->
-            <mat-form-field appearance="outline">
-              <mat-label>Desde</mat-label>
-              <input matInput [matDatepicker]="calDesde" [value]="desde()"
-                     (dateChange)="desde.set($event.value); cargarDias()" />
-              <mat-datepicker-toggle matIconSuffix [for]="calDesde" />
-              <mat-datepicker #calDesde />
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Hasta</mat-label>
-              <input matInput [matDatepicker]="calHasta" [value]="hasta()"
-                     (dateChange)="hasta.set($event.value); cargarDias()" />
-              <mat-datepicker-toggle matIconSuffix [for]="calHasta" />
-              <mat-datepicker #calHasta />
+            <!-- UN solo calendario para las dos fechas: se abre, se marca el
+                 primer día y el último, y ya. Con dos campos separados había que
+                 abrir dos veces y acordarse de cuál era cuál.
+                 La cuenta se rehace al marcar el segundo día, sin darle a nada. -->
+            <mat-form-field appearance="outline" class="campo-rango">
+              <mat-label>Días</mat-label>
+              <mat-date-range-input [rangePicker]="calendario">
+                <input matStartDate placeholder="Desde" [value]="desde()"
+                       (dateChange)="desde.set($event.value)" />
+                <input matEndDate placeholder="Hasta" [value]="hasta()"
+                       (dateChange)="hasta.set($event.value); cargarDias()" />
+              </mat-date-range-input>
+              <mat-datepicker-toggle matIconSuffix [for]="calendario" />
+              <mat-date-range-picker #calendario [dateClass]="claseDia" />
             </mat-form-field>
           </div>
         </div>
@@ -678,7 +681,7 @@ function n(valor: Monto | null | undefined): number {
       gap: 8px;
       flex-wrap: wrap;
 
-      mat-form-field { width: 168px; }
+      .campo-rango { width: 280px; }
     }
 
     .atajos {
@@ -733,6 +736,21 @@ function n(valor: Monto | null | undefined): number {
       .perdida { color: #c62828; }
     }
     :host-context(html.dark) .tabla-dia .perdida { color: #ef9a9a; }
+
+    .pista-punto {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 8px !important;
+      font-size: 0.8rem;
+    }
+    .punto {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--mat-sys-primary);
+      flex-shrink: 0;
+    }
 
     .error-dia, .vacio-dia {
       margin: 14px 0 0;
@@ -1132,6 +1150,24 @@ export class ReventaLotesPage implements OnInit {
   readonly atajo = signal<string>('Este mes');
 
   readonly ATAJOS = ATAJOS;
+
+  /**
+   * Los días en que ENTRÓ queso, o sea las fechas de lote. Se marcan con un
+   * punto en el calendario: así se ve de un vistazo qué días hay algo que mirar
+   * en vez de ir probando fechas a ciegas.
+   *
+   * Sale del panel que ya está cargado, sin pedir nada más.
+   */
+  readonly diasConEntrada = computed(
+    () => new Set((this.panel()?.lotes ?? []).map((l) => l.fecha)),
+  );
+
+  /**
+   * Campo y no método: el calendario guarda la referencia, y un método suelto
+   * perdería el `this` al llamarlo desde dentro del componente de Material.
+   */
+  readonly claseDia = (d: Date): string =>
+    this.diasConEntrada().has(aIso(d)) ? 'dia-con-entrada' : '';
 
   usarAtajo(a: Atajo): void {
     const [d, h] = a.rango();
