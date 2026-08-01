@@ -178,6 +178,11 @@ export class Layout implements OnInit, OnDestroy {
     () => this.grupoObjetoDeRuta(this.urlActual())?.color ?? null,
   );
 
+  /** La letra que se lee sobre ese color cuando se usa de relleno. */
+  readonly textoSeccion = computed(
+    () => this.grupoObjetoDeRuta(this.urlActual())?.contraste ?? null,
+  );
+
   estaAbierto(title: string): boolean {
     return this.abiertos().has(title);
   }

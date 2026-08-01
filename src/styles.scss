@@ -405,3 +405,54 @@ tr.mat-mdc-row.fila-peligro > td.mat-mdc-cell {
     }
   }
 }
+
+
+/* ——— Los botones principales, con el color de su categoría ———
+   Va en los estilos GLOBALES y no en layout.scss a propósito: los botones viven
+   dentro de las pantallas, que son otros componentes, y los estilos de un
+   componente no entran en otro. Una regla global sí llega a todos.
+
+   Se pintan SOLO los rellenos (mat-flat-button y los fab), que son la acción
+   principal de cada pantalla — "Nueva recepción", "Registrar venta". Los
+   delineados y los planos son acciones secundarias y se quedan como están: si
+   se pinta todo, no destaca nada.
+
+   Los diálogos quedan fuera solos, y eso es lo que se quiere: Angular los monta
+   en una capa aparte, fuera de .con-seccion, así que el botón rojo de "Anular"
+   sigue siendo rojo y no se vuelve del color de la categoría.
+
+   El color de la letra viene dado (--seccion-texto) y no calculado: sobre el
+   amarillo de Finanzas el blanco no se lee. Ver NavGroup.contraste. */
+.con-seccion {
+  .mat-mdc-unelevated-button:not(:disabled),
+  .mat-mdc-raised-button:not(:disabled),
+  .mat-mdc-fab:not(:disabled),
+  .mat-mdc-mini-fab:not(:disabled) {
+    background-color: var(--seccion);
+    color: var(--seccion-texto);
+
+    .mat-icon,
+    .mat-mdc-button-persistent-ripple::before {
+      color: var(--seccion-texto);
+    }
+  }
+}
+
+/* Dentro de un negocio aparte manda el color del negocio: ahí lo importante es
+   recordar en qué libro se está, que es una distinción más gorda.
+
+   Ojo con el selector: va `.con-negocio` a secas y NO `.con-negocio.con-seccion`.
+   Los negocios no son una categoría del menú de la quesera, así que ahí dentro
+   no hay `--seccion` y la regla combinada no casaba nunca: los botones de
+   reventa y transporte se quedaban del azul del tema. */
+.con-negocio {
+  .mat-mdc-unelevated-button:not(:disabled),
+  .mat-mdc-raised-button:not(:disabled),
+  .mat-mdc-fab:not(:disabled),
+  .mat-mdc-mini-fab:not(:disabled) {
+    background-color: var(--negocio);
+    color: #fff;
+
+    .mat-icon { color: #fff; }
+  }
+}

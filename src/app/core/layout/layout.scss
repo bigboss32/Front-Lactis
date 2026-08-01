@@ -289,6 +289,11 @@
 }
 
 .con-negocio {
+  // La barrita del título también, con el color del negocio: es la misma seña
+  // que en los módulos de la quesera, para que la pantalla se lea igual en los
+  // dos sitios. (La lee page-header.ts, que no puede recibir estilos de aquí.)
+  --seccion-viva: var(--negocio);
+
   // Franja de acento en la barra superior: es la seña que sobrevive en móvil,
   // donde el menú (y su banner) van plegados.
   .toolbar {
