@@ -31,6 +31,17 @@ export interface NavGroup {
    * así que se escribe aquí y se acabó la discusión.
    */
   contraste?: string;
+  /**
+   * Tono que se usa como color principal del TEMA de esa parte de la pantalla,
+   * cuando el de la tarjeta no sirve. Por defecto es el mismo `color`.
+   *
+   * Solo hace falta en Finanzas: Material usa un único color para el relleno de
+   * los botones Y para el texto de los delineados y los enlaces. El amarillo de
+   * la tarjeta va bien de relleno (8,5:1 con letra oscura) pero como TEXTO sobre
+   * fondo claro da 1,88:1 y no se lee. Medido en el navegador, no supuesto.
+   * La tarjeta y el menú siguen con el amarillo; solo el tema usa este tono.
+   */
+  tema?: string;
   items: NavItem[];
 }
 
@@ -90,7 +101,11 @@ export const NAV_GROUPS: NavGroup[] = [
     // Gastos vive en Comercial, no aquí, y el color acabaría señalando a otro
     // sitio — que es justo lo contrario de lo que se busca.
     color: CHART_COLORS[2],
-    contraste: '#241d05',
+    // Blanca, porque el relleno NO es el amarillo de la tarjeta sino el ámbar
+    // oscuro de `tema` (5,0:1 con blanco; con letra oscura daba 3,0 y no valía).
+    contraste: '#fff',
+    // Ámbar oscuro: el amarillo de la tarjeta no se lee como texto (ver `tema`)
+    tema: '#8a6100',
     icon: 'account_balance_wallet',
     items: [
       { label: 'Caja', icon: 'savings', route: '/caja', modulo: 'caja' },

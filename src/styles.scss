@@ -407,52 +407,55 @@ tr.mat-mdc-row.fila-peligro > td.mat-mdc-cell {
 }
 
 
-/* ——— Los botones principales, con el color de su categoría ———
-   Va en los estilos GLOBALES y no en layout.scss a propósito: los botones viven
-   dentro de las pantallas, que son otros componentes, y los estilos de un
-   componente no entran en otro. Una regla global sí llega a todos.
+/* ——— El tema de la categoría ———
+   No se pintan botones uno por uno: se le cambia el COLOR PRINCIPAL a esa parte
+   de la pantalla y Material hace el resto. Así lo siguen TODOS los elementos que
+   usan ese color —botones rellenos y delineados, el foco de los campos, las
+   casillas, los interruptores, las pestañas, los enlaces, las barras de
+   progreso— sin tener que enumerarlos ni acordarse de los que se añadan mañana.
 
-   Se pintan SOLO los rellenos (mat-flat-button y los fab), que son la acción
-   principal de cada pantalla — "Nueva recepción", "Registrar venta". Los
-   delineados y los planos son acciones secundarias y se quedan como están: si
-   se pinta todo, no destaca nada.
+   Se cambia solo en el CONTENIDO (.mat-drawer-content) y no en toda la cáscara:
+   el menú lateral ya tiene su propio sistema de acentos por grupo, y retocarle
+   el color principal le cambiaría también el logo de "Lactis" en cada pantalla.
 
-   Los diálogos quedan fuera solos, y eso es lo que se quiere: Angular los monta
-   en una capa aparte, fuera de .con-seccion, así que el botón rojo de "Anular"
-   sigue siendo rojo y no se vuelve del color de la categoría.
+   Los diálogos quedan fuera, que es lo que se quiere: Angular los monta en una
+   capa colgada del body, así que el botón rojo de "Anular" sigue siendo rojo.
 
-   El color de la letra viene dado (--seccion-texto) y no calculado: sobre el
-   amarillo de Finanzas el blanco no se lee. Ver NavGroup.contraste. */
-.con-seccion {
-  .mat-mdc-unelevated-button:not(:disabled),
-  .mat-mdc-raised-button:not(:disabled),
-  .mat-mdc-fab:not(:disabled),
-  .mat-mdc-mini-fab:not(:disabled) {
-    background-color: var(--seccion);
-    color: var(--seccion-texto);
-
-    .mat-icon,
-    .mat-mdc-button-persistent-ripple::before {
-      color: var(--seccion-texto);
-    }
-  }
+   OJO CON EL TEMA OSCURO. Material espera lo contrario en cada tema: en claro el
+   color principal es oscuro y la letra encima blanca; en oscuro el principal es
+   CLARO y la letra encima oscura. Poner el mismo color en los dos deja texto
+   ilegible. Por eso abajo hay dos bloques y no uno. */
+.con-seccion .mat-drawer-content {
+  /* El tono del TEMA, que no siempre es el de la tarjeta: ver NavGroup.tema. */
+  --tema: var(--seccion-tema, var(--seccion));
+  --tema-texto: var(--seccion-texto);
 }
 
-/* Dentro de un negocio aparte manda el color del negocio: ahí lo importante es
-   recordar en qué libro se está, que es una distinción más gorda.
+/* Dentro de un negocio aparte manda su color: ahí lo que hay que recordar es en
+   qué libro se está, que es una distinción más gorda que la categoría. */
+.con-negocio .mat-drawer-content {
+  --tema: var(--negocio);
+  --tema-texto: #fff;
+}
 
-   Ojo con el selector: va `.con-negocio` a secas y NO `.con-negocio.con-seccion`.
-   Los negocios no son una categoría del menú de la quesera, así que ahí dentro
-   no hay `--seccion` y la regla combinada no casaba nunca: los botones de
-   reventa y transporte se quedaban del azul del tema. */
-.con-negocio {
-  .mat-mdc-unelevated-button:not(:disabled),
-  .mat-mdc-raised-button:not(:disabled),
-  .mat-mdc-fab:not(:disabled),
-  .mat-mdc-mini-fab:not(:disabled) {
-    background-color: var(--negocio);
-    color: #fff;
+.con-seccion .mat-drawer-content,
+.con-negocio .mat-drawer-content {
+  --mat-sys-primary: var(--tema);
+  --mat-sys-on-primary: var(--tema-texto);
+  /* El "container" es el relleno suave: chips, estados marcados, resaltados. */
+  --mat-sys-primary-container: color-mix(in srgb, var(--tema) 20%, white);
+  --mat-sys-on-primary-container: color-mix(in srgb, var(--tema) 75%, black);
+}
 
-    .mat-icon { color: #fff; }
+html.dark {
+  .con-seccion .mat-drawer-content,
+  .con-negocio .mat-drawer-content {
+    /* Aclarado, como en el menú: la paleta es de gráfico y sobre fondo oscuro
+       estos colores se apagan. Y la letra encima pasa a ser oscura, que es lo
+       que Material espera en este tema. */
+    --mat-sys-primary: color-mix(in srgb, var(--tema) 62%, white);
+    --mat-sys-on-primary: color-mix(in srgb, var(--tema) 30%, black);
+    --mat-sys-primary-container: color-mix(in srgb, var(--tema) 45%, black);
+    --mat-sys-on-primary-container: color-mix(in srgb, var(--tema) 40%, white);
   }
 }

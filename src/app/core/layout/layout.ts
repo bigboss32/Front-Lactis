@@ -178,6 +178,12 @@ export class Layout implements OnInit, OnDestroy {
     () => this.grupoObjetoDeRuta(this.urlActual())?.color ?? null,
   );
 
+  /** El tono para el tema de la pantalla (ver NavGroup.tema). */
+  readonly temaSeccion = computed(() => {
+    const g = this.grupoObjetoDeRuta(this.urlActual());
+    return g ? (g.tema ?? g.color ?? null) : null;
+  });
+
   /** La letra que se lee sobre ese color cuando se usa de relleno. */
   readonly textoSeccion = computed(
     () => this.grupoObjetoDeRuta(this.urlActual())?.contraste ?? null,
