@@ -3,6 +3,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
@@ -20,18 +21,56 @@ import {
   ReventaService,
 } from './reventa.service';
 
-/** Número a partir de un Monto, que llega como texto cuando es Decimal. */
-/** Hoy en ISO (yyyy-mm-dd), que es lo que espera un <input type="date">. */
-function hoyIso(): string {
-  return new Date().toLocaleDateString('en-CA');
+/**
+ * Una fecha en ISO (yyyy-mm-dd) para mandarla al backend.
+ *
+ * Con 'en-CA' y no con toISOString(): el segundo pasa a UTC y en Colombia
+ * (UTC-5) devuelve el día ANTERIOR para cualquier hora antes de las 7 p.m. Una
+ * venta del 25 se consultaría como del 24.
+ */
+function aIso(f: Date): string {
+  return f.toLocaleDateString('en-CA');
 }
 
-/** El primero del mes corrido, en ISO. */
-function primerDiaDelMes(): string {
+/** El primero del mes corrido. */
+function primerDiaDelMes(): Date {
   const h = new Date();
-  return new Date(h.getFullYear(), h.getMonth(), 1).toLocaleDateString('en-CA');
+  return new Date(h.getFullYear(), h.getMonth(), 1);
 }
 
+interface Atajo {
+  texto: string;
+  rango: () => [Date, Date];
+}
+
+/**
+ * Los rangos que se piden casi siempre. Con estos rara vez hay que abrir el
+ * calendario, que era la queja: tener que teclear las dos fechas cada vez.
+ */
+const ATAJOS: Atajo[] = [
+  { texto: 'Hoy', rango: () => [new Date(), new Date()] },
+  {
+    texto: 'Últimos 7 días',
+    rango: () => {
+      const h = new Date();
+      return [new Date(h.getFullYear(), h.getMonth(), h.getDate() - 6), h];
+    },
+  },
+  { texto: 'Este mes', rango: () => [primerDiaDelMes(), new Date()] },
+  {
+    texto: 'Mes pasado',
+    rango: () => {
+      const h = new Date();
+      return [
+        new Date(h.getFullYear(), h.getMonth() - 1, 1),
+        // Día 0 del mes corriente = el último del anterior
+        new Date(h.getFullYear(), h.getMonth(), 0),
+      ];
+    },
+  },
+];
+
+/** Número a partir de un Monto, que llega como texto cuando es Decimal. */
 function n(valor: Monto | null | undefined): number {
   const numero = Number(valor);
   return Number.isFinite(numero) ? numero : 0;
@@ -58,7 +97,7 @@ function n(valor: Monto | null | undefined): number {
   selector: 'app-reventa-lotes',
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    MatTooltipModule, MatFormFieldModule, MatInputModule,
+    MatTooltipModule, MatFormFieldModule, MatInputModule, MatDatepickerModule,
     PageHeader, MoneyPipe, CantidadPipe,
   ],
   template: `
@@ -86,20 +125,33 @@ function n(valor: Monto | null | undefined): number {
             </p>
           </div>
           <div class="rango">
+            <!-- Calendario, no teclado: escribir la fecha a mano cansa. Y la
+                 cuenta se rehace sola al elegir, sin tener que darle a nada. -->
             <mat-form-field appearance="outline">
               <mat-label>Desde</mat-label>
-              <input matInput type="date" [value]="desde()"
-                     (change)="desde.set($any($event.target).value)" />
+              <input matInput [matDatepicker]="calDesde" [value]="desde()"
+                     (dateChange)="desde.set($event.value); cargarDias()" />
+              <mat-datepicker-toggle matIconSuffix [for]="calDesde" />
+              <mat-datepicker #calDesde />
             </mat-form-field>
             <mat-form-field appearance="outline">
               <mat-label>Hasta</mat-label>
-              <input matInput type="date" [value]="hasta()"
-                     (change)="hasta.set($any($event.target).value)" />
+              <input matInput [matDatepicker]="calHasta" [value]="hasta()"
+                     (dateChange)="hasta.set($event.value); cargarDias()" />
+              <mat-datepicker-toggle matIconSuffix [for]="calHasta" />
+              <mat-datepicker #calHasta />
             </mat-form-field>
-            <button mat-flat-button [disabled]="cargandoDias()" (click)="cargarDias()">
-              <mat-icon>calculate</mat-icon> Calcular
-            </button>
           </div>
+        </div>
+
+        <!-- Los atajos: con estos casi nunca hay que abrir el calendario. -->
+        <div class="atajos">
+          @for (a of ATAJOS; track a.texto) {
+            <button mat-stroked-button class="atajo" [class.puesto]="atajo() === a.texto"
+                    (click)="usarAtajo(a)">
+              {{ a.texto }}
+            </button>
+          }
         </div>
 
         @if (errorDias()) {
@@ -626,7 +678,24 @@ function n(valor: Monto | null | undefined): number {
       gap: 8px;
       flex-wrap: wrap;
 
-      mat-form-field { width: 150px; }
+      mat-form-field { width: 168px; }
+    }
+
+    .atajos {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+
+      .atajo {
+        font-size: 0.82rem;
+        // El puesto se marca con el color de la sección, que aquí es el del
+        // negocio: se ve cuál está aplicado sin tener que mirar las fechas.
+        &.puesto {
+          background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
+          font-weight: 600;
+        }
+      }
     }
 
     .total-dia {
@@ -1057,8 +1126,20 @@ export class ReventaLotesPage implements OnInit {
 
   // ——— Cuánto gané en estos días ———
   // Arranca en el mes corrido, que es lo que la gente quiere ver al entrar.
-  readonly desde = signal(primerDiaDelMes());
-  readonly hasta = signal(hoyIso());
+  readonly desde = signal<Date | null>(primerDiaDelMes());
+  readonly hasta = signal<Date | null>(new Date());
+  /** Cuál de los atajos está puesto, para marcarlo. Vacío si eligió a mano. */
+  readonly atajo = signal<string>('Este mes');
+
+  readonly ATAJOS = ATAJOS;
+
+  usarAtajo(a: Atajo): void {
+    const [d, h] = a.rango();
+    this.desde.set(d);
+    this.hasta.set(h);
+    this.atajo.set(a.texto);
+    this.cargarDias();
+  }
   readonly porDia = signal<GananciaPorDia | null>(null);
   readonly cargandoDias = signal(false);
   readonly errorDias = signal<string | null>(null);
@@ -1069,9 +1150,11 @@ export class ReventaLotesPage implements OnInit {
   }
 
   cargarDias(): void {
-    const desde = this.desde();
-    const hasta = this.hasta();
-    if (!desde || !hasta) return;
+    const d = this.desde();
+    const h = this.hasta();
+    if (!d || !h) return;
+    const desde = aIso(d);
+    const hasta = aIso(h);
     if (hasta < desde) {
       this.errorDias.set('La fecha final no puede ser anterior a la inicial.');
       this.porDia.set(null);
