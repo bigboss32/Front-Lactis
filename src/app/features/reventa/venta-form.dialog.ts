@@ -231,7 +231,7 @@ export class VentaQuesoFormDialog {
         gasto_por_kilo: Number(valores.gasto_por_kilo || 0),
         observaciones: valores.observaciones || null,
       };
-      await firstValueFrom(
+      const guardada = await firstValueFrom(
         this.data?.item
           ? this.servicio.editarVenta(this.data.item.id, payload)
           : this.servicio.crearVenta({
@@ -240,7 +240,11 @@ export class VentaQuesoFormDialog {
               pagada_de_contado: valores.pagada_de_contado,
             }),
       );
-      this.dialogRef.close(true);
+      // Se devuelve la venta guardada, no un simple `true`: quien abrió el
+      // diálogo la necesita para ofrecer «Anexar soporte» justo después, que es
+      // cuando el dueño tiene a mano la foto de la transferencia del cliente.
+      // Sigue siendo un valor "verdadero" para quien solo mira si se guardó.
+      this.dialogRef.close(guardada);
     } catch (err) {
       avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar la venta');
     } finally {

@@ -24,6 +24,7 @@ import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
+import { AdjuntosDialog } from './adjuntos.dialog';
 import { ReventaEstadoCuentaDialog } from './estado-cuenta.dialog';
 import { ReventaService, VentaQueso } from './reventa.service';
 import { VentaQuesoFormDialog } from './venta-form.dialog';
@@ -41,9 +42,9 @@ import { VentaQuesoFormDialog } from './venta-form.dialog';
   styles: `
     .spacer { flex: 1; }
 
-    // Seis iconos en la fila (estado de cuenta, abonar, ver abonos, editar,
-    // anular, eliminar): el ancho tiene que alcanzar para todos.
-    .table-card .col-acciones { width: 275px; }
+    // Siete iconos en la fila (estado de cuenta, abonar, ver abonos, soportes,
+    // editar, anular, eliminar): el ancho tiene que alcanzar para todos.
+    .table-card .col-acciones { width: 315px; }
 
     // En celular la tabla se vuelve tarjetas y los iconos envuelven: la celda
     // toma el ancho de la tarjeta. Con un ancho fijo mayor que la pantalla el
@@ -80,6 +81,24 @@ import { VentaQuesoFormDialog } from './venta-form.dialog';
     }
 
     :host-context(html.dark) .badge-borona { color: #ffb74d; }
+
+    // Contador sobre el clip: cuántos soportes tiene la venta.
+    .con-badge { position: relative; display: inline-flex; }
+    .badge-adjuntos {
+      position: absolute;
+      top: -4px;
+      right: -6px;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      border-radius: 7px;
+      font-size: 0.62rem;
+      line-height: 14px;
+      font-weight: 600;
+      text-align: center;
+      background: var(--mat-sys-primary);
+      color: var(--mat-sys-on-primary);
+    }
   `,
 })
 export class VentaQuesoListTab {
@@ -208,10 +227,35 @@ export class VentaQuesoListTab {
     this.dialog
       .open(VentaQuesoFormDialog, { width: '560px' })
       .afterClosed()
-      .subscribe((guardado) => {
-        if (!guardado) return;
-        this.snackbar.open('Venta registrada', 'OK', { duration: 3000 });
+      .subscribe((guardada: VentaQueso | undefined) => {
+        if (!guardada) return;
         this.notificar();
+        // El momento de anexar la foto de la transferencia del cliente es JUSTO
+        // AHORA, con el comprobante todavía en pantalla. Se ofrece desde el
+        // mismo aviso: quien no va a adjuntar nada no tiene que cerrar nada.
+        this.snackbar
+          .open('Venta registrada', 'Anexar soporte', { duration: 8000 })
+          .onAction()
+          .subscribe(() => this.soportes(guardada));
+      });
+  }
+
+  /** Los soportes de pago (fotos de las transferencias) de esta venta. */
+  soportes(fila: VentaQueso): void {
+    this.dialog
+      .open(AdjuntosDialog, {
+        data: {
+          tipo: 'venta',
+          id: fila.id,
+          titulo: `Venta a ${fila.cliente} · ${fila.fecha}`,
+        },
+        width: '720px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe((cambiado) => {
+        // Solo si cambió algo: el contador del clip sale del listado.
+        if (cambiado) this.notificar();
       });
   }
 

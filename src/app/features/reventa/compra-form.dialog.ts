@@ -159,12 +159,17 @@ export class CompraFormDialog {
         precio_kilo: Number(valores.precio_kilo),
         observaciones: valores.observaciones || null,
       };
-      await firstValueFrom(
+      const guardada = await firstValueFrom(
         this.data?.item
           ? this.servicio.editarCompra(this.data.item.id, payload)
           : this.servicio.crearCompra(payload),
       );
-      this.dialogRef.close(true);
+      // Se devuelve la compra guardada y no un simple `true`: quien abrió el
+      // diálogo la necesita para ofrecer «Anexar soporte» justo después de
+      // registrarla, que es cuando el dueño tiene la foto de la transferencia a
+      // mano. Sigue siendo un valor "verdadero", así que quien solo pregunta si
+      // se guardó no se entera del cambio.
+      this.dialogRef.close(guardada);
     } catch (err) {
       avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar la compra');
     } finally {

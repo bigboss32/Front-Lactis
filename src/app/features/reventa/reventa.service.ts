@@ -38,6 +38,8 @@ export interface CompraQueso extends TenantFields {
   saldo: Monto;
   observaciones: string | null;
   abonos: AbonoReventa[];
+  /** Cuántos soportes de pago tiene. Solo el número: las fotos se piden aparte. */
+  adjuntos_count: number;
 }
 
 export interface VentaQueso extends TenantFields {
@@ -55,6 +57,52 @@ export interface VentaQueso extends TenantFields {
   saldo: Monto;
   observaciones: string | null;
   abonos: AbonoReventa[];
+  /** Cuántos soportes de pago tiene. Solo el número: las fotos se piden aparte. */
+  adjuntos_count: number;
+}
+
+// ------------------------------------- adjuntos (soportes de transferencia)
+/**
+ * Un soporte de pago con su enlace TEMPORAL.
+ *
+ * `url` no está guardada en ninguna parte: el backend la firma cada vez que se
+ * pide la lista y se muere sola a los pocos minutos (`url_expira`). Si la
+ * pantalla queda abierta media hora, los enlaces que tiene en memoria ya no
+ * sirven y hay que volver a pedir la lista.
+ *
+ * Es `null` cuando el almacenamiento no está configurado en el servidor: la
+ * fila igual se muestra, pero sin poder abrirla.
+ */
+export interface AdjuntoReventa {
+  id: string;
+  compra_id: string | null;
+  venta_id: string | null;
+  nombre_archivo: string;
+  content_type: string;
+  tamano_bytes: number;
+  es_imagen: boolean;
+  subido_por_nombre: string | null;
+  created_at: string;
+  url: string | null;
+  url_expira: string | null;
+}
+
+export interface AdjuntosLista {
+  /** false = el servidor no tiene configurado el almacenamiento de imágenes. */
+  disponible: boolean;
+  mensaje: string | null;
+  cupo_restante: number;
+  adjuntos: AdjuntoReventa[];
+}
+
+/** Enlace de más duración para mandar UNA imagen por fuera (WhatsApp). */
+export interface EnlaceCompartido {
+  url: string;
+  nombre_archivo: string;
+  expira: string;
+  /** Ya viene en cristiano y en hora de Colombia: "hasta el martes 5 de agosto...". */
+  expira_texto: string;
+  dias: number;
 }
 
 // ------------------------------------------------------------------ lotes
@@ -917,5 +965,53 @@ export class ReventaService {
 
   eliminarConversion(id: string): Observable<void> {
     return this.api.delete(`${this.base}/conversiones/${id}`);
+  }
+
+  // ------------------------------------ adjuntos (soportes de transferencia)
+  /** Los soportes del documento, con enlaces firmados de corta duración. */
+  adjuntosDeCompra(compraId: string): Observable<AdjuntosLista> {
+    return this.api.get<AdjuntosLista>(`${this.base}/compras/${compraId}/adjuntos`);
+  }
+
+  adjuntosDeVenta(ventaId: string): Observable<AdjuntosLista> {
+    return this.api.get<AdjuntosLista>(`${this.base}/ventas/${ventaId}/adjuntos`);
+  }
+
+  /**
+   * Sube N soportes en UNA sola petición e informa el progreso.
+   *
+   * Una petición por archivo sería más simple, pero con la señal del campo unas
+   * pasarían y otras no, y el dueño quedaría sin saber cuáles de sus fotos
+   * alcanzaron a subir. Así es todo o nada, y el backend además valida todos los
+   * archivos antes de guardar el primero.
+   */
+  subirAdjuntosDeCompra(
+    compraId: string,
+    archivos: File[],
+  ): Observable<{ progreso: number; cuerpo?: AdjuntosLista }> {
+    return this.api.uploadVarios<AdjuntosLista>(
+      `${this.base}/compras/${compraId}/adjuntos`,
+      archivos,
+    );
+  }
+
+  subirAdjuntosDeVenta(
+    ventaId: string,
+    archivos: File[],
+  ): Observable<{ progreso: number; cuerpo?: AdjuntosLista }> {
+    return this.api.uploadVarios<AdjuntosLista>(
+      `${this.base}/ventas/${ventaId}/adjuntos`,
+      archivos,
+    );
+  }
+
+  /** Enlace largo para mandar UNA imagen por fuera. Queda en la auditoría. */
+  compartirAdjunto(adjuntoId: string): Observable<EnlaceCompartido> {
+    return this.api.post<EnlaceCompartido>(`${this.base}/adjuntos/${adjuntoId}/compartir`);
+  }
+
+  /** Borra el soporte y también el archivo del almacenamiento. */
+  eliminarAdjunto(adjuntoId: string): Observable<void> {
+    return this.api.delete(`${this.base}/adjuntos/${adjuntoId}`);
   }
 }

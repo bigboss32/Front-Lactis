@@ -105,6 +105,46 @@ export class ApiService {
       );
   }
 
+  /**
+   * Sube VARIOS archivos de una vez y va contando cuánto lleva subido.
+   *
+   * Es la hermana de `upload`, con dos diferencias que importan:
+   *
+   * 1. Manda todos los archivos en el MISMO campo (`files`), que es lo que
+   *    espera un `list[UploadFile]` de FastAPI. Una petición por archivo sería
+   *    más simple, pero con señal mala unas pasarían y otras no, y el dueño
+   *    quedaría sin saber cuáles de sus cinco fotos alcanzaron a subir.
+   * 2. NO se queda solo con la respuesta final: emite el porcentaje mientras
+   *    sube. Aquí sí hay barra de progreso, porque una tanda de fotos de celular
+   *    puede pesar 30 MB y desde el campo eso son varios minutos; sin barra, la
+   *    pantalla parece congelada y la gente vuelve a darle al botón.
+   *
+   * Emite `{ progreso: 0..100 }` mientras va, y `{ progreso: 100, cuerpo }` al
+   * terminar. Quien llama distingue el final por `cuerpo !== undefined`.
+   */
+  uploadVarios<T>(path: string, files: File[]): Observable<{ progreso: number; cuerpo?: T }> {
+    const form = new FormData();
+    for (const file of files) form.append('files', file, file.name);
+    return this.http
+      .post<T>(`${API_BASE}${path}`, form, { reportProgress: true, observe: 'events' })
+      .pipe(
+        filter(
+          (evento) =>
+            evento.type === HttpEventType.UploadProgress ||
+            evento.type === HttpEventType.Response,
+        ),
+        map((evento) => {
+          if (evento.type === HttpEventType.Response) {
+            return { progreso: 100, cuerpo: (evento as HttpResponse<T>).body as T };
+          }
+          // `total` puede no venir si el servidor no informa el tamaño; en ese
+          // caso se deja en 0 y la barra se muestra indeterminada.
+          const { loaded, total } = evento as { loaded: number; total?: number };
+          return { progreso: total ? Math.round((loaded / total) * 100) : 0 };
+        }),
+      );
+  }
+
   /** GET de un binario (PDF/Excel) como Blob, para compartir o previsualizar. */
   getBlob(path: string, params?: QueryParams): Observable<Blob> {
     return this.http.get(`${API_BASE}${path}`, {

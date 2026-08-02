@@ -133,6 +133,26 @@
             <button mat-icon-button matTooltip="Ver abonos" (click)="verAbonos(fila)">
               <mat-icon>receipt_long</mat-icon>
             </button>
+            <!-- Soportes de pago (fotos de las transferencias del cliente).
+                 Basta 'consultar' para abrir: adentro cada botón pide lo suyo
+                 (subir con 'crear', compartir con 'exportar', borrar con
+                 'eliminar'). El punto sobre el clip dice cuántos hay. -->
+            <button
+              mat-icon-button
+              [matTooltip]="
+                fila.adjuntos_count > 0
+                  ? 'Soportes de pago (' + fila.adjuntos_count + ')'
+                  : 'Anexar soporte de pago'
+              "
+              (click)="soportes(fila)"
+            >
+              <span class="con-badge">
+                <mat-icon>attach_file</mat-icon>
+                @if (fila.adjuntos_count > 0) {
+                  <span class="badge-adjuntos">{{ fila.adjuntos_count }}</span>
+                }
+              </span>
+            </button>
             <button
               mat-icon-button
               *hasPermission="'reventa:editar'"
