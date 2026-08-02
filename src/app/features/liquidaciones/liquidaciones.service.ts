@@ -63,6 +63,26 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
     return this.api.post<Liquidacion[]>(`${this.base}/generar`, payload);
   }
 
+  /**
+   * Corrige el precio por litro de UN día de la liquidación.
+   *
+   * Devuelve la liquidación entera recalculada por el backend —y no solo el día—
+   * porque al cambiar el precio también cambian el valor bruto, el promedio, el
+   * total y el saldo: pintar solo la fila dejaría el resumen mintiendo.
+   *
+   * El backend solo lo permite en borrador; la pantalla oculta el campo fuera de
+   * ese estado, pero el que dice que no de verdad es el servidor.
+   */
+  actualizarPrecioDetalle(
+    id: string,
+    detalleId: string,
+    precioLitro: number,
+  ): Observable<Liquidacion> {
+    return this.api.put<Liquidacion>(`${this.base}/${id}/detalles/${detalleId}`, {
+      precio_litro: precioLitro,
+    });
+  }
+
   aprobar(id: string): Observable<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/aprobar`);
   }

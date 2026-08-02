@@ -40,7 +40,44 @@
 
     <ng-container matColumnDef="precio_litro">
       <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
-      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.precio_litro | money }}</td>
+      <td mat-cell *matCellDef="let detalle" class="num">
+        @if (editandoId() === detalle.id) {
+          <span class="precio-edicion">
+            @if (guardandoId() === detalle.id) {
+              <app-spinner-boton />
+            }
+            <!--
+              autofocus por atributo y no por ViewChild: el campo aparece y
+              desaparece con un @if y Angular lo crea ya visible, así que el
+              navegador le da el foco sin necesidad de un temporizador.
+            -->
+            <input
+              type="text"
+              inputmode="decimal"
+              autofocus
+              aria-label="Precio por litro de ese día, en pesos"
+              [value]="textoPrecio()"
+              [disabled]="guardandoId() === detalle.id"
+              (input)="alEscribirPrecio($any($event.target).value)"
+              (keydown.enter)="guardarPrecio(detalle)"
+              (keydown.escape)="cancelarPrecio()"
+              (blur)="alSalirDelPrecio(detalle)"
+            />
+          </span>
+        } @else if (puedeEditarPrecio()) {
+          <button
+            type="button"
+            class="precio-editable"
+            matTooltip="Corregir el precio por litro de ese día"
+            (click)="editarPrecio(detalle)"
+          >
+            {{ detalle.precio_litro | money }}
+            <mat-icon class="lapiz">edit</mat-icon>
+          </button>
+        } @else {
+          {{ detalle.precio_litro | money }}
+        }
+      </td>
     </ng-container>
 
     <ng-container matColumnDef="valor">
@@ -54,6 +91,11 @@
 
   @if (liq().detalles.length === 0) {
     <p class="sin-datos">Esta liquidación no tiene detalles diarios</p>
+  } @else if (puedeEditarPrecio()) {
+    <!-- Sin esta línea, que la cifra se pueda tocar solo se descubre por azar. -->
+    <p class="ayuda-precio">
+      Toque el precio de un día para corregirlo. Enter guarda, Escape cancela.
+    </p>
   }
 
   <h3>Resumen</h3>

@@ -9,22 +9,37 @@ import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Observable, firstValueFrom } from 'rxjs';
 
+import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Liquidacion } from '../../core/models';
+import { Liquidacion, LiquidacionDetalle } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { LiquidacionesService } from './liquidaciones.service';
+
+/**
+ * Lee un precio escrito a la colombiana: "1.750" son mil setecientos cincuenta,
+ * no uno con setenta y cinco. El punto separa miles y la coma es el decimal, al
+ * revés de lo que entiende Number(). Devuelve null si lo tecleado no es un
+ * precio utilizable, para no mandarle NaN al backend.
+ */
+function precioTecleado(texto: string): number | null {
+  const limpio = texto.trim().replace(/\s|\$/g, '').replace(/\./g, '').replace(',', '.');
+  if (!/^\d+(\.\d+)?$/.test(limpio)) return null;
+  const numero = Number(limpio);
+  return numero > 0 ? numero : null;
+}
 
 @Component({
   selector: 'app-liquidacion-detail',
   imports: [
     DatePipe, MatDialogModule, MatButtonModule, MatIconModule, MatProgressBarModule,
     MatTableModule, MatTooltipModule, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
-    LiquidacionEstadoStepper,
+    LiquidacionEstadoStepper, SpinnerBoton,
   ],
   templateUrl: './liquidacion-detail.dialog.html',
   styles: `
@@ -58,12 +73,78 @@ import { LiquidacionesService } from './liquidaciones.service';
       max-width: 420px;
     }
     .resumen .destacado { font-weight: 600; }
+
+    .ayuda-precio {
+      margin: 6px 0 0;
+      font-size: 0.75rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    /* ---------------------------------------- precio por litro editable */
+    /*
+     * El botón se ve como texto normal: la fila no debe parecer un formulario.
+     * La pista de que se puede tocar aparece al pasar el mouse o al enfocar, que
+     * es cuando el usuario ya está preguntándose si se puede.
+     */
+    .precio-editable {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      margin: -2px -6px;
+      font: inherit;
+      color: inherit;
+      background: transparent;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-variant-numeric: tabular-nums;
+    }
+    .precio-editable:hover,
+    .precio-editable:focus-visible {
+      background: color-mix(in srgb, var(--mat-sys-primary) 12%, transparent);
+    }
+    .precio-editable .lapiz {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      opacity: 0;
+      color: var(--mat-sys-primary);
+      transition: opacity 120ms ease;
+    }
+    .precio-editable:hover .lapiz,
+    .precio-editable:focus-visible .lapiz { opacity: 1; }
+    /* En pantalla táctil no hay hover: si el lápiz nunca se ve, nadie descubre
+       que la cifra se puede corregir. */
+    @media (hover: none) {
+      .precio-editable .lapiz { opacity: 0.6; }
+    }
+
+    .precio-edicion {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .precio-edicion input {
+      width: 96px;
+      padding: 4px 6px;
+      font: inherit;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--mat-sys-on-surface);
+      background: var(--mat-sys-surface);
+      border: 1px solid var(--mat-sys-primary);
+      border-radius: 4px;
+    }
+    .precio-edicion input:disabled { opacity: 0.7; }
   `,
 })
 export class LiquidacionDetailDialog {
   private readonly servicio = inject(LiquidacionesService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly auth = inject(AuthService);
 
   readonly data = inject<{ item: Liquidacion }>(MAT_DIALOG_DATA);
 
@@ -72,8 +153,30 @@ export class LiquidacionDetailDialog {
   readonly descargando = signal(false);
   readonly compartiendo = signal(false);
 
+  /** Día cuyo precio se está editando (su id), o null si no hay ninguno. */
+  readonly editandoId = signal<string | null>(null);
+  /** Día cuyo precio se está guardando: mientras tanto el campo queda quieto. */
+  readonly guardandoId = signal<string | null>(null);
+  /** Lo tecleado en el campo abierto, tal cual, sin interpretar todavía. */
+  readonly textoPrecio = signal('');
+
   readonly tercero = computed(
     () => this.liq().proveedor_nombre ?? this.liq().transportador_nombre ?? '—',
+  );
+
+  /**
+   * El precio solo se corrige en BORRADOR y solo en liquidaciones de proveedor.
+   *
+   * Aprobada o pagada quiere decir que ese precio ya se le pagó a alguien, y en
+   * la del transportador la cifra de esa columna es la tarifa del flete del día
+   * —otra cosa—. El backend rechaza los dos casos igual: esto es para que el
+   * campo ni siquiera se ofrezca.
+   */
+  readonly puedeEditarPrecio = computed(
+    () =>
+      this.liq().estado === 'borrador' &&
+      this.liq().tipo === 'proveedor' &&
+      this.auth.hasPermission('liquidaciones', 'editar'),
   );
 
   readonly columnasDetalle = ['fecha', 'litros', 'precio_litro', 'valor'];
@@ -83,6 +186,79 @@ export class LiquidacionDetailDialog {
     firstValueFrom(this.servicio.getById(this.data.item.id))
       .then((liq) => this.liq.set(liq))
       .catch(() => undefined);
+  }
+
+  // ------------------------------------------- corregir el precio de un día
+  /**
+   * Escape cierra el campo, y al cerrarlo el navegador puede disparar el blur
+   * del input que acaba de desaparecer. Esta marca evita que ese blur guarde lo
+   * que el usuario justamente acaba de cancelar.
+   */
+  private cancelando = false;
+
+  editarPrecio(detalle: LiquidacionDetalle): void {
+    if (!this.puedeEditarPrecio() || this.guardandoId()) return;
+    this.cancelando = false;
+    this.textoPrecio.set(String(Number(detalle.precio_litro)));
+    this.editandoId.set(detalle.id);
+  }
+
+  cancelarPrecio(): void {
+    this.cancelando = true;
+    this.editandoId.set(null);
+  }
+
+  alEscribirPrecio(valor: string): void {
+    this.textoPrecio.set(valor);
+  }
+
+  /**
+   * Al salir del campo se guarda, como en la hoja de cálculo de la que viene el
+   * dueño: si hace clic afuera después de teclear, espera que quede. Escape
+   * sigue siendo la forma de arrepentirse.
+   */
+  alSalirDelPrecio(detalle: LiquidacionDetalle): void {
+    if (this.cancelando) {
+      this.cancelando = false;
+      return;
+    }
+    void this.guardarPrecio(detalle);
+  }
+
+  async guardarPrecio(detalle: LiquidacionDetalle): Promise<void> {
+    if (this.guardandoId()) return;
+    const precio = precioTecleado(this.textoPrecio());
+
+    // Sin cambio real, cerrar el campo y no molestar al servidor.
+    if (precio === null || precio === Number(detalle.precio_litro)) {
+      if (precio === null) {
+        this.snackbar.open('Escriba el precio por litro en pesos, por ejemplo 1750', 'OK', {
+          duration: 4000,
+        });
+        return; // el campo se queda abierto para corregir lo tecleado
+      }
+      this.editandoId.set(null);
+      return;
+    }
+
+    this.guardandoId.set(detalle.id);
+    try {
+      const actualizada = await firstValueFrom(
+        this.servicio.actualizarPrecioDetalle(this.liq().id, detalle.id, precio),
+      );
+      // La cifra en pantalla es SIEMPRE la que devolvió el servidor: nunca se
+      // pinta el precio nuevo por adelantado. Si el guardado falla, lo que se ve
+      // sigue siendo lo que de verdad está guardado.
+      this.liq.set(actualizada);
+      this.editandoId.set(null);
+      this.snackbar.open('Precio actualizado', 'OK', { duration: 3000 });
+    } catch (err) {
+      // El campo se queda ABIERTO con lo tecleado: así se ve que ese día quedó
+      // sin guardar, en vez de volver a la cifra vieja como si nada.
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible cambiar el precio de ese día');
+    } finally {
+      this.guardandoId.set(null);
+    }
   }
 
   aprobar(): void {

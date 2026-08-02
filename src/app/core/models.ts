@@ -366,6 +366,8 @@ export interface ResumenPeriodo {
 }
 
 export interface LiquidacionDetalle {
+  /** Señala el día al corregirle el precio; no se muestra en pantalla. */
+  id: string;
   fecha: string;
   litros: Monto;
   precio_litro: Monto;
