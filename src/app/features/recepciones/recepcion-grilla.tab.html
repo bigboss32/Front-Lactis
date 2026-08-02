@@ -152,14 +152,15 @@
                 @for (dia of dias(); track dia.iso) {
                   <td class="celda" [class.hoy]="dia.iso === hoy()">
                     @if (fila.celdas[dia.iso]; as celda) {
-                      <!-- El candado es SOLO para lo ya pagado: esa plata ya salió.
-                           Un día que está en una liquidación en borrador o aprobada
-                           se sigue pudiendo corregir (el backend recuadra la
+                      <!-- El candado es para lo que YA TIENE PAGOS: pagada del todo,
+                           o con un abono encima. En las dos esa plata ya salió. Un
+                           día que está en una liquidación en borrador o aprobada se
+                           sigue pudiendo corregir (el backend recuadra la
                            liquidación), pero lleva la franja de aviso de abajo. -->
                       @if (celda.pagada) {
                         <span
                           class="celda-contenido pagada"
-                          matTooltip="Pagada — no editable"
+                          [matTooltip]="tooltipTrabada(celda)"
                         >
                           {{ celda.litros | cantidad }}
                           @if (celda.con_transporte) {
@@ -261,6 +262,7 @@
     editar, pero la liquidación se recalcula
   </span>
   <span class="leyenda-item">
-    <span class="muestra pagada"><mat-icon>lock</mat-icon></span> Pagada — no editable
+    <span class="muestra pagada"><mat-icon>lock</mat-icon></span> Con pagos (pagada o abonada) —
+    no editable
   </span>
 </div>

@@ -161,13 +161,21 @@
 
             <ng-container matColumnDef="liquidacion">
               <th mat-header-cell *matHeaderCellDef mat-sort-header>Liquidación</th>
-              <!-- Ya no basta con "sí/no": de los tres estados, solo 'pagada'
-                   traba el día; en borrador y aprobada se sigue pudiendo
-                   corregir (y la liquidación se recalcula sola). -->
+              <!-- Ya no basta con "sí/no": traban el día las liquidaciones que ya
+                   tienen pagos ('pagada' y 'parcial'); en borrador y aprobada se
+                   sigue pudiendo corregir (y la liquidación se recalcula sola). -->
               <td mat-cell *matCellDef="let fila" [attr.data-label]="'Liquidación'">
                 @switch (fila.liquidacion_estado) {
                   @case ('pagada') {
                     <span class="liq pagada"><mat-icon>lock</mat-icon> Pagada</span>
+                  }
+                  @case ('parcial') {
+                    <span
+                      class="liq pagada"
+                      matTooltip="Ya tiene un pago registrado: para corregir el día hay que eliminar antes ese pago"
+                    >
+                      <mat-icon>lock</mat-icon> Con abono
+                    </span>
                   }
                   @case ('aprobada') {
                     <span
@@ -199,7 +207,7 @@
                   mat-icon-button
                   *hasPermission="'recepcion:editar'"
                   [matTooltip]="tooltipEditar(fila)"
-                  [disabled]="fila.liquidacion_estado === 'pagada'"
+                  [disabled]="trabado(fila)"
                   (click)="abrirFormulario(fila)"
                 >
                   <mat-icon>edit</mat-icon>
@@ -207,10 +215,8 @@
                 <button
                   mat-icon-button
                   *hasPermission="'recepcion:eliminar'"
-                  [matTooltip]="
-                    fila.liquidacion_estado === 'pagada' ? 'Ya pagada: no se puede eliminar' : 'Eliminar'
-                  "
-                  [disabled]="fila.liquidacion_estado === 'pagada'"
+                  [matTooltip]="tooltipEliminar(fila)"
+                  [disabled]="trabado(fila)"
                   (click)="eliminar(fila)"
                 >
                   <mat-icon>delete</mat-icon>

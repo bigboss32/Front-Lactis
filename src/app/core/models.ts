@@ -328,11 +328,24 @@ export interface Proveedor extends TenantFields {
 }
 
 /**
- * Estado de la liquidación que manda sobre un día de recepción. SOLO 'pagada'
- * bloquea: en borrador y en aprobada el día se puede corregir y el backend
- * recuadra la liquidación solo (y si estaba aprobada, la devuelve a borrador).
+ * Estado de la liquidación que manda sobre un día de recepción. Bloquean las
+ * que YA TIENEN PAGOS ('parcial' y 'pagada'); en borrador y en aprobada el día
+ * se puede corregir y el backend recuadra la liquidación solo (y si estaba
+ * aprobada, la devuelve a borrador).
  */
-export type EstadoLiquidacionDia = 'borrador' | 'aprobada' | 'pagada' | null;
+export type EstadoLiquidacionDia = 'borrador' | 'aprobada' | 'parcial' | 'pagada' | null;
+
+/**
+ * ¿Este día quedó trabado porque ya salió plata por él?
+ *
+ * Basta UN abono: si al proveedor se le pagó la mitad de la quincena y después
+ * le cambian los litros, ese pago queda contra un total que ya no existe. El
+ * backend rebota igual (RecepcionService._exigir_no_pagada); esto es para que
+ * la pantalla no ofrezca lo que el servidor va a negar.
+ */
+export function diaTrabadoPorPago(estado: EstadoLiquidacionDia): boolean {
+  return estado === 'pagada' || estado === 'parcial';
+}
 
 export interface Recepcion extends TenantFields {
   fecha: string;
@@ -383,6 +396,14 @@ export interface LiquidacionDetalle {
   valor: Monto;
 }
 
+/** Un pago parcial (abono) hecho contra una liquidación aprobada. */
+export interface PagoLiquidacion {
+  id: string;
+  fecha: string;
+  valor: Monto;
+  observaciones: string | null;
+}
+
 export interface Liquidacion extends TenantFields {
   tipo: 'proveedor' | 'transportador' | string;
   proveedor_id: string | null;
@@ -399,9 +420,15 @@ export interface Liquidacion extends TenantFields {
   valor_transporte: Monto;
   anticipos: Monto;
   valor_total: Monto;
+  /** Lo que hay que entregarle al tercero: valor_total - anticipos. */
+  neto_a_pagar: Monto;
+  /** Lo que ya se le entregó, sumando los pagos parciales. */
+  pagado: Monto;
+  /** Lo que TODAVÍA se le debe. Siempre: neto_a_pagar = pagado + saldo. */
   saldo: Monto;
   observaciones: string | null;
   detalles: LiquidacionDetalle[];
+  pagos: PagoLiquidacion[];
 }
 
 export interface Anticipo extends TenantFields {

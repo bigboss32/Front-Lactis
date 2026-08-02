@@ -972,6 +972,18 @@ export class RecepcionGrillaTab implements OnInit {
   }
 
   /**
+   * Qué dice una celda TRABADA. Son dos situaciones distintas para el usuario:
+   * de la pagada no hay nada que hacer por dentro; del abono sí —se borra el
+   * pago, se corrige el día y se vuelve a abonar—, y si no se dice, el candado
+   * parece una trampa sin salida.
+   */
+  tooltipTrabada(celda: CeldaGrilla): string {
+    return celda.liquidacion_estado === 'parcial'
+      ? 'Ya tiene un pago registrado — no editable. Elimine ese pago en la liquidación si de verdad hay que corregir el día'
+      : 'Pagada — no editable';
+  }
+
+  /**
    * Clic en una celda proveedor × día:
    * - sin registro y con permiso de crear → nueva recepción prefijada;
    * - con registro sin pagar y permiso de editar → edición;

@@ -11,6 +11,13 @@ export interface GenerarLiquidacionesPayload {
   proveedor_id?: string | null;
 }
 
+/** Un pago parcial contra una liquidación: los mismos campos que un abono de reventa. */
+export interface PagoPayload {
+  fecha: string; // ISO 'YYYY-MM-DD'
+  valor: number;
+  observaciones: string | null;
+}
+
 /** Pre-liquidación: pide cómo va un tercero sin generar ni guardar nada. */
 export interface PrevisualizarPayload {
   periodo_inicio: string; // ISO 'YYYY-MM-DD'
@@ -104,6 +111,24 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
 
   pagar(id: string): Observable<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/pagar`);
+  }
+
+  /**
+   * Registra un pago PARCIAL (abono) contra una liquidación aprobada.
+   *
+   * Devuelve la liquidación entera —no solo el pago— porque al abonar cambian
+   * `pagado`, `saldo`, el estado y el historial a la vez: pintar solo una parte
+   * dejaría la pantalla contradiciéndose a la vista.
+   *
+   * El backend no deja abonar más que el saldo ni pagarle a un borrador.
+   */
+  registrarPago(id: string, payload: PagoPayload): Observable<Liquidacion> {
+    return this.api.post<Liquidacion>(`${this.base}/${id}/pagos`, payload);
+  }
+
+  /** Elimina un pago mal registrado: el backend devuelve el saldo y el estado. */
+  eliminarPago(id: string, pagoId: string): Observable<Liquidacion> {
+    return this.api.delete<Liquidacion>(`${this.base}/${id}/pagos/${pagoId}`);
   }
 
   anular(id: string): Observable<Liquidacion> {

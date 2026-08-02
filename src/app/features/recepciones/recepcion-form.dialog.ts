@@ -10,7 +10,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { Page, Proveedor, Recepcion, Transportador } from '../../core/models';
+import {
+  diaTrabadoPorPago,
+  Page,
+  Proveedor,
+  Recepcion,
+  Transportador,
+} from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { RecepcionesService, RecepcionPayload } from './recepciones.service';
@@ -39,7 +45,13 @@ export interface RecepcionDialogData {
     <mat-dialog-content>
       @if (pagada) {
         <p class="aviso-liquidacion">
-          Este día ya se pagó en una liquidación y no se puede modificar.
+          @if (estadoLiquidacion === 'parcial') {
+            Este día ya tiene un <strong>pago registrado</strong> en una liquidación y no se
+            puede modificar. Si la cifra está mala, elimine primero ese pago desde la
+            liquidación.
+          } @else {
+            Este día ya se pagó en una liquidación y no se puede modificar.
+          }
         </p>
       } @else if (enLiquidacion) {
         <!-- No es un bloqueo: es una advertencia. Se puede guardar, pero conviene
@@ -165,8 +177,13 @@ export class RecepcionFormDialog {
    * desde que la generaba, aunque no le hubiera pagado a nadie.
    */
   readonly estadoLiquidacion = this.data?.item?.liquidacion_estado ?? null;
-  readonly pagada = this.estadoLiquidacion === 'pagada';
-  /** Ya está en una liquidación, pero sin pagar: se edita avisando. */
+  /**
+   * Traba con 'pagada' Y con 'parcial': basta UN abono para que el día no se
+   * pueda tocar (ver `diaTrabadoPorPago`). Se conserva el nombre `pagada`
+   * porque es el que usa toda la plantilla; lo que cambió es cuándo se prende.
+   */
+  readonly pagada = diaTrabadoPorPago(this.estadoLiquidacion);
+  /** Ya está en una liquidación, pero sin pagos: se edita avisando. */
   readonly enLiquidacion =
     this.estadoLiquidacion === 'borrador' || this.estadoLiquidacion === 'aprobada';
   /** Nueva recepción abierta desde una celda de la grilla: fecha y proveedor fijos. */

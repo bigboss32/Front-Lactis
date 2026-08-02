@@ -11,7 +11,7 @@ import { Observable, firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Liquidacion, LiquidacionDetalle } from '../../core/models';
+import { Liquidacion, LiquidacionDetalle, PagoLiquidacion } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
@@ -20,6 +20,7 @@ import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { LiquidacionesService } from './liquidaciones.service';
+import { PagoLiquidacionFormDialog } from './pago-form.dialog';
 
 /**
  * Lee un precio escrito a la colombiana: "1.750" son mil setecientos cincuenta,
@@ -180,6 +181,10 @@ export class LiquidacionDetailDialog {
   );
 
   readonly columnasDetalle = ['fecha', 'litros', 'precio_litro', 'valor'];
+  readonly columnasPagos = ['fecha', 'valor', 'observaciones', 'acciones'];
+
+  /** Si ya se le abonó algo: manda el historial, no el estado. */
+  readonly tienePagos = computed(() => this.liq().pagos.length > 0);
 
   constructor() {
     // Recarga la liquidación para asegurar que los detalles estén completos.
@@ -285,8 +290,63 @@ export class LiquidacionDetailDialog {
     void this.ejecutar(() => this.servicio.aprobar(this.liq().id), 'Liquidación aprobada');
   }
 
+  /**
+   * Abre el diálogo de pago con el saldo pendiente prellenado.
+   *
+   * Antes este botón pagaba todo de un golpe sin preguntar. Ahora pasa por el
+   * diálogo porque el dueño lo pidió así: "a un proveedor se le puede pagar y
+   * quedar debiendo otra parte". Pagar completo sigue siendo un Enter.
+   */
   pagar(): void {
-    void this.ejecutar(() => this.servicio.pagar(this.liq().id), 'Liquidación marcada como pagada');
+    this.dialog
+      .open(PagoLiquidacionFormDialog, {
+        data: { id: this.liq().id, tercero: this.tercero(), saldo: this.liq().saldo },
+        width: '520px',
+      })
+      .afterClosed()
+      .subscribe((actualizada?: Liquidacion) => {
+        if (!actualizada) return;
+        // Lo que se pinta es SIEMPRE lo que respondió el servidor, nunca una
+        // cifra calculada aquí: si algo salió distinto, se ve lo que de verdad
+        // quedó guardado. (La lista se recarga sola al cerrar este diálogo.)
+        this.liq.set(actualizada);
+        this.snackbar.open(
+          actualizada.estado === 'pagada'
+            ? 'Pago registrado: la liquidación queda pagada'
+            : `Pago registrado. Queda debiendo ${this.enPesos(actualizada.saldo)}`,
+          'OK',
+          { duration: 5000 },
+        );
+      });
+  }
+
+  /**
+   * Elimina un pago mal registrado. El backend baja el `pagado`, devuelve el
+   * saldo y recalcula el estado (de pagada a parcial, o de parcial a aprobada).
+   */
+  eliminarPago(pago: PagoLiquidacion): void {
+    this.dialog
+      .open(ConfirmDialog, {
+        data: {
+          titulo: 'Eliminar pago',
+          mensaje:
+            `¿Eliminar el pago de ${this.enPesos(pago.valor)}? El saldo volverá a subir ` +
+            'por ese valor. Esta acción no se puede deshacer.',
+          accion: 'Eliminar',
+        },
+      })
+      .afterClosed()
+      .subscribe((confirmado) => {
+        if (!confirmado) return;
+        void this.ejecutar(
+          () => this.servicio.eliminarPago(this.liq().id, pago.id),
+          'Pago eliminado: el saldo quedó al día',
+        );
+      });
+  }
+
+  private enPesos(monto: unknown): string {
+    return `$${Number(monto).toLocaleString('es-CO')}`;
   }
 
   anular(): void {

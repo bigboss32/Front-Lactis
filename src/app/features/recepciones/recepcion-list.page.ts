@@ -21,7 +21,14 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
+import {
+  diaTrabadoPorPago,
+  Page,
+  Proveedor,
+  Recepcion,
+  ResumenPeriodo,
+  Ruta,
+} from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
@@ -252,14 +259,28 @@ export class RecepcionListPage implements OnInit {
   }
 
   /**
-   * Solo lo PAGADO se traba. Un día que está en una liquidación en borrador o
-   * aprobada se sigue pudiendo corregir, pero conviene decir de una que al
-   * hacerlo se mueve un comprobante ya emitido.
+   * Se traba lo que YA TIENE PAGOS: 'pagada' y 'parcial'. Un día que está en una
+   * liquidación en borrador o aprobada se sigue pudiendo corregir, pero conviene
+   * decir de una que al hacerlo se mueve un comprobante ya emitido.
    */
+  trabado(fila: Recepcion): boolean {
+    return diaTrabadoPorPago(fila.liquidacion_estado);
+  }
+
+  tooltipEliminar(fila: Recepcion): string {
+    if (fila.liquidacion_estado === 'pagada') return 'Ya pagada: no se puede eliminar';
+    if (fila.liquidacion_estado === 'parcial') {
+      return 'Ya tiene un pago registrado: no se puede eliminar';
+    }
+    return 'Eliminar';
+  }
+
   tooltipEditar(fila: Recepcion): string {
     switch (fila.liquidacion_estado) {
       case 'pagada':
         return 'Ya pagada: no editable';
+      case 'parcial':
+        return 'Ya tiene un pago registrado: no editable';
       case 'aprobada':
         return 'Editar (la liquidación aprobada volverá a borrador y se recalculará)';
       case 'borrador':

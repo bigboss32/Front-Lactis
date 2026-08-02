@@ -121,12 +121,65 @@
     <span>Anticipos aplicados</span>
     <span class="num">{{ liq().anticipos | money }}</span>
 
+    <!--
+      El renglón "Pagado" solo aparece cuando de verdad se abonó algo, igual que
+      en el comprobante en PDF. Sin él, una liquidación a medio pagar mostraría
+      un "Saldo a pagar" más chico que Valor total menos anticipos sin explicar
+      por qué, y el dueño cuadra estas cifras a mano.
+    -->
+    @if (tienePagos()) {
+      <span>Pagado</span>
+      <span class="num">{{ liq().pagado | money }}</span>
+    }
+
     <span class="destacado">Valor total</span>
     <span class="num destacado">{{ liq().valor_total | money }}</span>
 
     <span class="destacado">Saldo a pagar</span>
     <span class="num destacado">{{ liq().saldo | money }}</span>
   </div>
+
+  @if (tienePagos()) {
+    <h3>Pagos registrados</h3>
+    <table mat-table [dataSource]="liq().pagos">
+      <ng-container matColumnDef="fecha">
+        <th mat-header-cell *matHeaderCellDef>Fecha</th>
+        <td mat-cell *matCellDef="let pago">{{ pago.fecha | date: 'dd/MM/yyyy' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="valor">
+        <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+        <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor | money }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="observaciones">
+        <th mat-header-cell *matHeaderCellDef>Observaciones</th>
+        <td mat-cell *matCellDef="let pago">{{ pago.observaciones || '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="acciones">
+        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+        <td mat-cell *matCellDef="let pago" class="col-acciones">
+          <!--
+            'liquidaciones:eliminar', NO 'crear': borrar un pago le devuelve la
+            deuda al sistema y es la puerta para tapar una entrega de plata.
+          -->
+          <button
+            mat-icon-button
+            *hasPermission="'liquidaciones:eliminar'"
+            matTooltip="Eliminar este pago (registrado por error)"
+            [disabled]="procesando()"
+            (click)="eliminarPago(pago)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columnasPagos"></tr>
+      <tr mat-row *matRowDef="let pago; columns: columnasPagos"></tr>
+    </table>
+  }
 
   @if (puedeRecalcular()) {
     <!--
@@ -204,11 +257,21 @@
     </button>
   }
 
-  @if (liq().estado === 'aprobada') {
+  <!--
+    También en 'parcial': a una liquidación a medio pagar se le sigue abonando
+    hasta saldarla. El diálogo llega con el saldo pendiente prellenado, así que
+    pagar todo de una vez sigue siendo Pagar → Enter, como antes.
+  -->
+  @if (liq().estado === 'aprobada' || liq().estado === 'parcial') {
     <button
       mat-flat-button
       *hasPermission="'liquidaciones:administrar'"
       [disabled]="procesando()"
+      [matTooltip]="
+        liq().estado === 'parcial'
+          ? 'Registrar otro pago: queda debiendo ' + (liq().saldo | money)
+          : 'Registrar el pago (puede ser parcial)'
+      "
       (click)="pagar()"
     >
       <mat-icon>payments</mat-icon> Pagar

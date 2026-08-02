@@ -14,10 +14,25 @@ const PASOS: Paso[] = [
   { clave: 'pagada', etiqueta: 'Pagada', icono: 'payments' },
 ];
 
+/**
+ * En qué paso se para cada estado. 'parcial' comparte el último con 'pagada':
+ * es el mismo momento del ciclo (ya se está pagando) y no un cuarto paso —una
+ * liquidación puede recibir cinco abonos y la línea no puede crecer con ellos—.
+ * Lo que cambia es la etiqueta, para no decir "Pagada" sobre algo que todavía
+ * debe.
+ */
+const PASO_DE_ESTADO: Record<string, number> = {
+  borrador: 0,
+  aprobada: 1,
+  parcial: 2,
+  pagada: 2,
+};
+
 /** Texto de ayuda de una línea según el estado actual. */
 const AYUDAS: Record<string, string> = {
   borrador: 'Revisa los valores y apruébala para poder pagarla.',
   aprobada: 'Los valores quedaron en firme: usa "Pagar" cuando entregues el dinero.',
+  parcial: 'Se le abonó una parte y todavía queda debiendo: usa "Pagar" para el resto.',
   pagada: 'El pago quedó registrado; esta liquidación está completa.',
   anulada: 'Las recepciones y anticipos del período quedaron libres para volver a liquidar.',
 };
@@ -38,7 +53,7 @@ const AYUDAS: Record<string, string> = {
       </div>
     } @else {
       <ol class="pasos">
-        @for (paso of pasos; track paso.clave; let i = $index) {
+        @for (paso of pasos(); track paso.clave; let i = $index) {
           <li
             class="paso"
             [class.completado]="i < indiceActual()"
@@ -166,8 +181,16 @@ const AYUDAS: Record<string, string> = {
 export class LiquidacionEstadoStepper {
   readonly estado = input.required<string>();
 
-  readonly pasos = PASOS;
   readonly anulada = computed(() => this.estado() === 'anulada');
-  readonly indiceActual = computed(() => PASOS.findIndex((p) => p.clave === this.estado()));
+  readonly indiceActual = computed(() => PASO_DE_ESTADO[this.estado()] ?? -1);
   readonly ayuda = computed(() => AYUDAS[this.estado()] ?? '');
+
+  /** El último paso se llama "Parcial" mientras la liquidación siga debiendo. */
+  readonly pasos = computed<Paso[]>(() =>
+    this.estado() === 'parcial'
+      ? PASOS.map((paso) =>
+          paso.clave === 'pagada' ? { ...paso, etiqueta: 'Parcial' } : paso,
+        )
+      : PASOS,
+  );
 }

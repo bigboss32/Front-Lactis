@@ -46,6 +46,31 @@
         </span>
       </button>
 
+      <!--
+        Las que ya tienen abonos van en su propia tarjeta y no revueltas con las
+        aprobadas: son la pregunta nueva del dueño ("¿a quién le quedé debiendo
+        una parte?"), y así cada tarjeta sigue filtrando por UN estado.
+        Solo aparece cuando hay alguna: si no, sería una tarjeta en cero que le
+        quita espacio a las tres de siempre.
+      -->
+      @if (r.parciales > 0) {
+        <button
+          type="button"
+          class="tarjeta azul"
+          [class.activa]="estado.value === 'parcial'"
+          [attr.aria-pressed]="estado.value === 'parcial'"
+          matTooltip="Mostrar solo las liquidaciones con abonos y saldo pendiente"
+          (click)="filtrarPorEstado('parcial')"
+        >
+          <span class="icono"><mat-icon aria-hidden="true">hourglass_bottom</mat-icon></span>
+          <span class="textos">
+            <span class="cifra">{{ r.parciales }}</span>
+            <span class="titulo">Con abonos, debiendo</span>
+            <span class="detalle">{{ r.saldoParciales | money }} sin pagar</span>
+          </span>
+        </button>
+      }
+
       <button
         type="button"
         class="tarjeta verde"
@@ -78,6 +103,7 @@
         <mat-option [value]="null">Todos</mat-option>
         <mat-option value="borrador">Borrador</mat-option>
         <mat-option value="aprobada">Aprobada</mat-option>
+        <mat-option value="parcial">Parcial (con abonos)</mat-option>
         <mat-option value="pagada">Pagada</mat-option>
         <mat-option value="anulada">Anulada</mat-option>
       </mat-select>
@@ -149,7 +175,14 @@
             <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
               {{ fila.saldo | money }}
               @if (esPorPagar(fila)) {
-                <span class="badge-por-pagar" matTooltip="Liquidación aprobada con saldo pendiente de pago">
+                <span
+                  class="badge-por-pagar"
+                  [matTooltip]="
+                    fila.estado === 'parcial'
+                      ? 'Ya se le abonó una parte; esto es lo que todavía se le debe'
+                      : 'Liquidación aprobada con saldo pendiente de pago'
+                  "
+                >
                   por pagar
                 </span>
               }

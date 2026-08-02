@@ -38,6 +38,9 @@ interface ResumenEstados {
   borradores: number;
   aprobadas: number;
   saldoAprobadas: number;
+  /** Liquidaciones a las que ya se les abonó algo y todavía deben. */
+  parciales: number;
+  saldoParciales: number;
   pagadas: number;
 }
 
@@ -126,12 +129,16 @@ interface ResumenEstados {
     // -------------------------------------- borde de fila según estado
     tr.fila-borrador td:first-child { border-left: 4px solid color-mix(in srgb, #b26a00 75%, transparent); }
     tr.fila-aprobada td:first-child { border-left: 4px solid color-mix(in srgb, #1565c0 75%, transparent); }
+    // 'parcial' comparte el azul con 'aprobada', igual que en el chip de estado:
+    // las dos son "en firme y todavía debiendo".
+    tr.fila-parcial td:first-child  { border-left: 4px solid color-mix(in srgb, #1565c0 75%, transparent); }
     tr.fila-pagada td:first-child   { border-left: 4px solid color-mix(in srgb, #2e7d32 75%, transparent); }
     tr.fila-anulada td:first-child  { border-left: 4px solid color-mix(in srgb, #c62828 60%, transparent); }
 
     :host-context(html.dark) {
       tr.fila-borrador td:first-child { border-left-color: color-mix(in srgb, #ffb74d 75%, transparent); }
       tr.fila-aprobada td:first-child { border-left-color: color-mix(in srgb, #64b5f6 75%, transparent); }
+      tr.fila-parcial td:first-child  { border-left-color: color-mix(in srgb, #64b5f6 75%, transparent); }
       tr.fila-pagada td:first-child   { border-left-color: color-mix(in srgb, #81c784 75%, transparent); }
       tr.fila-anulada td:first-child  { border-left-color: color-mix(in srgb, #e57373 60%, transparent); }
     }
@@ -258,15 +265,20 @@ export class LiquidacionListPage implements OnInit {
       hasta: dateToIso(this.hasta.value),
     };
     try {
-      const [borradores, aprobadas, pagadas] = await Promise.all([
+      const [borradores, aprobadas, parciales, pagadas] = await Promise.all([
         firstValueFrom(this.servicio.list({ ...filtros, estado: 'borrador', page: 1, page_size: 1 })),
         firstValueFrom(this.servicio.list({ ...filtros, estado: 'aprobada', page: 1, page_size: 200 })),
+        firstValueFrom(this.servicio.list({ ...filtros, estado: 'parcial', page: 1, page_size: 200 })),
         firstValueFrom(this.servicio.list({ ...filtros, estado: 'pagada', page: 1, page_size: 1 })),
       ]);
       this.resumen.set({
         borradores: borradores.total,
         aprobadas: aprobadas.total,
         saldoAprobadas: aprobadas.items.reduce((suma, liq) => suma + Number(liq.saldo), 0),
+        parciales: parciales.total,
+        // `saldo` ya es solo lo que falta por pagar, así que esta suma es deuda
+        // viva: no se le puede restar lo ya abonado otra vez.
+        saldoParciales: parciales.items.reduce((suma, liq) => suma + Number(liq.saldo), 0),
         pagadas: pagadas.total,
       });
     } catch {
@@ -288,9 +300,13 @@ export class LiquidacionListPage implements OnInit {
     this.estado.setValue(this.estado.value === estado ? null : estado);
   }
 
-  /** Saldo pendiente real: liquidación aprobada con saldo mayor a cero. */
+  /**
+   * Saldo pendiente real: liquidación en firme (aprobada o con abonos) a la que
+   * todavía se le debe algo. La 'parcial' cuenta: se le pagó una parte y el
+   * resto sigue siendo deuda; dejarla por fuera escondería plata por pagar.
+   */
   esPorPagar(fila: Liquidacion): boolean {
-    return fila.estado === 'aprobada' && Number(fila.saldo) > 0;
+    return (fila.estado === 'aprobada' || fila.estado === 'parcial') && Number(fila.saldo) > 0;
   }
 
   cambiarPagina(evento: PageEvent): void {
