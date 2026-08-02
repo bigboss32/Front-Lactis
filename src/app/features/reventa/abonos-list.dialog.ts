@@ -55,9 +55,16 @@ export interface AbonosDialogData {
           <ng-container matColumnDef="acciones">
             <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
             <td mat-cell *matCellDef="let abono" class="col-acciones">
+              <!--
+                'reventa:eliminar', NO 'crear'. El backend exige 'eliminar' para
+                borrar un abono (borrar una entrega de plata es la puerta para
+                taparla), así que con 'crear' a quien solo puede ANOTAR abonos le
+                aparecía el botón y al pulsarlo se llevaba un 403. Un botón que
+                engaña es peor que un botón que no está.
+              -->
               <button
                 mat-icon-button
-                *hasPermission="'reventa:crear'"
+                *hasPermission="'reventa:eliminar'"
                 matTooltip="Eliminar este abono (registrado por error)"
                 [disabled]="eliminando()"
                 (click)="eliminarAbono(abono)"

@@ -438,9 +438,15 @@ export interface SaldoAbonosDialogData {
           <ng-container matColumnDef="acciones">
             <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
             <td mat-cell *matCellDef="let abono" class="col-acciones">
+              <!--
+                'reventa:eliminar', NO 'crear': mismo desfase que tenía la lista
+                de abonos de compras y ventas. El backend pide 'eliminar' para
+                borrar un abono del libro anterior, así que con 'crear' el botón
+                se le mostraba a quien solo puede anotar y le devolvía un 403.
+              -->
               <button
                 mat-icon-button
-                *hasPermission="'reventa:crear'"
+                *hasPermission="'reventa:eliminar'"
                 matTooltip="Eliminar este abono (registrado por error)"
                 [disabled]="eliminando()"
                 (click)="eliminarAbono(abono)"

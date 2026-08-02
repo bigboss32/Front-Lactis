@@ -443,7 +443,17 @@ export interface Anticipo extends TenantFields {
   observaciones: string | null;
   liquidacion_id: string | null;
   pago_empleado_id: string | null;
+  /**
+   * Ya está descontado en una liquidación o en una nómina. Es una SEÑA, no un
+   * candado: desde que el anticipo se puede corregir mientras a esa liquidación
+   * no se le haya pagado nada, "aplicado" y "trabado" dejaron de ser lo mismo.
+   * Para saber si se puede tocar hay que mirar `bloqueado`.
+   */
   aplicado: boolean;
+  /** 'borrador' | 'aprobada' | 'parcial' | 'pagada' de la liquidación que lo tiene. */
+  liquidacion_estado: string | null;
+  /** El candado de verdad: ya salió plata contra este anticipo (o quedó en nómina). */
+  bloqueado: boolean;
 }
 
 // -------------------------------------------------------------- producción
