@@ -90,6 +90,22 @@ export interface LoteProduccion {
   detalle_ventas: VentaDelLoteProduccion[];
 }
 
+/**
+ * El panel de lotes. Ojo con las dos naturalezas de sus cifras, porque la
+ * pantalla las separa a propósito:
+ *
+ * - Los `total_*` son de los lotes que quedaron DENTRO del rango pedido.
+ * - `litros_sin_usar`, `kilos_sin_lote` y los demás avisos son de TODA la
+ *   historia: son fotos de hoy y alertas de que falta cargar algo, y esconderlas
+ *   al cambiar de mes sería lo contrario de lo que se busca.
+ *
+ * Y los dos desgloses que tienen que cuadrar al peso, porque el dueño los suma a
+ * mano:
+ *   total_ingresos − total_costo_vendido − total_costo_de_baja − total_gastos
+ *       = total_utilidad
+ *   total_costo_vendido + total_costo_de_baja + total_costo_en_bodega
+ *       = total_costo
+ */
 export interface LotesProduccionPanel {
   lotes: LoteProduccion[];
   total_utilidad: Monto;
@@ -98,6 +114,11 @@ export interface LotesProduccionPanel {
   total_costo: Monto;
   total_ingresos: Monto;
   total_gastos: Monto;
+  /** Lo que costó el queso que ya salió del lote: la bisagra entre los dos desgloses. */
+  total_costo_vendido: Monto;
+  total_costo_de_baja: Monto;
+  total_kilos_vendidos: Monto;
+  total_kilos_de_baja: Monto;
   total_kilos_en_bodega: Monto;
   total_costo_en_bodega: Monto;
   mejor: string | null;
