@@ -127,6 +127,18 @@
     <span class="destacado">Saldo a pagar</span>
     <span class="num destacado">{{ liq().saldo | money }}</span>
   </div>
+
+  @if (puedeRecalcular()) {
+    <!--
+      Sin esta línea nadie sabría que un anticipo registrado DESPUÉS de generar
+      la liquidación se puede recoger: el resumen se queda en $0 y parece que el
+      anticipo se hubiera perdido.
+    -->
+    <p class="ayuda-precio">
+      ¿Registró un anticipo después de generar esta liquidación? Use
+      <strong>Recalcular</strong> para que quede descontado.
+    </p>
+  }
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
@@ -158,6 +170,17 @@
   >
     <mat-icon>chat</mat-icon> WhatsApp
   </button>
+
+  @if (puedeRecalcular()) {
+    <button
+      mat-stroked-button
+      matTooltip="Vuelve a cuadrar el borrador con los anticipos pendientes del tercero"
+      [disabled]="procesando()"
+      (click)="recalcular()"
+    >
+      <mat-icon>calculate</mat-icon> Recalcular
+    </button>
+  }
 
   @if (liq().estado === 'borrador' || liq().estado === 'aprobada') {
     <button

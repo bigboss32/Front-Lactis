@@ -83,6 +83,21 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
     });
   }
 
+  /**
+   * Vuelve a cuadrar un BORRADOR con lo que hay hoy en el sistema.
+   *
+   * Es para el caso de siempre: la liquidación se generó y el anticipo se
+   * registró después, así que el comprobante quedó mostrando "Anticipos
+   * aplicados $0". Volver a "Generar" no lo arregla —las recepciones ya están
+   * apartadas— y hasta ahora no había forma de recogerlo.
+   *
+   * El backend solo lo permite en borrador: aprobada o pagada, esa cifra ya se
+   * le pagó a alguien.
+   */
+  recalcular(id: string): Observable<Liquidacion> {
+    return this.api.post<Liquidacion>(`${this.base}/${id}/recalcular`);
+  }
+
   aprobar(id: string): Observable<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/aprobar`);
   }

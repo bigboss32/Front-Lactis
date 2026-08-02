@@ -261,6 +261,26 @@ export class LiquidacionDetailDialog {
     }
   }
 
+  /**
+   * Recalcular solo se ofrece en BORRADOR, con permiso de editar.
+   *
+   * Es la salida al caso del anticipo que se registró después de generar la
+   * liquidación: el resumen quedaba en "Anticipos aplicados $0" y no había cómo
+   * recogerlo. Fuera de borrador el backend rebota igual; esto es para que el
+   * botón ni siquiera se ofrezca sobre algo que ya se pagó.
+   */
+  readonly puedeRecalcular = computed(
+    () =>
+      this.liq().estado === 'borrador' && this.auth.hasPermission('liquidaciones', 'editar'),
+  );
+
+  recalcular(): void {
+    void this.ejecutar(
+      () => this.servicio.recalcular(this.liq().id),
+      'Liquidación recalculada: quedaron aplicados los anticipos pendientes',
+    );
+  }
+
   aprobar(): void {
     void this.ejecutar(() => this.servicio.aprobar(this.liq().id), 'Liquidación aprobada');
   }
