@@ -26,4 +26,18 @@ export class ProveedoresService extends CrudService<Proveedor, ProveedorPayload>
   filtrar(opts: ListOpts & { ruta_id?: string | null } = {}): Observable<Page<Proveedor>> {
     return this.api.get<Page<Proveedor>>('/proveedores/filtrar/avanzado', opts);
   }
+
+  /**
+   * Aparta a un proveedor que dejó de entregar leche. No le borra nada: sus
+   * recepciones, liquidaciones y pagos se quedan tal cual, y el backend es el
+   * que impide que le entre leche nueva mientras esté así.
+   */
+  desactivar(id: string): Observable<Proveedor> {
+    return this.api.post<Proveedor>(`/proveedores/${id}/desactivar`);
+  }
+
+  /** Lo vuelve a habilitar cuando regresa. */
+  activar(id: string): Observable<Proveedor> {
+    return this.api.post<Proveedor>(`/proveedores/${id}/activar`);
+  }
 }

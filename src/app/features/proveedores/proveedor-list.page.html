@@ -81,6 +81,24 @@
           >
             <mat-icon>edit</mat-icon>
           </button>
+          <!--
+            Desactivar / reactivar. Va con 'proveedores:editar' (el mismo que el
+            lápiz y el que exige el endpoint): apartar al que se retiró es parte
+            del día a día y es reversible, así que no puede pedir más permiso que
+            la caneca. El icono y el tooltip cambian según cómo esté la fila,
+            para que el botón diga lo que va a hacer y no lo que la fila es.
+          -->
+          <button
+            mat-icon-button
+            *hasPermission="'proveedores:editar'"
+            [matTooltip]="fila.estado === 'inactivo' ? 'Reactivar' : 'Desactivar'"
+            [attr.aria-label]="
+              (fila.estado === 'inactivo' ? 'Reactivar a ' : 'Desactivar a ') + fila.nombre
+            "
+            (click)="cambiarEstado(fila)"
+          >
+            <mat-icon>{{ fila.estado === 'inactivo' ? 'toggle_off' : 'toggle_on' }}</mat-icon>
+          </button>
           <button
             mat-icon-button
             *hasPermission="'proveedores:eliminar'"

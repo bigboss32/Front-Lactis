@@ -19,6 +19,7 @@ import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Page, Proveedor, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
@@ -118,20 +119,79 @@ export class ProveedorListPage implements OnInit {
       });
   }
 
+  /**
+   * Desactivar / reactivar: la acción para el proveedor que dejó de entregar.
+   *
+   * Es lo que casi siempre se quiere en vez de la caneca. Se le avisa al usuario
+   * —en el propio diálogo— que la historia NO se pierde, porque el miedo a
+   * perderla es justo lo que hacía que nadie tocara el botón de eliminar.
+   */
+  cambiarEstado(item: Proveedor): void {
+    const inactivo = item.estado === 'inactivo';
+    this.dialog
+      .open(ConfirmDialog, {
+        data: inactivo
+          ? {
+              titulo: 'Reactivar proveedor',
+              mensaje: `¿Reactivar a "${item.nombre}"? Volverá a aparecer para registrarle leche.`,
+              accion: 'Reactivar',
+              // Reactivar no destruye nada: se fuerza el aspecto neutro para que
+              // el diálogo no salga en rojo (el texto trae «activ», que la
+              // deducción del ConfirmDialog leería como «desactivar»).
+              peligro: false,
+            }
+          : {
+              titulo: 'Desactivar proveedor',
+              mensaje:
+                `¿Desactivar a "${item.nombre}"? Dejará de aparecer para registrarle ` +
+                'leche nueva, pero conserva sus recepciones, liquidaciones y pagos, y ' +
+                'lo que se le deba sigue contando. Se puede reactivar cuando vuelva.',
+              accion: 'Desactivar',
+            },
+      })
+      .afterClosed()
+      .subscribe(async (confirmado) => {
+        if (!confirmado) return;
+        try {
+          await firstValueFrom(
+            inactivo ? this.servicio.activar(item.id) : this.servicio.desactivar(item.id),
+          );
+          this.snackbar.open(
+            inactivo ? 'Proveedor reactivado' : 'Proveedor desactivado',
+            'OK',
+            { duration: 3000 },
+          );
+          this.cargar();
+        } catch (err) {
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible cambiar el estado');
+        }
+      });
+  }
+
   eliminar(item: Proveedor): void {
     this.dialog
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar proveedor',
-          mensaje: `¿Eliminar a "${item.nombre}"? El registro quedará inactivo.`,
+          mensaje:
+            `¿Eliminar a "${item.nombre}"? Solo se puede eliminar un proveedor sin ` +
+            'historia. Si ya tiene leche recibida o liquidaciones, use «Desactivar» ' +
+            'para apartarlo sin perder sus registros.',
         },
       })
       .afterClosed()
       .subscribe(async (confirmado) => {
         if (!confirmado) return;
-        await firstValueFrom(this.servicio.remove(item.id));
-        this.snackbar.open('Proveedor eliminado', 'OK', { duration: 3000 });
-        this.cargar();
+        try {
+          await firstValueFrom(this.servicio.remove(item.id));
+          this.snackbar.open('Proveedor eliminado', 'OK', { duration: 3000 });
+          this.cargar();
+        } catch (err) {
+          // El backend rebota (422) al proveedor con historia y explica en el
+          // mensaje que hay que desactivarlo. Sin este catch, el usuario veía
+          // que "no pasaba nada" y no se enteraba del porqué.
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible eliminar el proveedor');
+        }
       });
   }
 }

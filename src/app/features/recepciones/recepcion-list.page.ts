@@ -179,8 +179,14 @@ export class RecepcionListPage implements OnInit {
     );
     this.cargar();
     this.cargarResumen();
+    // Aquí el selector de proveedor es un FILTRO DE CONSULTA, no un campo para
+    // registrar algo nuevo: por eso van también los inactivos. Si se pidieran
+    // solo los activos, al desactivar a un proveedor su historia de recepciones
+    // quedaría imposible de buscar en esta pantalla, que es justo lo contrario
+    // de lo que se busca al apartarlo. En el formulario de recepción —donde sí
+    // se registra leche nueva— sigue yendo estado=activo.
     firstValueFrom(
-      this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100, estado: 'activo' }),
+      this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100 }),
     ).then((respuesta) => this.proveedores.set(respuesta.items));
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
