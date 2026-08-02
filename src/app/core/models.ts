@@ -557,11 +557,31 @@ export interface Venta extends TenantFields {
    * NO está dentro de `total`: el cliente no lo paga, lo paga la quesera. Es lo que
    * hace que el kilo puesto en destino valga más que el kilo en la planta, y sale
    * restado en la utilidad por lote de producción.
+   *
+   * Estos tres son el RESUMEN de `tramos_flete`: la ruta leída de corrido, la
+   * suma de lo que cobra cada tramo por kilo y la suma de los totales. El dato
+   * original son los tramos.
    */
   gasto_concepto: string | null;
   gasto_por_kilo: Monto;
   gasto_monto: Monto;
+  tramos_flete: VentaTramoFlete[];
   detalles: VentaDetalle[];
+}
+
+/**
+ * Un tramo del recorrido del despacho: "de la quesera a San Vicente 400" y "de
+ * San Vicente a Bogotá 600". El conductor es texto libre; el backend lo canoniza
+ * para que la misma persona escrita de dos formas no quede partida en dos.
+ */
+export interface VentaTramoFlete {
+  id: string;
+  orden: number;
+  origen: string | null;
+  destino: string | null;
+  conductor: string | null;
+  valor_por_kilo: Monto;
+  valor_total: Monto;
 }
 
 export interface Pago extends TenantFields {

@@ -81,41 +81,94 @@
     <p class="ayuda">
       Lo que cuesta llevarlo. <strong>No se le cobra al cliente</strong>: es un costo
       suyo, y es lo que hace que el kilo puesto allá valga más que en la planta.
+      Si el recorrido va por partes, agregue un tramo por cada trayecto con su
+      conductor: de la quesera a San Vicente $&nbsp;400 el kilo, y de San Vicente a
+      Bogotá $&nbsp;600.
     </p>
-    <div class="form-grid">
-      <mat-form-field>
-        <mat-label>A dónde va</mat-label>
-        <input matInput formControlName="gasto_concepto" maxlength="150"
-               placeholder="Ej: Transporte a Bogotá" />
-      </mat-form-field>
 
-      <mat-form-field>
-        <mat-label>Cuánto por kilo</mat-label>
-        <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
-        <span matTextPrefix>$&nbsp;</span>
-        <mat-hint>
-          @if (kilosDespachados() > 0 && fleteTotal() > 0) {
-            {{ kilosDespachados() | cantidad: 'kg' }} × {{ fletePorKilo() | money }} =
-            {{ fleteTotal() | money }}
-          } @else {
-            Déjelo vacío si lo recogen en la planta
-          }
-        </mat-hint>
-      </mat-form-field>
+    <div formArrayName="tramos">
+      @for (tramo of tramos.controls; track tramo; let i = $index) {
+        <div class="tramo" [formGroupName]="i">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Desde</mat-label>
+            <input matInput formControlName="origen" maxlength="120"
+                   [placeholder]="i === 0 ? 'La quesera' : ''" />
+          </mat-form-field>
+
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>A dónde va</mat-label>
+            <input matInput formControlName="destino" maxlength="120" required
+                   placeholder="Ej: San Vicente" />
+          </mat-form-field>
+
+          <!-- El conductor es texto libre: no hay que registrarlo antes de
+               despachar. Se sugieren los que ya han llevado despachos para que el
+               mismo señor no quede escrito de dos formas y su deuda salga partida. -->
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Conductor</mat-label>
+            <input matInput formControlName="conductor" maxlength="150"
+                   [matAutocomplete]="autoConductor" placeholder="Quién lo lleva" />
+            <mat-autocomplete #autoConductor="matAutocomplete">
+              @for (nombre of conductoresFiltrados()[i]; track nombre) {
+                <mat-option [value]="nombre">{{ nombre }}</mat-option>
+              }
+            </mat-autocomplete>
+          </mat-form-field>
+
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Cuánto por kilo</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_por_kilo" />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+
+          <span class="tramo-total">{{ totalesTramos()[i] | money }}</span>
+
+          <button mat-icon-button type="button" matTooltip="Quitar tramo" (click)="eliminarTramo(i)">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      }
     </div>
+
+    @if (tramos.length > 1) {
+      <!-- Con varios tramos se muestra la suma aquí mismo: el flete del despacho
+           es exactamente lo que suman los renglones de arriba. -->
+      <div class="suma-tramos">
+        <span>Flete del despacho ({{ fletePorKilo() | money }} por kilo)</span>
+        <strong>{{ fleteTotal() | money }}</strong>
+      </div>
+    }
+
+    @if (tramos.length === 0) {
+      <p class="sin-flete">Sin tramos: no hay flete que descontar, se lo recogen en la planta.</p>
+    }
+
+    <button mat-stroked-button type="button" class="agregar" (click)="agregarTramo()">
+      <mat-icon>add</mat-icon> Agregar tramo
+    </button>
 
     <div class="totales">
       <div><span>Subtotal</span><strong>{{ subtotal() | money }}</strong></div>
       <div><span>Descuento</span><strong>&minus; {{ descuentoValor() | money }}</strong></div>
       <div class="total-final"><span>Total que paga el cliente</span><strong>{{ total() | money }}</strong></div>
       @if (fleteTotal() > 0) {
-        <!-- Va DESPUÉS del total y con su aclaración: si fuera antes, se leería
-             como que el flete está incluido en lo que paga el cliente. -->
-        <div class="aparte">
-          <span>Transporte (lo paga usted)</span><strong>&minus; {{ fleteTotal() | money }}</strong>
-        </div>
-        <div class="aparte">
-          <span>Le queda</span><strong>{{ total() - fleteTotal() | money }}</strong>
+        <!-- Va DESPUÉS del total y separado por una línea: si fuera antes, se
+             leería como que el flete está incluido en lo que paga el cliente. -->
+        <div class="bloque-flete">
+          <!-- Cada tramo con su cuenta, y debajo la suma: lo que se resta es
+               exactamente lo que suman estos renglones. -->
+          @for (tramo of desgloseFlete(); track $index) {
+            <div class="aparte cuenta-tramo">
+              <span>{{ tramo.ruta }}: {{ tramo.kilos | cantidad: 'kg' }} × {{ tramo.porKilo | money }}</span>
+              <strong>{{ tramo.total | money }}</strong>
+            </div>
+          }
+          <div class="aparte">
+            <span>Transporte (lo paga usted)</span><strong>&minus; {{ fleteTotal() | money }}</strong>
+          </div>
+          <div class="aparte">
+            <span>Le queda</span><strong>{{ total() - fleteTotal() | money }}</strong>
+          </div>
         </div>
       }
     </div>
