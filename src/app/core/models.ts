@@ -327,6 +327,13 @@ export interface Proveedor extends TenantFields {
   observaciones: string | null;
 }
 
+/**
+ * Estado de la liquidación que manda sobre un día de recepción. SOLO 'pagada'
+ * bloquea: en borrador y en aprobada el día se puede corregir y el backend
+ * recuadra la liquidación solo (y si estaba aprobada, la devuelve a borrador).
+ */
+export type EstadoLiquidacionDia = 'borrador' | 'aprobada' | 'pagada' | null;
+
 export interface Recepcion extends TenantFields {
   fecha: string;
   proveedor_id: string;
@@ -343,6 +350,8 @@ export interface Recepcion extends TenantFields {
   valor_neto: Monto;
   observaciones: string | null;
   liquidacion_id: string | null;
+  /** Ver EstadoLiquidacionDia: null = todavía no está en ninguna liquidación. */
+  liquidacion_estado: EstadoLiquidacionDia;
 }
 
 export interface ResumenDia {

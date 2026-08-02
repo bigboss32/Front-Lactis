@@ -90,9 +90,14 @@ function quincenaActual(): { desde: Date; hasta: Date } {
       white-space: nowrap;
     }
     .liq mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    .liq.liquidada { color: #2e7d32; }
+    /* Verde = plata entregada, y es la única que traba el día. */
+    .liq.pagada { color: #2e7d32; }
+    /* Ámbar = ya está en una liquidación pero todavía se puede corregir; es el
+       mismo color de aviso de la franja de la grilla y del diálogo. */
+    .liq.en-liquidacion { color: #b26a00; }
     .liq.pendiente { color: var(--mat-sys-on-surface-variant); }
-    :host-context(html.dark) .liq.liquidada { color: #81c784; }
+    :host-context(html.dark) .liq.pagada { color: #81c784; }
+    :host-context(html.dark) .liq.en-liquidacion { color: #ffb74d; }
   `,
 })
 export class RecepcionListPage implements OnInit {
@@ -120,7 +125,7 @@ export class RecepcionListPage implements OnInit {
       valor_bruto: (f) => Number(f.valor_bruto),
       descuentos: (f) => Number(f.descuentos),
       valor_neto: (f) => Number(f.valor_neto),
-      liquidacion: (f) => f.liquidacion_id,
+      liquidacion: (f) => f.liquidacion_estado,
     }),
   );
   readonly total = signal(0);
@@ -246,16 +251,55 @@ export class RecepcionListPage implements OnInit {
     this.cargarResumen();
   }
 
+  /**
+   * Solo lo PAGADO se traba. Un día que está en una liquidación en borrador o
+   * aprobada se sigue pudiendo corregir, pero conviene decir de una que al
+   * hacerlo se mueve un comprobante ya emitido.
+   */
+  tooltipEditar(fila: Recepcion): string {
+    switch (fila.liquidacion_estado) {
+      case 'pagada':
+        return 'Ya pagada: no editable';
+      case 'aprobada':
+        return 'Editar (la liquidación aprobada volverá a borrador y se recalculará)';
+      case 'borrador':
+        return 'Editar (la liquidación en borrador se recalculará)';
+      default:
+        return 'Editar';
+    }
+  }
+
+  /** Qué le pasa a la liquidación del día que se acaba de tocar. */
+  private avisoLiquidacion(estadoPrevio: Recepcion['liquidacion_estado']): string | null {
+    if (estadoPrevio === 'aprobada') {
+      return (
+        'Esta liquidación volvió a borrador porque cambiaron sus litros; ' +
+        'revísela y apruébela otra vez.'
+      );
+    }
+    if (estadoPrevio === 'borrador') return 'Se recalculó la liquidación de este día.';
+    return null;
+  }
+
+  private avisar(hecho: string, estadoPrevio: Recepcion['liquidacion_estado']): void {
+    const aviso = this.avisoLiquidacion(estadoPrevio);
+    this.snackbar.open(aviso ? `${hecho}. ${aviso}` : hecho, 'OK', {
+      duration: aviso ? 9000 : 3000,
+    });
+  }
+
   abrirFormulario(item?: Recepcion): void {
+    // Se guarda el estado de ANTES: después de guardar, una aprobada ya aparece
+    // en borrador y no se sabría que hubo retroceso que avisar.
+    const estadoPrevio = item?.liquidacion_estado ?? null;
     this.dialog
       .open(RecepcionFormDialog, { data: { item }, width: '640px' })
       .afterClosed()
       .subscribe((resultado) => {
         if (!resultado) return;
-        this.snackbar.open(
+        this.avisar(
           resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada',
-          'OK',
-          { duration: 3000 },
+          estadoPrevio,
         );
         this.cargar();
         this.cargarResumen();
@@ -264,11 +308,21 @@ export class RecepcionListPage implements OnInit {
   }
 
   eliminar(item: Recepcion): void {
+    // Borrar un día que está en una liquidación le quita el renglón y la
+    // recalcula: hay que decirlo ANTES de confirmar, no después.
+    const consecuencia =
+      item.liquidacion_estado === 'aprobada'
+        ? ' La liquidación que lo incluye volverá a borrador y se recalculará sin este día.'
+        : item.liquidacion_estado === 'borrador'
+          ? ' La liquidación que lo incluye se recalculará sin este día.'
+          : '';
     this.dialog
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar recepción',
-          mensaje: `¿Eliminar la recepción de "${item.proveedor_nombre ?? 'proveedor'}" del ${item.fecha}?`,
+          mensaje:
+            `¿Eliminar la recepción de "${item.proveedor_nombre ?? 'proveedor'}" del ` +
+            `${item.fecha}?${consecuencia}`,
         },
       })
       .afterClosed()
@@ -276,7 +330,7 @@ export class RecepcionListPage implements OnInit {
         if (!confirmado) return;
         try {
           await firstValueFrom(this.servicio.remove(item.id));
-          this.snackbar.open('Recepción eliminada', 'OK', { duration: 3000 });
+          this.avisar('Recepción eliminada', item.liquidacion_estado);
           this.cargar();
           this.cargarResumen();
           this.grillaTab()?.cargar();

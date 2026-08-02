@@ -152,10 +152,14 @@
                 @for (dia of dias(); track dia.iso) {
                   <td class="celda" [class.hoy]="dia.iso === hoy()">
                     @if (fila.celdas[dia.iso]; as celda) {
-                      @if (celda.liquidada) {
+                      <!-- El candado es SOLO para lo ya pagado: esa plata ya salió.
+                           Un día que está en una liquidación en borrador o aprobada
+                           se sigue pudiendo corregir (el backend recuadra la
+                           liquidación), pero lleva la franja de aviso de abajo. -->
+                      @if (celda.pagada) {
                         <span
-                          class="celda-contenido liquidada"
-                          matTooltip="Liquidada — no editable"
+                          class="celda-contenido pagada"
+                          matTooltip="Pagada — no editable"
                         >
                           {{ celda.litros | cantidad }}
                           @if (celda.con_transporte) {
@@ -167,10 +171,12 @@
                         <button
                           type="button"
                           class="celda-btn"
-                          [matTooltip]="'Editar recepción del ' + (dia.iso | date: 'dd/MM')"
+                          [class.en-liquidacion]="celda.liquidada"
+                          [matTooltip]="tooltipCelda(celda, dia.iso)"
                           [attr.aria-label]="
                             'Editar recepción de ' + fila.proveedor_nombre +
-                            ' del ' + (dia.iso | date: 'dd/MM/yyyy')
+                            ' del ' + (dia.iso | date: 'dd/MM/yyyy') +
+                            (celda.liquidada ? ' (ya está en una liquidación sin pagar)' : '')
                           "
                           (click)="clickCelda(fila, dia.iso)"
                         >
@@ -180,7 +186,7 @@
                           }
                         </button>
                       } @else {
-                        <span class="celda-contenido">
+                        <span class="celda-contenido" [class.en-liquidacion]="celda.liquidada">
                           {{ celda.litros | cantidad }}
                           @if (celda.con_transporte) {
                             <mat-icon class="carrito" matTooltip="Con transporte">local_shipping</mat-icon>
@@ -241,11 +247,20 @@
   }
 </mat-card>
 
-<!-- Leyenda -->
+<!--
+  Leyenda. Distingue las TRES situaciones que ahora puede tener un día, porque
+  dos de ellas se ven parecidas pero se comportan al revés: un día que está en
+  una liquidación sin pagar SÍ se edita (y al hacerlo mueve esa liquidación),
+  mientras que uno ya pagado no se toca.
+-->
 <div class="leyenda">
   <span class="leyenda-item"><span class="muestra"></span> Sin registro (clic para anotar)</span>
   <span class="leyenda-item"><span class="muestra">nº</span> Litros del día (clic para editar)</span>
   <span class="leyenda-item">
-    <span class="muestra liquidada"><mat-icon>lock</mat-icon></span> Liquidada — no editable
+    <span class="muestra en-liquidacion">nº</span> En una liquidación sin pagar — se puede
+    editar, pero la liquidación se recalcula
+  </span>
+  <span class="leyenda-item">
+    <span class="muestra pagada"><mat-icon>lock</mat-icon></span> Pagada — no editable
   </span>
 </div>

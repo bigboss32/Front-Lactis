@@ -2,7 +2,13 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { CrudService, QueryParams } from '../../core/api.service';
-import { Monto, Page, Recepcion, ResumenPeriodo } from '../../core/models';
+import {
+  EstadoLiquidacionDia,
+  Monto,
+  Page,
+  Recepcion,
+  ResumenPeriodo,
+} from '../../core/models';
 
 export interface RecepcionPayload {
   fecha: string;
@@ -40,7 +46,16 @@ export interface RecepcionFiltro extends QueryParams {
 export interface CeldaGrilla {
   recepcion_id: string;
   litros: Monto;
+  /**
+   * El día ya está dentro de una liquidación generada (la de la leche o la del
+   * flete), en cualquier estado. Es una SEÑA para avisar que al tocarlo se va a
+   * mover una liquidación ya emitida, NO un candado: el candado es `pagada`.
+   */
   liquidada: boolean;
+  /** El candado de verdad: alguna de esas liquidaciones ya está pagada. */
+  pagada: boolean;
+  /** Estado que manda, para explicar en pantalla qué pasa si se edita el día. */
+  liquidacion_estado: EstadoLiquidacionDia;
   /** True si la recepción tiene transportador asignado. */
   con_transporte: boolean;
 }

@@ -37,9 +37,22 @@ export interface RecepcionDialogData {
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
     <mat-dialog-content>
-      @if (liquidada) {
-        <p class="aviso-liquidada">
-          Esta recepción ya fue liquidada y no se puede modificar.
+      @if (pagada) {
+        <p class="aviso-liquidacion">
+          Este día ya se pagó en una liquidación y no se puede modificar.
+        </p>
+      } @else if (enLiquidacion) {
+        <!-- No es un bloqueo: es una advertencia. Se puede guardar, pero conviene
+             saber que por detrás se mueve un comprobante ya emitido. -->
+        <p class="aviso-liquidacion">
+          @if (estadoLiquidacion === 'aprobada') {
+            Este día ya está en una liquidación <strong>aprobada</strong>. Si lo cambia (o lo
+            elimina), esa liquidación vuelve a borrador y se recalcula: tendrá que revisarla y
+            aprobarla otra vez.
+          } @else {
+            Este día ya está en una liquidación en <strong>borrador</strong>. Si lo cambia (o lo
+            elimina), esa liquidación se recalcula sola.
+          }
         </p>
       }
       @if (prefijado) {
@@ -85,7 +98,7 @@ export interface RecepcionDialogData {
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      @if (data?.item && !liquidada) {
+      @if (data?.item && !pagada) {
         <button
           mat-button
           type="button"
@@ -101,7 +114,7 @@ export interface RecepcionDialogData {
         mat-flat-button
         type="submit"
         form="form-recepcion"
-        [disabled]="form.invalid || guardando() || liquidada"
+        [disabled]="form.invalid || guardando() || pagada"
       >
         @if (guardando()) {
           <app-spinner-boton /> Guardando…
@@ -112,7 +125,7 @@ export interface RecepcionDialogData {
     </mat-dialog-actions>
   `,
   styles: `
-    .aviso-liquidada {
+    .aviso-liquidacion {
       margin: 0 0 12px;
       padding: 8px 12px;
       border-radius: 8px;
@@ -120,7 +133,7 @@ export interface RecepcionDialogData {
       background: color-mix(in srgb, #b26a00 14%, transparent);
       color: #b26a00;
     }
-    :host-context(html.dark) .aviso-liquidada { color: #ffb74d; }
+    :host-context(html.dark) .aviso-liquidacion { color: #ffb74d; }
 
     .aviso-prefijado {
       margin: 0 0 12px;
@@ -144,7 +157,18 @@ export class RecepcionFormDialog {
   private readonly snackbar = inject(MatSnackBar);
 
   readonly data = inject<RecepcionDialogData | null>(MAT_DIALOG_DATA, { optional: true });
-  readonly liquidada = !!this.data?.item?.liquidacion_id;
+  /**
+   * Estado de la liquidación que manda sobre este día. El candado es SOLO
+   * 'pagada': en borrador y en aprobada el día se corrige y el backend recuadra
+   * la liquidación (ver RecepcionService._exigir_no_pagada). Antes se bloqueaba
+   * con solo tener liquidación, y el dueño se quedaba sin poder corregir un día
+   * desde que la generaba, aunque no le hubiera pagado a nadie.
+   */
+  readonly estadoLiquidacion = this.data?.item?.liquidacion_estado ?? null;
+  readonly pagada = this.estadoLiquidacion === 'pagada';
+  /** Ya está en una liquidación, pero sin pagar: se edita avisando. */
+  readonly enLiquidacion =
+    this.estadoLiquidacion === 'borrador' || this.estadoLiquidacion === 'aprobada';
   /** Nueva recepción abierta desde una celda de la grilla: fecha y proveedor fijos. */
   readonly prefijado = !this.data?.item && !!this.data?.prefill;
   readonly proveedores = signal<Proveedor[]>([]);
@@ -184,8 +208,8 @@ export class RecepcionFormDialog {
     if (this.prefijado) {
       this.form.controls.fecha.disable();
     }
-    // Una recepción ya liquidada es de solo lectura (el backend también lo valida).
-    if (this.liquidada) {
+    // Un día ya PAGADO es de solo lectura (el backend también lo valida).
+    if (this.pagada) {
       this.form.disable();
     }
     firstValueFrom(
@@ -199,7 +223,7 @@ export class RecepcionFormDialog {
   }
 
   async guardar(): Promise<void> {
-    if (this.form.invalid || this.liquidada) return;
+    if (this.form.invalid || this.pagada) return;
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
@@ -229,16 +253,26 @@ export class RecepcionFormDialog {
     }
   }
 
-  /** Elimina la recepción (p. ej. un registro equivocado). Bloqueada si está liquidada. */
+  /** Elimina la recepción (p. ej. un registro equivocado). Bloqueada si ya se pagó. */
   eliminar(): void {
     const item = this.data?.item;
-    if (!item || this.liquidada) return;
+    if (!item || this.pagada) return;
+    // Si el día está en una liquidación, borrarlo también le quita el renglón:
+    // hay que decirlo ANTES de confirmar, no después.
+    const consecuencia =
+      this.estadoLiquidacion === 'aprobada'
+        ? ' La liquidación que lo incluye volverá a borrador y se recalculará sin este día:' +
+          ' tendrá que aprobarla otra vez.'
+        : this.estadoLiquidacion === 'borrador'
+          ? ' La liquidación que lo incluye se recalculará sin este día.'
+          : '';
     this.dialog
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar recepción',
           mensaje:
-            '¿Eliminar esta recepción? Desaparecerá de la grilla y del listado. No se puede deshacer.',
+            '¿Eliminar esta recepción? Desaparecerá de la grilla y del listado. ' +
+            'No se puede deshacer.' + consecuencia,
           accion: 'Eliminar',
         },
       })

@@ -27,12 +27,17 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { Page, Ruta, Transportador } from '../../core/models';
+import { EstadoLiquidacionDia, Page, Ruta, Transportador } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { RecepcionDialogData, RecepcionFormDialog } from './recepcion-form.dialog';
-import { FilaGrilla, GrillaQuincena, RecepcionesService } from './recepciones.service';
+import {
+  CeldaGrilla,
+  FilaGrilla,
+  GrillaQuincena,
+  RecepcionesService,
+} from './recepciones.service';
 
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -306,18 +311,39 @@ function quincenaDeHoy(): Quincena {
       .celda-btn.vacia .mas { opacity: 0.35; }
     }
 
-    /* Celda liquidada: tinte verde + candado */
-    .celda-contenido.liquidada {
+    /* Celda PAGADA: tinte verde + candado. Es la única que no se puede tocar
+       (esa plata ya se le entregó a alguien). */
+    .celda-contenido.pagada {
       background: color-mix(in srgb, #2e7d32 14%, transparent);
       color: #2e7d32;
       font-weight: 500;
     }
-    .celda-contenido.liquidada .candado {
+    .celda-contenido.pagada .candado {
       font-size: 14px;
       width: 14px;
       height: 14px;
     }
-    :host-context(html.dark) .celda-contenido.liquidada { color: #81c784; }
+    :host-context(html.dark) .celda-contenido.pagada { color: #81c784; }
+
+    /*
+     * Celda que YA ESTÁ EN UNA LIQUIDACIÓN pero sin pagar: se edita igual que
+     * cualquier otra, así que no lleva candado ni cambia de color de fondo (eso
+     * la haría parecer bloqueada). Lleva una franja delgada abajo, en el mismo
+     * ámbar de los avisos del sistema: alcanza para que se note que ese día no
+     * está suelto —al tocarlo se mueve una liquidación ya generada— sin gritar.
+     *
+     * Con box-shadow y no con border-bottom: un borde cambiaría el alto de la
+     * celda y desparejaría la cuadrícula, que es de lo primero que se queja el
+     * dueño. inset, para que quede dentro de los 46px de la celda.
+     */
+    .celda-btn.en-liquidacion,
+    .celda-contenido.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #b26a00 55%, transparent);
+    }
+    :host-context(html.dark) .celda-btn.en-liquidacion,
+    :host-context(html.dark) .celda-contenido.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #ffb74d 55%, transparent);
+    }
 
     /* Ícono de "tiene transporte asignado" dentro de la celda */
     .carrito {
@@ -423,13 +449,21 @@ function quincenaDeHoy(): Quincena {
       font-weight: 500;
       color: var(--mat-sys-on-surface);
     }
-    .muestra.liquidada {
+    .muestra.pagada {
       background: color-mix(in srgb, #2e7d32 14%, transparent);
       border-color: transparent;
       color: #2e7d32;
     }
-    .muestra.liquidada mat-icon { font-size: 14px; width: 14px; height: 14px; }
-    :host-context(html.dark) .muestra.liquidada { color: #81c784; }
+    .muestra.pagada mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    :host-context(html.dark) .muestra.pagada { color: #81c784; }
+    /* La muestra de la franja ámbar: el mismo recurso de la celda, para que la
+       leyenda y la grilla se lean como lo mismo. */
+    .muestra.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #b26a00 55%, transparent);
+    }
+    :host-context(html.dark) .muestra.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #ffb74d 55%, transparent);
+    }
 
     .empty-state { padding: 48px 16px; }
     /* Segunda línea del estado vacío: dice QUÉ HACER cuando el filtro dejó la
@@ -917,10 +951,34 @@ export class RecepcionGrillaTab implements OnInit {
   }
 
   /**
+   * Qué dice la celda al pasarle el mouse. Un día que ya está dentro de una
+   * liquidación se sigue pudiendo editar, pero hay que decir en qué se está
+   * metiendo el usuario: tocarlo mueve un comprobante ya emitido, y si estaba
+   * aprobado le tumba la aprobación.
+   */
+  tooltipCelda(celda: CeldaGrilla, fechaIso: string): string {
+    const dia = fechaIso.split('-').reverse().slice(0, 2).join('/');
+    if (!celda.liquidada) return `Editar recepción del ${dia}`;
+    if (celda.liquidacion_estado === 'aprobada') {
+      return (
+        `Editar recepción del ${dia}. Este día ya está en una liquidación APROBADA: ` +
+        'si lo cambia, esa liquidación vuelve a borrador y hay que aprobarla otra vez.'
+      );
+    }
+    return (
+      `Editar recepción del ${dia}. Este día ya está en una liquidación en borrador: ` +
+      'si lo cambia, esa liquidación se recalcula sola.'
+    );
+  }
+
+  /**
    * Clic en una celda proveedor × día:
    * - sin registro y con permiso de crear → nueva recepción prefijada;
-   * - con registro no liquidado y permiso de editar → edición;
-   * - liquidada o sin permiso → solo lectura (no hace nada).
+   * - con registro sin pagar y permiso de editar → edición;
+   * - PAGADA o sin permiso → solo lectura (no hace nada).
+   *
+   * Ojo: el que decide es `pagada`, no `liquidada`. Que el día esté en una
+   * liquidación ya no lo bloquea, que es justo lo que pidió el dueño.
    */
   async clickCelda(fila: FilaGrilla, fechaIso: string): Promise<void> {
     const celda = fila.celdas[fechaIso];
@@ -929,17 +987,25 @@ export class RecepcionGrillaTab implements OnInit {
       this.abrirDialogo({ prefill: { fecha: fechaIso, proveedor_id: fila.proveedor_id } });
       return;
     }
-    if (celda.liquidada || !this.puedeEditar()) return;
+    if (celda.pagada || !this.puedeEditar()) return;
     try {
       const item = await firstValueFrom(this.servicio.getById(celda.recepcion_id));
-      this.abrirDialogo({ item });
+      this.abrirDialogo({ item }, celda.liquidacion_estado);
     } catch (err) {
       this.mostrarError(err, 'No fue posible abrir la recepción');
     }
   }
 
-
-  private abrirDialogo(data: RecepcionDialogData): void {
+  /**
+   * `estadoPrevio` es el estado que tenía la liquidación de ese día ANTES de
+   * guardar: con él se arma el aviso de lo que acaba de pasar por detrás. Se
+   * toma de antes a propósito, porque después de guardar una aprobada ya
+   * aparece en borrador y no se sabría que hubo retroceso.
+   */
+  private abrirDialogo(
+    data: RecepcionDialogData,
+    estadoPrevio: EstadoLiquidacionDia = null,
+  ): void {
     this.dialog
       .open(RecepcionFormDialog, {
         data,
@@ -949,14 +1015,28 @@ export class RecepcionGrillaTab implements OnInit {
       .afterClosed()
       .subscribe((resultado) => {
         if (!resultado) return;
-        this.snackbar.open(
-          resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada',
-          'OK',
-          { duration: 3000 },
-        );
+        const hecho = resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada';
+        const aviso = this.avisoLiquidacion(estadoPrevio);
+        this.snackbar.open(aviso ? `${hecho}. ${aviso}` : hecho, 'OK', {
+          // El aviso hay que alcanzar a leerlo: son dos renglones y dicen que
+          // una liquidación se movió.
+          duration: aviso ? 9000 : 3000,
+        });
         this.cargar();
         this.cambio.emit();
       });
+  }
+
+  /** Qué le pasó a la liquidación del día que se acaba de tocar. */
+  private avisoLiquidacion(estadoPrevio: EstadoLiquidacionDia): string | null {
+    if (estadoPrevio === 'aprobada') {
+      return (
+        'Esta liquidación volvió a borrador porque cambiaron sus litros; ' +
+        'revísela y apruébela otra vez.'
+      );
+    }
+    if (estadoPrevio === 'borrador') return 'Se recalculó la liquidación de este día.';
+    return null;
   }
 
   private mostrarError(err: unknown, fallback: string): void {

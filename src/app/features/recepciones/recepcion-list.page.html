@@ -161,11 +161,33 @@
 
             <ng-container matColumnDef="liquidacion">
               <th mat-header-cell *matHeaderCellDef mat-sort-header>Liquidación</th>
+              <!-- Ya no basta con "sí/no": de los tres estados, solo 'pagada'
+                   traba el día; en borrador y aprobada se sigue pudiendo
+                   corregir (y la liquidación se recalcula sola). -->
               <td mat-cell *matCellDef="let fila" [attr.data-label]="'Liquidación'">
-                @if (fila.liquidacion_id) {
-                  <span class="liq liquidada"><mat-icon>check_circle</mat-icon> Liquidada</span>
-                } @else {
-                  <span class="liq pendiente"><mat-icon>schedule</mat-icon> Pendiente</span>
+                @switch (fila.liquidacion_estado) {
+                  @case ('pagada') {
+                    <span class="liq pagada"><mat-icon>lock</mat-icon> Pagada</span>
+                  }
+                  @case ('aprobada') {
+                    <span
+                      class="liq en-liquidacion"
+                      matTooltip="Aprobada: si corrige el día, vuelve a borrador y se recalcula"
+                    >
+                      <mat-icon>check_circle</mat-icon> Aprobada
+                    </span>
+                  }
+                  @case ('borrador') {
+                    <span
+                      class="liq en-liquidacion"
+                      matTooltip="En borrador: si corrige el día, la liquidación se recalcula"
+                    >
+                      <mat-icon>edit_note</mat-icon> En borrador
+                    </span>
+                  }
+                  @default {
+                    <span class="liq pendiente"><mat-icon>schedule</mat-icon> Pendiente</span>
+                  }
                 }
               </td>
             </ng-container>
@@ -176,8 +198,8 @@
                 <button
                   mat-icon-button
                   *hasPermission="'recepcion:editar'"
-                  [matTooltip]="fila.liquidacion_id ? 'Ya liquidada: no editable' : 'Editar'"
-                  [disabled]="!!fila.liquidacion_id"
+                  [matTooltip]="tooltipEditar(fila)"
+                  [disabled]="fila.liquidacion_estado === 'pagada'"
                   (click)="abrirFormulario(fila)"
                 >
                   <mat-icon>edit</mat-icon>
@@ -185,7 +207,10 @@
                 <button
                   mat-icon-button
                   *hasPermission="'recepcion:eliminar'"
-                  matTooltip="Eliminar"
+                  [matTooltip]="
+                    fila.liquidacion_estado === 'pagada' ? 'Ya pagada: no se puede eliminar' : 'Eliminar'
+                  "
+                  [disabled]="fila.liquidacion_estado === 'pagada'"
                   (click)="eliminar(fila)"
                 >
                   <mat-icon>delete</mat-icon>
