@@ -91,18 +91,25 @@ export class RecepcionesService extends CrudService<Recepcion, RecepcionPayload>
     return this.api.get<ResumenPeriodo>(`${this.base}/resumen/periodo`, { desde, hasta });
   }
 
-  /** Grilla proveedores × días de un período, con filtros por nombre y ruta. */
+  /**
+   * Grilla proveedores × días de un período, con filtros por nombre de
+   * proveedor, por ruta y por transportador. Los tres se combinan y TODOS se
+   * resuelven en el backend: la quincena puede traer cientos de filas, así que
+   * recortarlas aquí no sería un filtro de verdad.
+   */
   grilla(
     desde: string,
     hasta: string,
     search?: string | null,
     ruta_id?: string | null,
+    transportador_id?: string | null,
   ): Observable<GrillaQuincena> {
     return this.api.get<GrillaQuincena>(`${this.base}/grilla/quincena`, {
       desde,
       hasta,
       search,
       ruta_id,
+      transportador_id,
     });
   }
 }

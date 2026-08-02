@@ -41,7 +41,10 @@
   </button>
 </div>
 
-<!-- Filtros de la grilla: por nombre de proveedor y por ruta -->
+<!--
+  Filtros de la grilla: por nombre de proveedor, por ruta y por transportador.
+  Los tres se combinan y los resuelve el backend (ver RecepcionesService.grilla).
+-->
 <div class="filtros-grilla">
   <mat-form-field subscriptSizing="dynamic">
     <mat-label>Buscar proveedor</mat-label>
@@ -63,6 +66,17 @@
       }
     </mat-select>
   </mat-form-field>
+  <!-- Quién recogió la leche. Deja solo los DÍAS de ese transportador (el dato
+       está en cada recepción), no las filas completas del proveedor. -->
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Transportador</mat-label>
+    <mat-select [formControl]="transportadorId">
+      <mat-option [value]="null">Todos</mat-option>
+      @for (transportador of transportadores(); track transportador.id) {
+        <mat-option [value]="transportador.id">{{ transportador.nombre }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
 </div>
 
 <mat-card class="grilla-card">
@@ -72,9 +86,21 @@
 
   @if (grilla(); as g) {
     @if (g.filas.length === 0) {
+      <!-- Una tabla en blanco no explica nada, y las dos razones por las que
+           puede quedar vacía se arreglan de maneras opuestas: si es la quincena
+           la que está sin anotar hay que registrar leche; si fue el filtro, hay
+           que aflojarlo. Por eso el mensaje dice cuál de las dos es. -->
       <div class="empty-state">
         <mat-icon>water_drop</mat-icon>
-        <p>No hay recepciones registradas en esta quincena</p>
+        @if (conFiltros()) {
+          <p>Ningún proveedor coincide con los filtros de esta quincena</p>
+          <p class="empty-detalle">
+            Cambie o quite los filtros de arriba (proveedor, ruta o transportador) para volver a
+            ver la quincena completa.
+          </p>
+        } @else {
+          <p>No hay recepciones registradas en esta quincena</p>
+        }
       </div>
     } @else {
       <div class="grilla-scroll" #scrollGrilla>

@@ -27,7 +27,7 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { Page, Ruta } from '../../core/models';
+import { Page, Ruta, Transportador } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
@@ -432,6 +432,14 @@ function quincenaDeHoy(): Quincena {
     :host-context(html.dark) .muestra.liquidada { color: #81c784; }
 
     .empty-state { padding: 48px 16px; }
+    /* Segunda línea del estado vacío: dice QUÉ HACER cuando el filtro dejó la
+       grilla sin filas. Va más pequeña para que la frase principal siga siendo
+       la que se lee primero. */
+    .empty-state .empty-detalle {
+      margin: 4px auto 0;
+      max-width: 42ch;
+      font-size: 0.85rem;
+    }
 
     /* ------------------------------ cuadrícula compacta (por ancho de contenido) */
     /*
@@ -603,9 +611,11 @@ export class RecepcionGrillaTab implements OnInit {
   readonly grilla = signal<GrillaQuincena | null>(null);
   readonly cargando = signal(false);
   readonly rutas = signal<Ruta[]>([]);
+  readonly transportadores = signal<Transportador[]>([]);
 
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly rutaId = new FormControl<string | null>(null);
+  readonly transportadorId = new FormControl<string | null>(null);
 
   /** Contenedor de la grilla que se desplaza en horizontal. */
   private readonly scrollGrilla = viewChild<ElementRef<HTMLElement>>('scrollGrilla');
@@ -680,6 +690,19 @@ export class RecepcionGrillaTab implements OnInit {
     return (this.grilla()?.filas.length ?? 0) > 0 && this.indiceHoy() >= 0;
   });
 
+  /**
+   * Hay al menos un filtro puesto. Es un SIGNAL que se refresca en cada carga
+   * (ver cargar()) y no un computed sobre los FormControl: los controles no son
+   * reactivos para los signals, así que un computed que los leyera no se
+   * volvería a calcular al cambiarlos y la pantalla se quedaría con el mensaje
+   * de vacío equivocado.
+   *
+   * Sirve para explicar POR QUÉ no hay filas: una quincena sin nada anotado y
+   * una quincena en la que el filtro no dejó pasar nada se ven igual (tabla en
+   * blanco), pero se arreglan de maneras opuestas.
+   */
+  readonly conFiltros = signal(false);
+
   /** Total pagado a un proveedor en la quincena: leche (valor neto) + transporte. */
   totalFila(fila: FilaGrilla): number {
     return Number(fila.valor_neto) + Number(fila.valor_transporte);
@@ -695,18 +718,29 @@ export class RecepcionGrillaTab implements OnInit {
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.cargar());
     this.rutaId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.cargar());
+    this.transportadorId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.cargar());
   }
 
   ngOnInit(): void {
     this.estadoFiltros.vincular(
       'recepciones-grilla',
-      { buscar: this.buscar, rutaId: this.rutaId },
+      { buscar: this.buscar, rutaId: this.rutaId, transportadorId: this.transportadorId },
       this.destroyRef,
     );
     this.cargar();
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
     ).then((r) => this.rutas.set(r.items));
+    // Van TODOS los transportadores, también los inactivos, y a propósito: este
+    // es un selector de CONSULTA, no un campo para registrar leche nueva. Si un
+    // transportador se retira y aquí solo salieran los activos, sus quincenas
+    // pasadas quedarían imposibles de mirar en esta pantalla —su historia se
+    // volvería invisible—, que es justo lo contrario de lo que se busca al
+    // apartarlo. En el formulario de recepción, donde sí se registra leche
+    // nueva, sigue yendo estado=activo.
+    firstValueFrom(
+      this.api.get<Page<Transportador>>('/transportadores', { page_size: 100 }),
+    ).then((r) => this.transportadores.set(r.items));
   }
 
   anterior(): void {
@@ -757,11 +791,17 @@ export class RecepcionGrillaTab implements OnInit {
     // resaltado de la columna se recalculan si de por medio pasó la medianoche.
     this.refrescarHoy();
     this.cargando.set(true);
+    // Se recuerda con qué filtros se pidió ESTA grilla, para que el mensaje de
+    // "no hay filas" corresponda a lo que se está mostrando.
+    const buscar = this.buscar.value || null;
+    const rutaId = this.rutaId.value;
+    const transportadorId = this.transportadorId.value;
+    this.conFiltros.set(!!buscar || !!rutaId || !!transportadorId);
     try {
       const { desde, hasta } = this.rango();
       this.grilla.set(
         await firstValueFrom(
-          this.servicio.grilla(desde, hasta, this.buscar.value || null, this.rutaId.value),
+          this.servicio.grilla(desde, hasta, buscar, rutaId, transportadorId),
         ),
       );
     } catch (err) {
