@@ -247,9 +247,18 @@ const ATAJOS: Atajo[] = [
                 }
                 @if (n(p.total_costo_de_baja) > 0) {
                   <div>
-                    <dt>(−) Se dañó o se ajustó</dt>
+                    <dt>(−) Se dañó, se ajustó o se secó</dt>
                     <dd>{{ p.total_costo_de_baja | money }}</dd>
                   </div>
+                  @if (n(p.total_costo_merma_ciclo) > 0) {
+                    <!-- SUBCONJUNTO del renglón de arriba, no un renglón más: por
+                         eso va sangrado y sin signo. Si se sumara aparte, el
+                         desglose dejaría de dar la utilidad. -->
+                    <div class="sub">
+                      <dt>de eso, se secó (cierre de ciclo)</dt>
+                      <dd>{{ p.total_costo_merma_ciclo | money }}</dd>
+                    </div>
+                  }
                 }
                 <div class="suma">
                   <dt>{{ n(p.total_utilidad) < 0 ? 'Pérdida' : 'Utilidad' }} de lo vendido</dt>
@@ -279,7 +288,7 @@ const ATAJOS: Atajo[] = [
                 </div>
                 @if (n(p.total_costo_de_baja) > 0) {
                   <div>
-                    <dt>(+) Se dañó o se ajustó</dt>
+                    <dt>(+) Se dañó, se ajustó o se secó</dt>
                     <dd>{{ p.total_costo_de_baja | money }}</dd>
                   </div>
                 }
@@ -633,9 +642,20 @@ const ATAJOS: Atajo[] = [
               </div>
               @if (n(l.kilos_de_baja) > 0) {
                 <div class="ojo">
-                  <dt>Se dañó o se ajustó</dt>
+                  <dt>Se dañó, se ajustó o se secó</dt>
                   <dd>{{ l.kilos_de_baja | cantidad: 'kg' }}</dd>
                 </div>
+                @if (n(l.kilos_merma_ciclo) > 0) {
+                  <!-- Parte de la baja de arriba, no otra cosa: lo que se secó
+                       entre que se pesó al hacerlo y se pesó al venderlo. Va
+                       aparte porque secarse es lo normal del oficio y dañarse no,
+                       y confundirlos manda al dueño a buscar un culpable que no
+                       existe. -->
+                  <div class="sub">
+                    <dt>de eso, se secó</dt>
+                    <dd>{{ l.kilos_merma_ciclo | cantidad: 'kg' }}</dd>
+                  </div>
+                }
               }
               @if (n(l.kilos_en_bodega) > 0) {
                 <div class="ojo">
@@ -1170,6 +1190,15 @@ const ATAJOS: Atajo[] = [
     }
     .bloque .suma dt { color: inherit; }
     .bloque > div.ojo dd { color: #a06000; font-weight: 600; }
+    // Un renglón que DESGLOSA el de arriba, no uno más. Va sangrado, chiquito y
+    // sin signo justamente para que no se sume: si se sumara, el desglose dejaría
+    // de dar la cifra grande, que es lo que el dueño revisa con calculadora.
+    .bloque > div.sub {
+      padding: 0 0 3px 14px;
+      font-size: 0.78rem;
+      opacity: 0.85;
+    }
+    .bloque > div.sub dd { font-weight: 400; }
     // El kilo puesto en destino es la cifra que se busca en este bloque.
     .bloque > div.destacado dd {
       color: var(--mat-sys-primary);

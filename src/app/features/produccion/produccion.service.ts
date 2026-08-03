@@ -69,6 +69,14 @@ export interface LoteProduccion {
   kilos_vendidos: Monto;
   /** Ajustes de inventario hacia abajo: se dañó o se corrigió un sobrante. */
   kilos_de_baja: Monto;
+  /**
+   * DE `kilos_de_baja`, la parte que es merma de un CIERRE DE CICLO: queso que se
+   * secó entre que se pesó al hacerlo y se pesó al venderlo. Es un SUBCONJUNTO y
+   * no un cuarto destino: no se vuelve a sumar en el desglose, que ya lo lleva
+   * dentro de la baja. Va aparte para distinguir lo normal del oficio (se secó)
+   * de lo que sí hay que ir a mirar (se dañó).
+   */
+  kilos_merma_ciclo: Monto;
   kilos_en_bodega: Monto;
   ingresos: Monto;
   /** Fletes de los despachos, en la parte que le toca a este lote. */
@@ -81,6 +89,8 @@ export interface LoteProduccion {
   costo_puesto_kilo: Monto;
   costo_vendido: Monto;
   costo_de_baja: Monto;
+  /** Subconjunto de `costo_de_baja`: lo que valía el queso que se secó. */
+  costo_merma_ciclo: Monto;
   costo_en_bodega: Monto;
   utilidad: Monto;
   precio_venta_kilo: Monto;
@@ -119,6 +129,9 @@ export interface LotesProduccionPanel {
   total_costo_de_baja: Monto;
   total_kilos_vendidos: Monto;
   total_kilos_de_baja: Monto;
+  /** De las bajas, la parte que se secó. SUBCONJUNTO: no se suma dos veces. */
+  total_kilos_merma_ciclo: Monto;
+  total_costo_merma_ciclo: Monto;
   total_kilos_en_bodega: Monto;
   total_costo_en_bodega: Monto;
   mejor: string | null;
@@ -133,6 +146,111 @@ export interface LotesProduccionPanel {
   /** Leche recibida que todavía no se ha usado en ninguna producción. */
   litros_sin_usar: Monto;
   costo_litros_sin_usar: Monto;
+}
+
+// ---------------------------------------------- cierre de ciclo de despacho
+/**
+ * La cuenta de la merma para UN tipo de queso dentro del ciclo.
+ *
+ * Va por tipo y no en un solo total porque no se puede compensar el doble crema
+ * que faltó con el campesino que sobró: son dos productos con rendimientos y
+ * colas de inventario distintas.
+ *
+ * La cuenta que lee el dueño, renglón por renglón:
+ *   producido − vendido − ya bajado a mano = MERMA
+ */
+export interface MermaDelTipo {
+  tipo_queso_id: string;
+  tipo_queso: string;
+  kilos_producidos: Monto;
+  kilos_vendidos: Monto;
+  /** Lo que el dueño YA había bajado a mano: el renglón que evita cobrar dos veces. */
+  kilos_ajuste_manual: Monto;
+  /** Queso cargado a mano HACIA ARRIBA dentro del ciclo. No entra en la cuenta. */
+  kilos_entrada_manual: Monto;
+  /** Puede salir NEGATIVO: se vendió más de lo que se produjo. Eso es un aviso. */
+  kilos_merma: Monto;
+  porcentaje: Monto;
+}
+
+/** La parte de la merma que le toca a UNA tanda. La suma da la merma exacta. */
+export interface MermaDelLote {
+  produccion_id: string;
+  fecha: string;
+  tipo_queso: string;
+  kilos_producidos: Monto;
+  kilos_merma: Monto;
+  costo_merma: Monto;
+}
+
+/**
+ * La cuenta de un ciclo ANTES de cerrarlo: lo que el dueño va a aceptar.
+ *
+ * No escribe nada. Es la pantalla de "se produjeron X kg, salieron Y, la
+ * diferencia son Z kg que valen $W", con el desglose por tipo y por tanda.
+ */
+export interface CicloPropuesta {
+  fecha_inicio: string;
+  fecha_fin: string;
+  dias: number;
+  nombre_sugerido: string;
+  kilos_producidos: Monto;
+  kilos_vendidos: Monto;
+  kilos_ajuste_manual: Monto;
+  kilos_merma: Monto;
+  costo_merma: Monto;
+  porcentaje: Monto;
+  por_tipo: MermaDelTipo[];
+  por_lote: MermaDelLote[];
+  /** Merma negativa, desproporcionada, o queso cargado a mano dentro del ciclo. */
+  advertencias: string[];
+  /** Si ya pasaron los siete días: es lo que hace que el sistema PROPONGA. */
+  toca_cerrar: boolean;
+  dias_desde_ultimo_cierre: number;
+  vacio: boolean;
+}
+
+/** Un ciclo con la cuenta que se aceptó al cerrarlo. */
+export interface CicloDespacho {
+  id: string;
+  empresa_id: string;
+  estado: string;
+  created_at: string;
+  updated_at: string;
+  nombre: string;
+  fecha_inicio: string;
+  fecha_fin: string;
+  notas: string | null;
+  cerrado: boolean;
+  cerrado_at: string | null;
+  kilos_producidos: Monto;
+  kilos_vendidos: Monto;
+  kilos_ajuste_manual: Monto;
+  kilos_merma: Monto;
+  costo_merma: Monto;
+  porcentaje: Monto;
+  advertencias: string[];
+  dias: number;
+  por_lote: MermaDelLote[];
+}
+
+export interface CiclosPanel {
+  ciclos: CicloDespacho[];
+  /** Suma EXACTA de los ciclos de la lista, no un recálculo del histórico. */
+  total_kilos_producidos: Monto;
+  total_kilos_merma: Monto;
+  total_costo_merma: Monto;
+  /** El ciclo que toca cerrar ahora, con su cuenta ya hecha. */
+  propuesta: CicloPropuesta | null;
+}
+
+export interface CicloCerrarPayload {
+  fecha_inicio: string;
+  fecha_fin: string;
+  nombre?: string | null;
+  notas?: string | null;
+  /** Obliga a que quien cierre haya visto la cuenta rara y decida igual. */
+  aceptar_advertencias?: boolean;
 }
 
 export interface ProduccionPayload {
@@ -179,6 +297,39 @@ export class ProduccionService extends CrudService<Produccion, ProduccionPayload
     if (desde) params['desde'] = desde;
     if (hasta) params['hasta'] = hasta;
     return this.api.get<LotesProduccionPanel>(`${this.base}/lotes`, params);
+  }
+
+  // ------------------------------------------ cierre de ciclo de despacho
+  /** Los ciclos cerrados y el que toca cerrar ahora, con su cuenta ya hecha. */
+  ciclos(): Observable<CiclosPanel> {
+    return this.api.get<CiclosPanel>(`${this.base}/ciclos`);
+  }
+
+  /**
+   * La cuenta de un ciclo SIN cerrarlo. Sin fechas propone el que sigue; con
+   * fechas calcula el rango que se le pida, que es lo que permite corregir la
+   * propuesta antes de aceptarla.
+   */
+  propuestaCiclo(desde?: string | null, hasta?: string | null): Observable<CicloPropuesta | null> {
+    const params: QueryParams = {};
+    if (desde) params['desde'] = desde;
+    if (hasta) params['hasta'] = hasta;
+    return this.api.get<CicloPropuesta | null>(`${this.base}/ciclos/propuesta`, params);
+  }
+
+  /** ESTO SÍ ESCRIBE: registra la merma y la baja de la bodega. */
+  cerrarCiclo(payload: CicloCerrarPayload): Observable<CicloDespacho> {
+    return this.api.post<CicloDespacho>(`${this.base}/ciclos/cerrar`, payload);
+  }
+
+  /** Deshace la merma de un ciclo cerrado por equivocación. */
+  reabrirCiclo(id: string): Observable<CicloDespacho> {
+    return this.api.post<CicloDespacho>(`${this.base}/ciclos/${id}/reabrir`);
+  }
+
+  /** Solo se puede borrar un ciclo REABIERTO. */
+  eliminarCiclo(id: string): Observable<void> {
+    return this.api.delete(`${this.base}/ciclos/${id}`);
   }
 }
 

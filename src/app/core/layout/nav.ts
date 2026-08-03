@@ -80,6 +80,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Producción', icon: 'factory', route: '/produccion', modulo: 'produccion' },
       { label: 'Utilidad por lote', icon: 'query_stats', route: '/produccion/lotes', modulo: 'produccion' },
+      // Va justo debajo de la utilidad por lote porque es lo que la corrige: sin
+      // cerrar el ciclo, esa pantalla muestra queso en bodega que ya no existe.
+      { label: 'Cierre de ciclo', icon: 'event_repeat', route: '/produccion/ciclos', modulo: 'produccion' },
       { label: 'Inventario', icon: 'inventory_2', route: '/inventario', modulo: 'inventario' },
     ],
   },
