@@ -308,12 +308,48 @@ export interface Ruta extends TenantFields {
   descripcion: string | null;
 }
 
+/**
+ * Una ruta que hace el transportador, CON LA TARIFA que cobra en ella.
+ *
+ * El mismo señor puede hacer dos rutas el mismo día y cobrar distinto en cada
+ * una (Alex Agudelo hace Nápoles y Mira Valle), así que la ruta no es una
+ * etiqueta: entra en la plata. La tarifa que le aplica a un día de recepción es
+ * la de SU ruta, y solo si esa ruta no tiene tarifa propia se usa la general del
+ * transportador.
+ *
+ * El `nombre` lo manda el backend aquí mismo para que ninguna pantalla tenga que
+ * ir a pedir el catálogo de /rutas aparte solo para poder escribir "Nápoles".
+ * Puede venir null si la ruta se borró después de haberla asignado.
+ */
+export interface TransportadorRuta {
+  ruta_id: string;
+  nombre: string | null;
+  valor_transporte: Monto;
+  /**
+   * La ruta se BORRÓ después de habérsela asignado, y la tarifa sigue guardada.
+   *
+   * Opcional porque el backend todavía no manda el campo: mientras llegue en
+   * `undefined` la pantalla se ve igual que hoy. Cuando llegue, el renglón sale
+   * con una marca discreta "(borrada)" —la tarifa se sigue mostrando, que es plata
+   * guardada— porque si no, el dueño se pone a buscar en Rutas una ruta que ya no
+   * existe. Ver `ruta_borrada` en LiquidacionDetalle: es el mismo campo.
+   */
+  ruta_borrada?: boolean;
+}
+
 export interface Transportador extends TenantFields {
   nombre: string;
   documento: string | null;
   telefono: string | null;
-  ruta_id: string | null;
+  /**
+   * Tarifa GENERAL por litro: la que se usa cuando el día no tiene ruta, o
+   * cuando la ruta que hizo no tiene tarifa propia en `rutas`. No es un
+   * duplicado de las de abajo: es el único valor posible cuando no hay ruta de
+   * dónde sacar la tarifa.
+   */
   valor_transporte: Monto;
+  /** Sus rutas con tarifa propia. Vacío = solo cobra la tarifa general. */
+  rutas: TransportadorRuta[];
 }
 
 export interface Proveedor extends TenantFields {
@@ -446,6 +482,30 @@ export interface LiquidacionDetalle {
   litros: Monto;
   precio_litro: Monto;
   valor: Monto;
+  /**
+   * SOLO en el comprobante del transportador: la ruta de ese renglón.
+   *
+   * Los renglones del transportador son por DÍA Y RUTA, no por día: el mismo
+   * señor puede hacer Nápoles a $242,76 y Mira Valle a $300 el mismo martes, y
+   * un solo renglón con las dos no cuadraría (litros × precio ≠ valor). Por eso
+   * un día puede traer DOS renglones, y sin decir cuál ruta es cada uno la
+   * pantalla parecería tener el día repetido.
+   *
+   * Opcionales las dos: el comprobante del proveedor no las trae, y un renglón
+   * viejo (o de un día sin ruta) tampoco.
+   */
+  ruta_id?: string | null;
+  ruta_nombre?: string | null;
+  /**
+   * La ruta de ese renglón ya está BORRADA del catálogo.
+   *
+   * Opcional porque el backend todavía no manda el campo (mientras venga en
+   * `undefined` el renglón se ve igual que hoy). Cuando llegue, al nombre de la
+   * ruta se le pega una marca "(borrada)": el comprobante es de una quincena
+   * pasada y la ruta pudo haberse borrado después, así que el renglón tiene que
+   * poder decirlo sin que la cifra cambie.
+   */
+  ruta_borrada?: boolean;
 }
 
 /** Un pago parcial (abono) hecho contra una liquidación aprobada. */
@@ -478,6 +538,16 @@ export interface Liquidacion extends TenantFields {
   pagado: Monto;
   /** Lo que TODAVÍA se le debe. Siempre: neto_a_pagar = pagado + saldo. */
   saldo: Monto;
+  /**
+   * La vuelta del saldo cuando queda POR DEBAJO de cero: cuánto le quedó debiendo
+   * EL TERCERO al negocio, en POSITIVO (cero cuando no debe nada). Pasa cuando los
+   * anticipos que ya se le entregaron suman más que lo que produjo la quincena.
+   *
+   * Viene calculada del backend a propósito: así la pantalla dice "Henri le queda
+   * debiendo $4.955,77" sin voltearle el signo a mano, y el comprobante en PDF —que
+   * cambia el rótulo por "LE QUEDA DEBIENDO"— dice exactamente lo mismo.
+   */
+  le_queda_debiendo: Monto;
   observaciones: string | null;
   detalles: LiquidacionDetalle[];
   pagos: PagoLiquidacion[];

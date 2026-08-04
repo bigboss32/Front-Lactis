@@ -20,7 +20,7 @@ import { ProveedoresService } from '../proveedores/proveedores.service';
 import { TransportadoresService } from '../transportadores/transportadores.service';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { dateToIso } from '../../shared/date-utils';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { OpcionSelect, SelectBuscable } from '../../shared/select-buscable';
 import { LiquidacionesService, PreLiquidacion } from './liquidaciones.service';
 
@@ -125,32 +125,37 @@ function esteMes(): [Date, Date] {
         <div class="resultado">
           <h3>{{ r.tercero_nombre }}@if (r.tercero_detalle) { <small> · {{ r.tercero_detalle }}</small> }</h3>
 
+          <!--
+            Con centavos y con dos decimales en los litros, igual que el detalle de
+            abajo, que el comprobante oficial y que el PDF preliminar: es el mismo
+            desglose que el dueño suma a mano y tiene que dar EXACTO la cifra grande.
+          -->
           <div class="resumen">
             <span>Total litros</span>
-            <span class="num">{{ r.total_litros | cantidad: 'L' }}</span>
+            <span class="num">{{ r.total_litros | cantidad: 'L' : 2 }}</span>
 
             @if (esProveedor()) {
               <span>Precio promedio</span>
-              <span class="num">{{ r.precio_promedio | money }}</span>
+              <span class="num">{{ r.precio_promedio | money: true }}</span>
               <span>Valor bruto</span>
-              <span class="num">{{ r.valor_bruto | money }}</span>
+              <span class="num">{{ r.valor_bruto | money: true }}</span>
               <span>Bonificaciones</span>
-              <span class="num">{{ r.bonificaciones | money }}</span>
+              <span class="num">{{ r.bonificaciones | money: true }}</span>
               <span>Descuentos</span>
-              <span class="num">{{ r.descuentos | money }}</span>
+              <span class="num">{{ r.descuentos | money: true }}</span>
             } @else {
               <span>Valor transporte</span>
-              <span class="num">{{ r.valor_transporte | money }}</span>
+              <span class="num">{{ r.valor_transporte | money: true }}</span>
             }
 
             <span>Anticipos aplicados</span>
-            <span class="num">{{ r.anticipos | money }}</span>
+            <span class="num">{{ r.anticipos | money: true }}</span>
 
             <span class="destacado">Valor total</span>
-            <span class="num destacado">{{ r.valor_total | money }}</span>
+            <span class="num destacado">{{ r.valor_total | money: true }}</span>
 
             <span class="destacado">Saldo estimado</span>
-            <span class="num destacado">{{ r.saldo | money }}</span>
+            <span class="num destacado">{{ r.saldo | money: true }}</span>
           </div>
 
           @if (r.detalles.length) {
@@ -160,16 +165,41 @@ function esteMes(): [Date, Date] {
                 <th mat-header-cell *matHeaderCellDef>Fecha</th>
                 <td mat-cell *matCellDef="let d">{{ d.fecha | date: 'dd/MM/yyyy' }}</td>
               </ng-container>
+              <ng-container matColumnDef="ruta">
+                <th mat-header-cell *matHeaderCellDef>Ruta</th>
+                <td mat-cell *matCellDef="let d">
+                  {{ d.ruta_nombre || '—' }}
+                  <!-- La ruta se pudo borrar después de las recepciones que este
+                       avance está sumando: la tarifa sigue valiendo, pero el
+                       renglón lo tiene que decir. -->
+                  @if (d.ruta_borrada) {
+                    <span class="borrada">(borrada)</span>
+                  }
+                </td>
+              </ng-container>
               <ng-container matColumnDef="litros">
                 <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
-                <td mat-cell *matCellDef="let d" class="num">{{ d.litros | cantidad: 'L' }}</td>
+                <td mat-cell *matCellDef="let d" class="num">{{ d.litros | cantidad: 'L' : 2 }}</td>
+              </ng-container>
+              <!--
+                LA TARIFA POR LITRO. Sin esta columna la invariante que el dueño
+                revisa a mano —litros × precio = valor— no se puede comprobar en la
+                pantalla, y dos renglones del mismo día y la misma ruta partidos por
+                un cambio de tarifa a mitad de quincena quedaban sin nada que los
+                distinga: dos líneas iguales con valores distintos.
+                Va en las dos (proveedor y transportador) porque el PDF preliminar
+                la imprime en las dos, y es la misma tabla.
+              -->
+              <ng-container matColumnDef="precio_litro">
+                <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
+                <td mat-cell *matCellDef="let d" class="num">{{ d.precio_litro | money: true }}</td>
               </ng-container>
               <ng-container matColumnDef="valor">
                 <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
-                <td mat-cell *matCellDef="let d" class="num">{{ d.valor | money }}</td>
+                <td mat-cell *matCellDef="let d" class="num">{{ d.valor | money: true }}</td>
               </ng-container>
-              <tr mat-header-row *matHeaderRowDef="columnasDetalle"></tr>
-              <tr mat-row *matRowDef="let d; columns: columnasDetalle"></tr>
+              <tr mat-header-row *matHeaderRowDef="columnasDetalle()"></tr>
+              <tr mat-row *matRowDef="let d; columns: columnasDetalle()"></tr>
             </table>
           }
         </div>
@@ -227,6 +257,12 @@ function esteMes(): [Date, Date] {
 
     table.detalle { width: 100%; }
     table.detalle .num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* La marca de ruta borrada: visible pero sin competir con las cifras. */
+    .borrada {
+      font-size: 0.75rem;
+      color: var(--mat-sys-on-surface-variant);
+      white-space: nowrap;
+    }
 
     @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
   `,
@@ -245,7 +281,24 @@ export class PreLiquidacionDialog {
   readonly compartiendo = signal(false);
   readonly sinDatos = signal(false);
 
-  readonly columnasDetalle = ['fecha', 'litros', 'valor'];
+  /**
+   * La columna "Ruta" solo cuando los renglones la traen (transportador).
+   *
+   * Sus renglones son por día Y ruta: si hizo Nápoles y Mira Valle el mismo día,
+   * ese día sale en DOS renglones con valores distintos, y sin decir cuál ruta es
+   * cada uno se leen como el mismo día repetido.
+   *
+   * "Precio/L" va SIEMPRE, en las dos. Es la columna que hace comprobable el
+   * renglón: sin ella el avance mostraba litros y valor y la cuenta del medio
+   * quedaba en la cabeza de nadie, y además es la única cosa que distingue dos
+   * renglones del mismo día y la misma ruta cuando la tarifa cambió a mitad de
+   * quincena. El PDF preliminar la imprime en las dos, y es la misma tabla.
+   */
+  readonly columnasDetalle = computed(() =>
+    this.resultado()?.detalles.some((d) => !!d.ruta_id || !!d.ruta_nombre)
+      ? ['fecha', 'ruta', 'litros', 'precio_litro', 'valor']
+      : ['fecha', 'litros', 'precio_litro', 'valor'],
+  );
 
   private readonly quincena = quincenaActual();
 
@@ -343,23 +396,29 @@ export class PreLiquidacionDialog {
     }
   }
 
-  /** Abre WhatsApp con un resumen en texto del avance (preliminar). */
+  /**
+   * Abre WhatsApp con un resumen en texto del avance (preliminar).
+   *
+   * Por los mismos formateadores de la pantalla: el tercero recibe este mensaje y
+   * después el PDF, y las dos cifras tienen que ser la misma. `toLocaleString()` a
+   * secas dejaba "$1.250,5" y hasta tres decimales.
+   */
   enviarWhatsApp(): void {
     const r = this.resultado();
     if (!r) return;
-    const money = (m: unknown) => `$${Number(m).toLocaleString('es-CO')}`;
+    const litros = new CantidadPipe();
     const fecha = (iso: string) => iso.split('-').reverse().join('/');
     const valorLinea = this.esProveedor()
-      ? `Valor total: ${money(r.valor_total)}`
-      : `Transporte: ${money(r.valor_transporte)}`;
+      ? `Valor total: ${pesosExactos(r.valor_total)}`
+      : `Transporte: ${pesosExactos(r.valor_transporte)}`;
     const texto =
       `*Pre-liquidación de ${r.tercero_nombre}*\n` +
       `(avance preliminar, no oficial)\n` +
       `Período: ${fecha(r.periodo_inicio)} al ${fecha(r.periodo_fin)}\n` +
-      `Total litros: ${Number(r.total_litros).toLocaleString('es-CO')} L\n` +
+      `Total litros: ${litros.transform(r.total_litros, 'L', 2)}\n` +
       `${valorLinea}\n` +
-      `Anticipos: ${money(r.anticipos)}\n` +
-      `Saldo estimado: ${money(r.saldo)}`;
+      `Anticipos: ${pesosExactos(r.anticipos)}\n` +
+      `Saldo estimado: ${pesosExactos(r.saldo)}`;
     compartirWhatsApp(texto);
   }
 

@@ -1,4 +1,4 @@
-import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -15,16 +15,15 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { debounceTime, firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Page, Ruta, Transportador } from '../../core/models';
+import { Transportador, TransportadorRuta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
 import { TransportadorFormDialog } from './transportador-form.dialog';
-import { TransportadoresService } from './transportadores.service';
+import { TransportadoresService, rutasEnOrden } from './transportadores.service';
 
 @Component({
   selector: 'app-transportador-list',
@@ -35,10 +34,67 @@ import { TransportadoresService } from './transportadores.service';
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './transportador-list.page.html',
+  styles: `
+    /* Las rutas del transportador, una por renglón con su tarifa al lado. Un
+       transportador tiene dos o tres, así que apilarlas se lee mejor que ponerlas
+       en fila y que se corten. */
+    ul.rutas {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      /* En celular la celda es un flex (etiqueta a la izquierda, valor a la
+         derecha) y esta lista es uno de sus hijos. Sin min-width: 0 un hijo flex
+         no se puede encoger por debajo de su contenido, y la tarjeta se desbordaba
+         ~95px a 375px de ancho. */
+      min-width: 0;
+
+      li {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        /* Antes iba con white-space: nowrap y era justo lo que desbordaba: el
+           nombre y la tarifa no se podían separar. Ahora, cuando no caben, la
+           tarifa se baja a su propio renglón. */
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .nombre {
+        min-width: 0;
+        /* Un nombre largo parte antes que empujar la tarjeta. break-word y NO
+           anywhere: anywhere le cambia el ancho mínimo intrínseco a la celda y con
+           eso le movería el reparto de columnas a la tabla del escritorio, que no
+           tiene ningún problema que arreglar. */
+        overflow-wrap: break-word;
+      }
+      .tarifa {
+        color: var(--mat-sys-on-surface-variant);
+        font-variant-numeric: tabular-nums;
+        /* La CIFRA no se parte NUNCA: "$ 242," en un renglón y "76/L" en el otro
+           se lee como otra plata. Por eso el nowrap se queda acá y solo acá. */
+        white-space: nowrap;
+      }
+      /* "(borrada)": se tiene que ver, pero la tarifa manda. */
+      .borrada {
+        font-size: 0.75rem;
+        color: var(--mat-sys-on-surface-variant);
+        white-space: nowrap;
+      }
+    }
+    /* En celular la tabla se vuelve tarjetas y la celda alinea a la derecha: la
+       lista se pega a ese borde para que las tarifas queden una debajo de otra y
+       se puedan comparar de un vistazo. */
+    @media (max-width: 700px) {
+      ul.rutas { align-items: flex-end; }
+      /* Y lo que se baje de renglón se pega al mismo borde, no al del medio. */
+      ul.rutas li { justify-content: flex-end; }
+    }
+  `,
 })
 export class TransportadorListPage implements OnInit {
   private readonly servicio = inject(TransportadoresService);
-  private readonly api = inject(ApiService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly estadoFiltros = inject(EstadoFiltrosService);
@@ -51,23 +107,28 @@ export class TransportadorListPage implements OnInit {
   readonly page = signal(1);
   readonly pageSize = signal(20);
 
-  private readonly rutas = signal<Ruta[]>([]);
-  readonly nombreRuta = computed(() => {
-    const mapa = new Map(this.rutas().map((ruta) => [ruta.id, ruta.nombre]));
-    return (id: string | null): string => (id ? (mapa.get(id) ?? '—') : '—');
-  });
-
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly estado = new FormControl<string | null>(null);
+
+  /**
+   * Las rutas de una fila, EN EL ORDEN EN QUE SE LEEN (por nombre).
+   *
+   * El API las manda por id de ruta, que es un UUID: la lista sale barajada y
+   * distinta del comprobante en PDF, que sí las imprime por nombre. El dueño
+   * compara las dos hojas, así que el orden tiene que ser el mismo.
+   */
+  rutasDe(fila: Transportador): TransportadorRuta[] {
+    return rutasEnOrden(fila.rutas ?? []);
+  }
 
   constructor() {
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.estado.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
-    firstValueFrom(this.api.get<Page<Ruta>>('/rutas', { page_size: 100 })).then((page) =>
-      this.rutas.set(page.items),
-    );
+    // Ya NO se pide /rutas: cada transportador trae sus rutas con nombre y tarifa
+    // en su propia respuesta, así que el mapa de nombres que había acá sobraba (y
+    // con page_size 100 se quedaba corto el día que haya más rutas).
   }
 
   ngOnInit(): void {

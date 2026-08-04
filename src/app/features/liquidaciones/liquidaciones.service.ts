@@ -31,6 +31,19 @@ export interface PreLiquidacionDetalle {
   litros: Monto;
   precio_litro: Monto;
   valor: Monto;
+  /**
+   * La ruta del renglón en la del transportador: sus renglones son por día Y
+   * ruta, así que un día en que hizo dos rutas a tarifas distintas viene partido
+   * en dos. Opcionales: la del proveedor no las trae. Ver `LiquidacionDetalle` en
+   * core/models.ts, que es la misma idea en el comprobante ya generado.
+   */
+  ruta_id?: string | null;
+  ruta_nombre?: string | null;
+  /**
+   * La ruta ya está borrada del catálogo. Opcional porque el backend todavía no
+   * manda el campo; ver `ruta_borrada` en core/models.ts, es el mismo.
+   */
+  ruta_borrada?: boolean;
 }
 
 export interface PreLiquidacionAnticipo {
@@ -91,15 +104,25 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
   }
 
   /**
-   * Vuelve a cuadrar un BORRADOR con lo que hay hoy en el sistema.
+   * Vuelve a cuadrar la liquidación con lo que hay hoy en el sistema.
    *
-   * Es para el caso de siempre: la liquidación se generó y el anticipo se
-   * registró después, así que el comprobante quedó mostrando "Anticipos
-   * aplicados $0". Volver a "Generar" no lo arregla —las recepciones ya están
-   * apartadas— y hasta ahora no había forma de recogerlo.
+   * Dos casos, y los dos terminan igual: el comprobante muestra una cifra que ya
+   * no corresponde. El primero es el anticipo registrado DESPUÉS de generarla
+   * ("Anticipos aplicados $0"); el segundo es la TARIFA del transportador mal
+   * tecleada y corregida después en su ficha —los renglones del comprobante son
+   * la foto del día en que se generó, así que se quedan con la tarifa vieja—.
+   * Volver a "Generar" no arregla ninguno de los dos: las recepciones del período
+   * ya están apartadas por esta liquidación.
    *
-   * El backend solo lo permite en borrador: aprobada o pagada, esa cifra ya se
-   * le pagó a alguien.
+   * Devuelve la liquidación entera recalculada. Quien la llama compara sus cifras
+   * con las que tenía en pantalla para poder decirle al usuario CUÁNTO cambió; la
+   * API no manda un "antes" y no le hace falta.
+   *
+   * Una APROBADA vuelve a borrador: aprobar es un visto bueno sobre unas cifras y
+   * si las cifras cambian hay que darlo otra vez (es la misma cuenta que hace el
+   * backend cuando se corrige una recepción de una liquidación aprobada). Con
+   * plata entregada —pagada, o con un solo abono— el servidor rebota: esa cifra ya
+   * está en manos del tercero.
    */
   recalcular(id: string): Observable<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/recalcular`);

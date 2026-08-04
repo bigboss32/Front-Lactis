@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-header
     titulo="Transportadores"
-    subtitulo="Transportadores de leche con su tarifa por litro"
+    subtitulo="Transportadores de leche con su tarifa por litro en cada ruta"
   >
     <button mat-flat-button *hasPermission="'transportadores:crear'" (click)="abrirFormulario()">
       <mat-icon>add</mat-icon> Nuevo transportador
@@ -51,16 +51,46 @@
         <td mat-cell *matCellDef="let fila" [attr.data-label]="'Teléfono'">{{ fila.telefono ?? '—' }}</td>
       </ng-container>
 
+      <!--
+        Las rutas CON SU TARIFA, que es lo que de verdad se le paga por la leche de
+        cada una. Vienen con nombre en la misma respuesta del transportador, así que
+        esta pantalla ya no pide el catálogo de /rutas aparte. Una por renglón: el
+        señor que hace dos rutas es justo el caso que hay que leer de un vistazo, y
+        en celular cada línea queda alineada a la derecha bajo su etiqueta.
+      -->
       <ng-container matColumnDef="ruta">
-        <th mat-header-cell *matHeaderCellDef>Ruta</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Ruta'">{{ nombreRuta()(fila.ruta_id) }}</td>
+        <th mat-header-cell *matHeaderCellDef>Rutas y tarifa</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Rutas y tarifa'">
+          @if (fila.rutas?.length) {
+            <!-- rutasDe() y no fila.rutas: el API las manda por id de ruta (un UUID)
+                 y acá se leen por nombre, el mismo orden del PDF. -->
+            <ul class="rutas">
+              @for (ruta of rutasDe(fila); track ruta.ruta_id) {
+                <li>
+                  <span class="nombre">{{ ruta.nombre ?? 'Ruta sin nombre' }}</span>
+                  <!-- La ruta se borró después de asignarle la tarifa: la plata sigue
+                       guardada y se sigue mostrando, pero hay que poder saber que en
+                       Rutas ya no está, o el dueño la busca y no la encuentra. -->
+                  @if (ruta.ruta_borrada) {
+                    <span class="borrada">(borrada)</span>
+                  }
+                  <!-- money: true = con centavos: la tarifa puede ser $242,76 y
+                       redondearla a "$ 243" muestra una cifra que no se paga. -->
+                  <span class="tarifa">{{ ruta.valor_transporte | money: true }}/L</span>
+                </li>
+              }
+            </ul>
+          } @else {
+            —
+          }
+        </td>
       </ng-container>
 
       <ng-container matColumnDef="valor_transporte">
-        <th mat-header-cell *matHeaderCellDef class="num">Valor/L</th>
-        <!-- money: true = con centavos. Es una tarifa por litro, no un total: si
-             el transportador está a $242,76 la lista no puede decir "$ 243". -->
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor/L'">{{ fila.valor_transporte | money: true }}</td>
+        <th mat-header-cell *matHeaderCellDef class="num">Tarifa general</th>
+        <!-- La tarifa general: la que se usa cuando la ruta del día no tiene tarifa
+             propia arriba. money: true por lo mismo, es una tarifa por litro. -->
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Tarifa general'">{{ fila.valor_transporte | money: true }}</td>
       </ng-container>
 
       <ng-container matColumnDef="estado">

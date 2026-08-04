@@ -164,9 +164,17 @@ export class MilesInputDirective implements ControlValueAccessor, OnInit {
     if (valor === null || valor === undefined || Number.isNaN(Number(valor))) return '';
     const decimales = this.decimales();
     if (decimales <= 0) return Math.round(Number(valor)).toLocaleString('es-CO');
-    // Solo maximumFractionDigits, sin mínimo: una tarifa de 238 se sigue viendo
-    // "238" igual que hoy, y una de 242,76 se ve "242,76". Lo que NO puede pasar
-    // es que Math.round se coma los centavos y el dueño lea "243".
-    return Number(valor).toLocaleString('es-CO', { maximumFractionDigits: decimales });
+    const numero = Number(valor);
+    // NINGUNO o TODOS, nunca uno solo: una tarifa de 238 se sigue viendo "238"
+    // igual que hoy, pero una de 1.250,50 se ve "1.250,50" y no "1.250,5", que en
+    // plata se lee como si se hubiera perdido un centavo. Es la misma regla del
+    // pipe `money: true` y del `pesos()` del backend, y tiene que ser la misma:
+    // esta caja y la tabla de al lado muestran LA MISMA tarifa.
+    return numero.toLocaleString(
+      'es-CO',
+      Number.isInteger(numero)
+        ? { maximumFractionDigits: 0 }
+        : { minimumFractionDigits: decimales, maximumFractionDigits: decimales },
+    );
   }
 }

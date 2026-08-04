@@ -11,16 +11,48 @@ const COP = new Intl.NumberFormat('es-CO', {
 const NUMERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
 
 /**
- * Pesos CON centavos, para las tarifas por unidad. Ver MoneyPipe.
+ * Cantidades con la MISMA precisión que guarda la base (dos decimales) y sin
+ * ceros de relleno: 250 L, 227,5 L, 81,99 L, 0,01 L.
  *
- * maximumFractionDigits sin mínimo a propósito: una tarifa entera de $238 se
- * sigue viendo "$ 238" y no "$ 238,00".
+ * Es el gemelo exacto de `litros()` / `kilogramos()` del backend (utils/export.py,
+ * que imprimen los PDF): si la pantalla recorta a un decimal, la columna deja de
+ * sumar el total —dos renglones de 81,99 L se leen "82 L" y "82 L" contra un total
+ * de 163,98 L— y encima la pantalla y el papel dicen cosas distintas del mismo
+ * documento. Se pide con `| cantidad: 'L' : 2`.
+ */
+const NUMERO_EXACTO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 });
+
+/**
+ * Pesos con centavos SIEMPRE que existan, y nunca uno solo: $ 1.250,50, no
+ * "$ 1.250,5".
+ *
+ * Un solo decimal en plata se lee como si se hubiera perdido un centavo. Es la
+ * misma regla del backend (`pesos()` en utils/export.py: "0 o 2 dígitos, nunca
+ * 1"), y tiene que ser la misma porque el dueño compara el PDF con la pantalla
+ * cifra por cifra.
  */
 const COP_CENTAVOS = new Intl.NumberFormat('es-CO', {
   style: 'currency',
   currency: 'COP',
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+/**
+ * Una cifra de plata tal como la imprime el comprobante en PDF: sin centavos si
+ * no los tiene ($ 238) y con los DOS si los tiene ($ 242,76).
+ *
+ * Existe como función y no solo como pipe porque las mismas cifras salen en
+ * textos que no pasan por la plantilla —el resumen de WhatsApp, el aviso de
+ * "queda debiendo", la confirmación de borrar un pago— y ahí también tienen que
+ * cuadrar: `toLocaleString()` a secas deja "1.250,5".
+ */
+export function pesosExactos(valor: Monto | null | undefined): string {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  const numero = Number(valor);
+  // Number.isInteger decide: 238 → "$ 238" (como siempre), 242,76 → "$ 242,76".
+  return (Number.isInteger(numero) ? COP : COP_CENTAVOS).format(numero);
+}
 
 /**
  * Las barras van SIN decimales: una barra es una barra.
@@ -34,11 +66,17 @@ const ENTERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
 /**
  * Formatea pesos colombianos sin decimales: 408600 → $ 408.600
  *
- * El `conCentavos` es opt-in y por defecto va apagado, o sea que TODOS los totales
- * de la aplicación se siguen viendo igual que siempre. Se prende solo donde la
- * cifra no es un total sino una TARIFA POR UNIDAD, que ahí sí lleva centavos: la
- * del transportador puede ser $242,76 por litro, y redondearla a "$ 243" en la
- * pantalla es mostrarle al dueño una tarifa que no es la que se va a pagar.
+ * El `conCentavos` es opt-in y por defecto va apagado, o sea que las listas y los
+ * indicadores de la aplicación se siguen viendo igual que siempre. Se prende en dos
+ * clases de cifra, y las dos por la misma razón —que la pantalla no puede mostrar
+ * una plata distinta de la que se paga—:
+ *
+ *  · las TARIFAS POR UNIDAD: la del transportador puede ser $242,76 por litro, y
+ *    redondearla a "$ 243" es mostrar una tarifa que no es la que se va a pagar;
+ *  · TODAS las cifras de un DOCUMENTO que se cuadra a mano (el comprobante de
+ *    liquidación y la pre-liquidación, desglose y resumen): ahí el desglose tiene
+ *    que sumar exacto la cifra grande, y el PDF del mismo documento ya imprime los
+ *    centavos, así que pantalla y papel tienen que decir lo mismo.
  *
  *     {{ fila.valor_transporte | money: true }}
  */
@@ -46,16 +84,28 @@ const ENTERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
 export class MoneyPipe implements PipeTransform {
   transform(value: Monto | null | undefined, conCentavos = false): string {
     if (value === null || value === undefined || value === '') return '—';
-    return (conCentavos ? COP_CENTAVOS : COP).format(Number(value));
+    return conCentavos ? pesosExactos(value) : COP.format(Number(value));
   }
 }
 
-/** Formatea cantidades (litros, kg) con máximo 1 decimal. */
+/**
+ * Formatea cantidades (litros, kg) con máximo 1 decimal.
+ *
+ * `decimales` es opt-in y por omisión sigue en 1, o sea que todas las pantallas
+ * de la aplicación se ven igual que siempre. Se sube a 2 donde la columna TIENE
+ * QUE SUMAR el total del documento —el comprobante de liquidación y la
+ * pre-liquidación—: ahí un renglón de 81,99 L leído "82 L" descuadra el desglose
+ * contra la cifra grande, y el PDF del mismo documento sí imprime los dos
+ * decimales.
+ *
+ *     {{ detalle.litros | cantidad: 'L' : 2 }}
+ */
 @Pipe({ name: 'cantidad' })
 export class CantidadPipe implements PipeTransform {
-  transform(value: Monto | null | undefined, sufijo = ''): string {
+  transform(value: Monto | null | undefined, sufijo = '', decimales = 1): string {
     if (value === null || value === undefined || value === '') return '—';
-    return NUMERO.format(Number(value)) + (sufijo ? ` ${sufijo}` : '');
+    const formato = decimales >= 2 ? NUMERO_EXACTO : NUMERO;
+    return formato.format(Number(value)) + (sufijo ? ` ${sufijo}` : '');
   }
 }
 

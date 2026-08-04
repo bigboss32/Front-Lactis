@@ -26,6 +26,56 @@
     }
   </div>
 
+  <!--
+    LO QUE MOVIÓ EL RECÁLCULO, con la cifra de antes y la de ahora.
+
+    Antes de esto el botón avisaba "quedaron aplicados los anticipos pendientes"
+    durante tres segundos, siempre lo mismo y aunque no hubiera cambiado un peso.
+    El caso del dueño fue una tarifa mal tecleada que corrigió en el
+    transportador: lo que necesita ver es que el flete pasó de la cifra vieja a la
+    nueva. El aviso se queda arriba del desglose nuevo hasta que lo cierre, porque
+    lo cuadra a mano contra la columna Valor.
+
+    NO va dentro de una <table>: las dos tablas de esta pantalla son las de plata
+    (el detalle diario y los pagos), y meter una tercera aquí cambiaría lo que
+    significa "la primera tabla" para quien lee la pantalla y para las pruebas.
+  -->
+  @if (cambio(); as c) {
+    <div class="cambio-recalculo">
+      <div class="cambio-titulo">
+        <mat-icon>calculate</mat-icon>
+        <span>{{ c.titulo }}</span>
+        <button
+          mat-icon-button
+          aria-label="Cerrar el aviso del recálculo"
+          matTooltip="Cerrar este aviso"
+          (click)="cerrarCambio()"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+      @if (c.filas.length) {
+        <div class="cambio-cifras">
+          <span class="cambio-encabezado"></span>
+          <span class="cambio-encabezado num">Antes</span>
+          <span class="cambio-encabezado"></span>
+          <span class="cambio-encabezado num">Ahora</span>
+          @for (fila of c.filas; track fila.etiqueta) {
+            <div class="cambio-fila">
+              <span>{{ fila.etiqueta }}</span>
+              <span class="num">{{ fila.antes }}</span>
+              <span class="flecha">→</span>
+              <span class="num">{{ fila.despues }}</span>
+            </div>
+          }
+        </div>
+      }
+      @if (c.aviso) {
+        <p class="cambio-aviso">{{ c.aviso }}</p>
+      }
+    </div>
+  }
+
   <h3>Detalle diario</h3>
   <table mat-table [dataSource]="liq().detalles">
     <ng-container matColumnDef="fecha">
@@ -33,9 +83,41 @@
       <td mat-cell *matCellDef="let detalle">{{ detalle.fecha | date: 'dd/MM/yyyy' }}</td>
     </ng-container>
 
+    <!--
+      La ruta del renglón. Solo sale en el comprobante del transportador y solo si
+      los renglones la traen (ver columnasDetalle): un día en que hizo dos rutas a
+      tarifas distintas viene partido en DOS renglones, y sin esta columna se
+      leerían como el mismo día repetido.
+    -->
+    <ng-container matColumnDef="ruta">
+      <th mat-header-cell *matHeaderCellDef>Ruta</th>
+      <!-- El nombre viene al lado del id en la misma respuesta, así que no hay que
+           ir a buscar el catálogo de rutas. -->
+      <td mat-cell *matCellDef="let detalle">
+        {{ detalle.ruta_nombre || '—' }}
+        <!--
+          Una ruta que se borró DESPUÉS de esta quincena sigue nombrada en el
+          comprobante, que es un documento de esa fecha. La marca va discreta y al
+          lado del nombre para que no parezca que el renglón está mal: la plata no
+          cambia, lo que cambió es que esa ruta ya no está en el catálogo.
+        -->
+        @if (detalle.ruta_borrada) {
+          <span class="borrada">(borrada)</span>
+        }
+      </td>
+    </ng-container>
+
     <ng-container matColumnDef="litros">
       <th mat-header-cell *matHeaderCellDef class="num">Litros</th>
-      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.litros | cantidad: 'L' }}</td>
+      <!--
+        DOS decimales, los mismos que guarda la base y los mismos que imprime el
+        PDF: el renglón de cierre del flete lleva 0,01 L y con un solo decimal se
+        leía "0 L" —un renglón con litros en cero y valor en pesos—, y su
+        compañero de 81,99 L se leía "82 L". Así la columna suma el total.
+      -->
+      <td mat-cell *matCellDef="let detalle" class="num">
+        {{ detalle.litros | cantidad: 'L' : 2 }}
+      </td>
     </ng-container>
 
     <ng-container matColumnDef="precio_litro">
@@ -85,11 +167,19 @@
 
     <ng-container matColumnDef="valor">
       <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
-      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.valor | money }}</td>
+      <!--
+        money: true = con centavos, LA CIFRA COMPLETA. Este renglón es el resultado
+        de litros × precio y el dueño lo revisa a mano: 5 L a $242,76 son $1.213,80,
+        y redondear a "$ 1.214" acá y a "$ 1.457" en el de al lado hace que el
+        desglose sume $2.671 contra un resumen de $2.670. Un peso de diferencia
+        entre el desglose y la cifra grande, y el PDF del mismo comprobante sí
+        imprime los centavos, así que pantalla y papel tampoco coincidían.
+      -->
+      <td mat-cell *matCellDef="let detalle" class="num">{{ detalle.valor | money: true }}</td>
     </ng-container>
 
-    <tr mat-header-row *matHeaderRowDef="columnasDetalle"></tr>
-    <tr mat-row *matRowDef="let detalle; columns: columnasDetalle"></tr>
+    <tr mat-header-row *matHeaderRowDef="columnasDetalle()"></tr>
+    <tr mat-row *matRowDef="let detalle; columns: columnasDetalle()"></tr>
   </table>
 
   @if (liq().detalles.length === 0) {
@@ -101,28 +191,37 @@
     </p>
   }
 
+  <!--
+    TODO el resumen va con centavos (money: true) y los litros con dos decimales,
+    igual que el desglose de arriba y que el PDF de este mismo comprobante.
+    La regla es una sola: el desglose tiene que sumar EXACTO la cifra grande. Con
+    el desglose completo y el resumen redondeado, la resta la pone el dueño.
+    También en el comprobante del PROVEEDOR: su PDF ya imprime los centavos
+    (utils/export.py usa el mismo `pesos()` para los dos), y una quincena de
+    81,99 L a $1.750 da $143.482,50 exactos.
+  -->
   <h3>Resumen</h3>
   <div class="resumen">
     <span>Total litros</span>
-    <span class="num">{{ liq().total_litros | cantidad: 'L' }}</span>
+    <span class="num">{{ liq().total_litros | cantidad: 'L' : 2 }}</span>
 
     <span>Precio promedio</span>
-    <span class="num">{{ liq().precio_promedio | money }}</span>
+    <span class="num">{{ liq().precio_promedio | money: true }}</span>
 
     <span>Valor bruto</span>
-    <span class="num">{{ liq().valor_bruto | money }}</span>
+    <span class="num">{{ liq().valor_bruto | money: true }}</span>
 
     <span>Bonificaciones</span>
-    <span class="num">{{ liq().bonificaciones | money }}</span>
+    <span class="num">{{ liq().bonificaciones | money: true }}</span>
 
     <span>Descuentos</span>
-    <span class="num">{{ liq().descuentos | money }}</span>
+    <span class="num">{{ liq().descuentos | money: true }}</span>
 
     <span>Valor transporte</span>
-    <span class="num">{{ liq().valor_transporte | money }}</span>
+    <span class="num">{{ liq().valor_transporte | money: true }}</span>
 
     <span>Anticipos aplicados</span>
-    <span class="num">{{ liq().anticipos | money }}</span>
+    <span class="num">{{ liq().anticipos | money: true }}</span>
 
     <!--
       El renglón "Pagado" solo aparece cuando de verdad se abonó algo, igual que
@@ -132,15 +231,39 @@
     -->
     @if (tienePagos()) {
       <span>Pagado</span>
-      <span class="num">{{ liq().pagado | money }}</span>
+      <span class="num">{{ liq().pagado | money: true }}</span>
     }
 
     <span class="destacado">Valor total</span>
-    <span class="num destacado">{{ liq().valor_total | money }}</span>
+    <span class="num destacado">{{ liq().valor_total | money: true }}</span>
 
-    <span class="destacado">Saldo a pagar</span>
-    <span class="num destacado">{{ liq().saldo | money }}</span>
+    <!--
+      EL ÚLTIMO RENGLÓN CAMBIA DE RÓTULO CUANDO EL SALDO QUEDA POR DEBAJO DE CERO.
+      Con "Saldo a pagar  -$120.000,00" la pantalla dice, en el renglón destacado,
+      que hay que pagar una cifra negativa; lo que de verdad pasó es que los
+      anticipos ya entregados suman más que la quincena, o sea que el tercero le
+      quedó debiendo AL NEGOCIO. Se dice con esas palabras y la cifra va en
+      POSITIVO (`le_queda_debiendo`, calculada por el backend, la misma que imprime
+      el PDF bajo "LE QUEDA DEBIENDO"): un menos pegado a un total se lee mal.
+
+      Sigue siendo UN par rótulo + cifra, como los demás renglones: la rejilla se
+      lee de dos en dos y un elemento suelto la descuadraría.
+    -->
+    @if (leQuedaDebiendo()) {
+      <span class="destacado al-reves">Le queda debiendo</span>
+      <span class="num destacado al-reves">{{ liq().le_queda_debiendo | money: true }}</span>
+    } @else {
+      <span class="destacado">Saldo a pagar</span>
+      <span class="num destacado">{{ liq().saldo | money: true }}</span>
+    }
   </div>
+
+  <!-- La frase completa, con el nombre y el motivo: "Henri le queda debiendo
+       $4.955,77: los anticipos aplicados … suman más que el valor total …". Va
+       fuera de la rejilla porque no es un par rótulo + cifra. -->
+  @if (explicacionLeQuedaDebiendo(); as nota) {
+    <p class="nota-le-debe">{{ nota }}</p>
+  }
 
   @if (tienePagos()) {
     <h3>Pagos registrados</h3>
@@ -152,7 +275,10 @@
 
       <ng-container matColumnDef="valor">
         <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
-        <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor | money }}</td>
+        <!-- Con centavos, como el renglón "Pagado" del resumen: pagar el saldo
+             completo de $44.506,32 deja un pago con centavos, y si acá se leyera
+             "$ 44.506" los pagos no sumarían lo pagado. -->
+        <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor | money: true }}</td>
       </ng-container>
 
       <ng-container matColumnDef="observaciones">
@@ -184,15 +310,36 @@
     </table>
   }
 
+  <!--
+    PARA QUÉ SIRVE RECALCULAR, dicho con el caso real del dueño: tecleó mal la
+    tarifa del transportador, la corrigió en su ficha, y este comprobante siguió
+    mostrando la cifra vieja —porque sus renglones son la FOTO del día en que se
+    generó—. El botón era justo lo que lo arreglaba y nada en la pantalla lo decía;
+    lo único que se leía era el caso del anticipo, que es el otro.
+  -->
   @if (puedeRecalcular()) {
-    <!--
-      Sin esta línea nadie sabría que un anticipo registrado DESPUÉS de generar
-      la liquidación se puede recoger: el resumen se queda en $0 y parece que el
-      anticipo se hubiera perdido.
-    -->
     <p class="ayuda-precio">
-      ¿Registró un anticipo después de generar esta liquidación? Use
-      <strong>Recalcular</strong> para que quede descontado.
+      @if (liq().tipo === 'transportador') {
+        Las cifras de este comprobante son las del día en que se generó. Si después corrigió la
+        <strong>tarifa del transportador</strong> —o registró un anticipo—, use
+        <strong>Recalcular</strong>: el flete se vuelve a calcular con las tarifas de hoy y le
+        decimos de cuánto a cuánto cambió.
+      } @else {
+        Las cifras de esta liquidación son las del día en que se generó. Si después registró un
+        <strong>anticipo</strong> o corrigió una recepción, use <strong>Recalcular</strong>: se
+        vuelve a cuadrar con los datos de hoy y le decimos de cuánto a cuánto cambió.
+      }
+    </p>
+  } @else if (motivoNoRecalcular(); as motivo) {
+    <!--
+      Donde el servidor no recalcula —ya pagada, con un abono, o aprobada— se dice
+      POR QUÉ y cuál es la salida, como el candado de Recepción diaria: el botón
+      desaparecía sin explicación y el usuario lo buscaba creyendo que se le había
+      perdido. El texto lo arma `motivoNoRecalcular` siguiendo el estado.
+    -->
+    <p class="ayuda-precio con-candado">
+      <mat-icon>lock</mat-icon>
+      <span>{{ motivo }}</span>
     </p>
   }
 </mat-dialog-content>
@@ -230,12 +377,19 @@
   @if (puedeRecalcular()) {
     <button
       mat-stroked-button
-      matTooltip="Vuelve a cuadrar el borrador con los anticipos pendientes del tercero"
+      [matTooltip]="tooltipRecalcular()"
       [disabled]="procesando()"
       (click)="recalcular()"
     >
       <mat-icon>calculate</mat-icon> Recalcular
     </button>
+  } @else if (motivoNoRecalcular(); as motivo) {
+    <!-- El botón no puede prometer algo que el servidor va a negar, así que en su
+         lugar va el candado con la razón (el tooltip la dice completa), igual que
+         el "No se puede eliminar" de un día ya pagado en Recepción diaria. -->
+    <span class="nota-recalcular" [matTooltip]="motivo">
+      <mat-icon>lock</mat-icon> No se puede recalcular
+    </span>
   }
 
   @if (liq().estado === 'borrador' || liq().estado === 'aprobada') {
@@ -272,7 +426,7 @@
       [disabled]="procesando()"
       [matTooltip]="
         liq().estado === 'parcial'
-          ? 'Registrar otro pago: queda debiendo ' + (liq().saldo | money)
+          ? 'Registrar otro pago: queda debiendo ' + (liq().saldo | money: true)
           : 'Registrar el pago (puede ser parcial)'
       "
       (click)="pagar()"
