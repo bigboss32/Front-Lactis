@@ -311,19 +311,32 @@ function quincenaDeHoy(): Quincena {
       .celda-btn.vacia .mas { opacity: 0.35; }
     }
 
-    /* Celda PAGADA: tinte verde + candado. Es la única que no se puede tocar
-       (esa plata ya se le entregó a alguien). */
-    .celda-contenido.pagada {
+    /* Celda con PLATA YA PAGADA: tinte verde + candado.
+       Ya no significa "no se puede tocar", porque el candado es por campo: con la
+       leche pagada y el flete sin liquidar, este día se abre para corregirle el
+       transportador. El verde y el candado dicen "aquí hay cifras en firme", y el
+       tooltip explica cuáles. Por eso la celda pagada también puede ser botón. */
+    .celda-contenido.pagada,
+    .celda-btn.pagada {
       background: color-mix(in srgb, #2e7d32 14%, transparent);
       color: #2e7d32;
       font-weight: 500;
     }
-    .celda-contenido.pagada .candado {
+    .celda-contenido.pagada .candado,
+    .celda-btn.pagada .candado {
       font-size: 14px;
       width: 14px;
       height: 14px;
     }
-    :host-context(html.dark) .celda-contenido.pagada { color: #81c784; }
+    :host-context(html.dark) .celda-contenido.pagada,
+    :host-context(html.dark) .celda-btn.pagada { color: #81c784; }
+    /* El hover de las demás celdas es un tinte azul del tema; encima del verde se
+       vería sucio y además sugeriría que el día está tan libre como los otros. Se
+       oscurece el propio verde: se nota que responde al clic sin perder la seña. */
+    .celda-btn.pagada:hover,
+    .celda-btn.pagada:focus-visible {
+      background: color-mix(in srgb, #2e7d32 24%, transparent);
+    }
 
     /*
      * Celda que YA ESTÁ EN UNA LIQUIDACIÓN pero sin pagar: se edita igual que
@@ -972,25 +985,46 @@ export class RecepcionGrillaTab implements OnInit {
   }
 
   /**
-   * Qué dice una celda TRABADA. Son dos situaciones distintas para el usuario:
-   * de la pagada no hay nada que hacer por dentro; del abono sí —se borra el
-   * pago, se corrige el día y se vuelve a abonar—, y si no se dice, el candado
-   * parece una trampa sin salida.
+   * Qué dice una celda con CANDADO. Decía "Pagada — no editable" en cuanto
+   * cualquiera de las dos liquidaciones tenía pagos, y con el candado por campo
+   * eso quedó mintiendo en el caso más común: si la leche ya se pagó pero el
+   * flete no se ha liquidado, el día SÍ se corrige —el transportador, la ruta,
+   * las observaciones—. Ahora se dice cuál de las dos platas salió y qué queda
+   * por hacer, que es lo que el dueño necesitaba leer.
    */
   tooltipTrabada(celda: CeldaGrilla): string {
-    return celda.liquidacion_estado === 'parcial'
-      ? 'Ya tiene un pago registrado — no editable. Elimine ese pago en la liquidación si de verdad hay que corregir el día'
-      : 'Pagada — no editable';
+    const abonada = celda.liquidacion_estado === 'parcial';
+    const salida = abonada
+      ? ' Para corregir esa cifra hay que eliminar antes el pago en la liquidación.'
+      : '';
+    if (celda.leche_pagada && celda.flete_pagado) {
+      return (
+        'La leche y el flete de este día ya se pagaron: las cifras quedan en firme. ' +
+        'Clic para ver el día y corregir las observaciones.' + salida
+      );
+    }
+    if (celda.leche_pagada) {
+      return (
+        'La leche de este día ya se pagó: los litros, el precio y la fecha quedan en firme. ' +
+        'Clic para corregir el transportador (su flete todavía no se ha pagado).' + salida
+      );
+    }
+    return (
+      'El flete de este día ya se pagó: no se puede cambiar el transportador ni los litros. ' +
+      'Clic para corregir el precio de la leche y lo demás.' + salida
+    );
   }
 
   /**
    * Clic en una celda proveedor × día:
    * - sin registro y con permiso de crear → nueva recepción prefijada;
-   * - con registro sin pagar y permiso de editar → edición;
-   * - PAGADA o sin permiso → solo lectura (no hace nada).
+   * - con registro y permiso de editar → se abre, SIEMPRE.
+   * - sin permiso → solo lectura (no hace nada).
    *
-   * Ojo: el que decide es `pagada`, no `liquidada`. Que el día esté en una
-   * liquidación ya no lo bloquea, que es justo lo que pidió el dueño.
+   * Antes el clic se negaba cuando `celda.pagada`, y eso era el candado de toda
+   * la fila metido en la grilla: con la leche pagada y el flete sin liquidar, el
+   * dueño no podía ni abrir el día para corregir quién recogió. Ahora se abre y
+   * el diálogo apaga campo por campo lo que el backend va a rebotar.
    */
   async clickCelda(fila: FilaGrilla, fechaIso: string): Promise<void> {
     const celda = fila.celdas[fechaIso];
@@ -999,7 +1033,7 @@ export class RecepcionGrillaTab implements OnInit {
       this.abrirDialogo({ prefill: { fecha: fechaIso, proveedor_id: fila.proveedor_id } });
       return;
     }
-    if (celda.pagada || !this.puedeEditar()) return;
+    if (!this.puedeEditar()) return;
     try {
       const item = await firstValueFrom(this.servicio.getById(celda.recepcion_id));
       this.abrirDialogo({ item }, celda.liquidacion_estado);

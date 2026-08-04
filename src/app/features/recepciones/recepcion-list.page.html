@@ -161,19 +161,20 @@
 
             <ng-container matColumnDef="liquidacion">
               <th mat-header-cell *matHeaderCellDef mat-sort-header>Liquidación</th>
-              <!-- Ya no basta con "sí/no": traban el día las liquidaciones que ya
-                   tienen pagos ('pagada' y 'parcial'); en borrador y aprobada se
-                   sigue pudiendo corregir (y la liquidación se recalcula sola). -->
+              <!-- Un día vive en DOS liquidaciones de dos personas: la leche al
+                   proveedor y el flete al transportador. El chip dice el estado de
+                   la que manda, y el tooltip aclara CUÁL de las dos platas ya
+                   salió: de eso depende qué se puede corregir. Antes decía "no
+                   editable" en seco y con el candado por campo sería mentira. -->
               <td mat-cell *matCellDef="let fila" [attr.data-label]="'Liquidación'">
                 @switch (fila.liquidacion_estado) {
                   @case ('pagada') {
-                    <span class="liq pagada"><mat-icon>lock</mat-icon> Pagada</span>
+                    <span class="liq pagada" [matTooltip]="tooltipEditar(fila)">
+                      <mat-icon>lock</mat-icon> Pagada
+                    </span>
                   }
                   @case ('parcial') {
-                    <span
-                      class="liq pagada"
-                      matTooltip="Ya tiene un pago registrado: para corregir el día hay que eliminar antes ese pago"
-                    >
+                    <span class="liq pagada" [matTooltip]="tooltipEditar(fila)">
                       <mat-icon>lock</mat-icon> Con abono
                     </span>
                   }
@@ -203,20 +204,25 @@
             <ng-container matColumnDef="acciones">
               <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
               <td mat-cell *matCellDef="let fila" class="col-acciones">
+                <!-- Editar SIEMPRE se puede abrir: aunque ya se haya pagado algo,
+                     queda al menos un campo por corregir y el diálogo apaga uno
+                     por uno los que no. Antes se deshabilitaba en cuanto había
+                     pagos, y ahí murió el caso del dueño: no podía ni abrir el
+                     día para arreglar quién había recogido la leche. -->
                 <button
                   mat-icon-button
                   *hasPermission="'recepcion:editar'"
                   [matTooltip]="tooltipEditar(fila)"
-                  [disabled]="trabado(fila)"
                   (click)="abrirFormulario(fila)"
                 >
                   <mat-icon>edit</mat-icon>
                 </button>
+                <!-- Borrar sí queda cerrado: saca el día de las DOS liquidaciones. -->
                 <button
                   mat-icon-button
                   *hasPermission="'recepcion:eliminar'"
                   [matTooltip]="tooltipEliminar(fila)"
-                  [disabled]="trabado(fila)"
+                  [disabled]="noSePuedeEliminar(fila)"
                   (click)="eliminar(fila)"
                 >
                   <mat-icon>delete</mat-icon>

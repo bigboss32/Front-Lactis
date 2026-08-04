@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
@@ -37,21 +38,21 @@ export interface RecepcionDialogData {
   selector: 'app-recepcion-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatButtonModule, MatIconModule, MatDatepickerModule, MilesInputDirective, SelectBuscable,
-    SpinnerBoton,
+    MatButtonModule, MatIconModule, MatDatepickerModule, MatTooltipModule,
+    MilesInputDirective, SelectBuscable, SpinnerBoton,
   ],
   template: `
     <h2 mat-dialog-title>{{ data?.item ? 'Editar recepción' : 'Nueva recepción' }}</h2>
     <mat-dialog-content>
-      @if (pagada) {
-        <p class="aviso-liquidacion">
-          @if (estadoLiquidacion === 'parcial') {
-            Este día ya tiene un <strong>pago registrado</strong> en una liquidación y no se
-            puede modificar. Si la cifra está mala, elimine primero ese pago desde la
-            liquidación.
-          } @else {
-            Este día ya se pagó en una liquidación y no se puede modificar.
-          }
+      <!-- El aviso del candado lo escribe el BACKEND (campo candado_aviso), que es
+           el mismo que decide qué rebota. Así el texto no puede prometer algo que
+           el servidor va a negar, ni al contrario: antes esto decía "no se puede
+           modificar" en seco y el dueño se quedaba sin saber que el transportador
+           sí se podía corregir. -->
+      @if (candadoAviso) {
+        <p class="aviso-liquidacion con-icono">
+          <mat-icon>lock</mat-icon>
+          <span>{{ candadoAviso }}</span>
         </p>
       } @else if (enLiquidacion) {
         <!-- No es un bloqueo: es una advertencia. Se puede guardar, pero conviene
@@ -110,7 +111,15 @@ export interface RecepcionDialogData {
       </form>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      @if (data?.item && !pagada) {
+      <!-- Borrar SÍ sigue siendo todo o nada, y con razón: no cambia un campo,
+           saca el día de las DOS liquidaciones a la vez. Si a alguno de los dos
+           terceros ya se le pagó, su comprobante se quedaría con un renglón sin
+           recepción detrás. -->
+      @if (data?.item && !puedeEliminar) {
+        <span class="nota-eliminar" [matTooltip]="motivoNoEliminar">
+          <mat-icon>lock</mat-icon> No se puede eliminar
+        </span>
+      } @else if (data?.item) {
         <button
           mat-button
           type="button"
@@ -122,11 +131,14 @@ export interface RecepcionDialogData {
         </button>
       }
       <button mat-button mat-dialog-close type="button">Cancelar</button>
+      <!-- Ya no se apaga por "el día está pagado": siempre queda algo que
+           corregir (al menos las observaciones), y lo que no se puede tocar está
+           apagado campo por campo. -->
       <button
         mat-flat-button
         type="submit"
         form="form-recepcion"
-        [disabled]="form.invalid || guardando() || pagada"
+        [disabled]="form.invalid || guardando()"
       >
         @if (guardando()) {
           <app-spinner-boton /> Guardando…
@@ -146,6 +158,32 @@ export interface RecepcionDialogData {
       color: #b26a00;
     }
     :host-context(html.dark) .aviso-liquidacion { color: #ffb74d; }
+
+    /* El aviso del candado es más largo que la advertencia de siempre (explica
+       qué se puede corregir y por qué lo demás no), así que va con ícono y con
+       más aire para que se lea de un tirón. */
+    .aviso-liquidacion.con-icono {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 12px;
+      line-height: 1.45;
+
+      mat-icon { flex: none; font-size: 20px; width: 20px; height: 20px; }
+    }
+
+    /* Se dice por qué no se puede borrar en vez de esconder el botón: antes
+       desaparecía sin explicación y el usuario lo buscaba. */
+    .nota-eliminar {
+      margin-right: auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      opacity: 0.75;
+
+      mat-icon { font-size: 18px; width: 18px; height: 18px; }
+    }
 
     .aviso-prefijado {
       margin: 0 0 12px;
@@ -170,19 +208,38 @@ export class RecepcionFormDialog {
 
   readonly data = inject<RecepcionDialogData | null>(MAT_DIALOG_DATA, { optional: true });
   /**
-   * Estado de la liquidación que manda sobre este día. El candado es SOLO
-   * 'pagada': en borrador y en aprobada el día se corrige y el backend recuadra
-   * la liquidación (ver RecepcionService._exigir_no_pagada). Antes se bloqueaba
-   * con solo tener liquidación, y el dueño se quedaba sin poder corregir un día
-   * desde que la generaba, aunque no le hubiera pagado a nadie.
+   * Estado de la liquidación que MANDA sobre este día (la más trabada de las
+   * dos). Sirve para la advertencia de "esto mueve un comprobante ya emitido";
+   * para decidir qué campo se puede tocar NO alcanza: ver `campos_bloqueados`.
    */
   readonly estadoLiquidacion = this.data?.item?.liquidacion_estado ?? null;
   /**
-   * Traba con 'pagada' Y con 'parcial': basta UN abono para que el día no se
-   * pueda tocar (ver `diaTrabadoPorPago`). Se conserva el nombre `pagada`
-   * porque es el que usa toda la plantilla; lo que cambió es cuándo se prende.
+   * El candado, ya resuelto campo por campo por el backend.
+   *
+   * Un día vive en DOS liquidaciones de dos personas distintas: la leche al
+   * proveedor y el flete al transportador. Antes bastaba con que UNA hubiera
+   * movido plata para apagar el formulario entero (`this.form.disable()`), y eso
+   * dejó al dueño sin salida en su caso real: le había pagado la leche del 29/07
+   * a Patricia Laguna, se equivocaron al anotar quién la recogió, y el flete de
+   * ese día ni se había liquidado. Ahora se apaga campo por campo.
    */
+  readonly camposBloqueados = this.data?.item?.campos_bloqueados ?? [];
+  /** La explicación ya escrita por el backend. Null si no hay nada trabado. */
+  readonly candadoAviso = this.data?.item?.candado_aviso ?? null;
+  /** Alguna de las dos platas ya salió: hay campos trabados. */
   readonly pagada = diaTrabadoPorPago(this.estadoLiquidacion);
+  /**
+   * Borrar el día es lo único que sigue siendo todo o nada: no cambia un campo,
+   * lo saca de las DOS liquidaciones a la vez.
+   */
+  readonly puedeEliminar =
+    !(this.data?.item?.leche_pagada ?? false) && !(this.data?.item?.flete_pagado ?? false);
+  readonly motivoNoEliminar =
+    this.data?.item?.leche_pagada && this.data?.item?.flete_pagado
+      ? 'La leche y el flete de este día ya se pagaron'
+      : this.data?.item?.leche_pagada
+        ? 'La leche de este día ya se pagó: borrarlo descuadraría esa liquidación'
+        : 'El flete de este día ya se pagó: borrarlo descuadraría esa liquidación';
   /** Ya está en una liquidación, pero sin pagos: se edita avisando. */
   readonly enLiquidacion =
     this.estadoLiquidacion === 'borrador' || this.estadoLiquidacion === 'aprobada';
@@ -225,9 +282,13 @@ export class RecepcionFormDialog {
     if (this.prefijado) {
       this.form.controls.fecha.disable();
     }
-    // Un día ya PAGADO es de solo lectura (el backend también lo valida).
-    if (this.pagada) {
-      this.form.disable();
+    // El candado, campo por campo. Los campos trabados quedan VISIBLES pero
+    // apagados (no escondidos): el usuario tiene que seguir viendo qué se le
+    // pagó a Patricia mientras corrige el transportador. El backend valida lo
+    // mismo —quien conozca la dirección del endpoint entra igual—, así que esto
+    // es para no ofrecer lo que el servidor va a negar.
+    for (const campo of this.camposBloqueados) {
+      this.form.get(campo)?.disable();
     }
     firstValueFrom(
       this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100, estado: 'activo' }),
@@ -240,7 +301,7 @@ export class RecepcionFormDialog {
   }
 
   async guardar(): Promise<void> {
-    if (this.form.invalid || this.pagada) return;
+    if (this.form.invalid) return;
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
@@ -257,6 +318,15 @@ export class RecepcionFormDialog {
         payload.precio_litro = valores.precio_litro;
       }
       if (this.data?.item) {
+        // Se sacan del cuerpo los campos trabados. `getRawValue()` incluye los
+        // controles deshabilitados, así que sin esto se reenviarían los litros y
+        // el precio de un día ya pagado: el backend los deja pasar porque llegan
+        // idénticos a los guardados, pero mandar plata pagada en un PUT es pedir
+        // que un redondeo o un decimal de más la muevan sin que nadie lo note.
+        const cuerpo = payload as unknown as Record<string, unknown>;
+        for (const campo of this.camposBloqueados) {
+          delete cuerpo[campo];
+        }
         await firstValueFrom(this.servicio.update(this.data.item.id, payload));
       } else {
         payload.proveedor_id = valores.proveedor_id;
@@ -273,7 +343,7 @@ export class RecepcionFormDialog {
   /** Elimina la recepción (p. ej. un registro equivocado). Bloqueada si ya se pagó. */
   eliminar(): void {
     const item = this.data?.item;
-    if (!item || this.pagada) return;
+    if (!item || !this.puedeEliminar) return;
     // Si el día está en una liquidación, borrarlo también le quita el renglón:
     // hay que decirlo ANTES de confirmar, no después.
     const consecuencia =

@@ -52,8 +52,20 @@ export interface CeldaGrilla {
    * mover una liquidación ya emitida, NO un candado: el candado es `pagada`.
    */
   liquidada: boolean;
-  /** El candado de verdad: alguna de esas liquidaciones ya está pagada. */
+  /**
+   * Alguna de esas liquidaciones ya tiene pagos ('pagada' o 'parcial'). Ya NO
+   * significa "no editable": significa que el día tiene CAMPOS trabados, y por
+   * eso lleva el ícono de candado. El día se sigue abriendo para corregir lo que
+   * no sea plata pagada.
+   */
   pagada: boolean;
+  /**
+   * Cuál de las dos platas fue. Es lo que hace honesto el tooltip: con la leche
+   * pagada y el flete sin liquidar, el día SÍ se corrige (el transportador, la
+   * ruta, las observaciones) y la celda no puede decir "Pagada — no editable".
+   */
+  leche_pagada: boolean;
+  flete_pagado: boolean;
   /** Estado que manda, para explicar en pantalla qué pasa si se edita el día. */
   liquidacion_estado: EstadoLiquidacionDia;
   /** True si la recepción tiene transportador asignado. */

@@ -21,14 +21,7 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import {
-  diaTrabadoPorPago,
-  Page,
-  Proveedor,
-  Recepcion,
-  ResumenPeriodo,
-  Ruta,
-} from '../../core/models';
+import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
@@ -259,28 +252,41 @@ export class RecepcionListPage implements OnInit {
   }
 
   /**
-   * Se traba lo que YA TIENE PAGOS: 'pagada' y 'parcial'. Un día que está en una
-   * liquidación en borrador o aprobada se sigue pudiendo corregir, pero conviene
-   * decir de una que al hacerlo se mueve un comprobante ya emitido.
+   * BORRAR sí sigue siendo todo o nada, y con razón: no cambia un campo, saca el
+   * día de las DOS liquidaciones a la vez. Basta con que a uno de los dos
+   * terceros se le haya pagado para que su comprobante quede con un renglón sin
+   * recepción detrás.
    */
-  trabado(fila: Recepcion): boolean {
-    return diaTrabadoPorPago(fila.liquidacion_estado);
+  noSePuedeEliminar(fila: Recepcion): boolean {
+    return fila.leche_pagada || fila.flete_pagado;
   }
 
   tooltipEliminar(fila: Recepcion): string {
-    if (fila.liquidacion_estado === 'pagada') return 'Ya pagada: no se puede eliminar';
-    if (fila.liquidacion_estado === 'parcial') {
-      return 'Ya tiene un pago registrado: no se puede eliminar';
+    if (fila.leche_pagada && fila.flete_pagado) {
+      return 'La leche y el flete de este día ya se pagaron: no se puede eliminar';
     }
+    if (fila.leche_pagada) return 'La leche de este día ya se pagó: no se puede eliminar';
+    if (fila.flete_pagado) return 'El flete de este día ya se pagó: no se puede eliminar';
     return 'Eliminar';
   }
 
+  /**
+   * El tooltip de editar decía "Ya pagada: no editable" en cuanto CUALQUIERA de
+   * las dos liquidaciones tenía pagos, y eso quedó mintiendo con el candado por
+   * campo. Ahora se dice cuál plata salió y qué queda por corregir; el aviso
+   * completo lo escribe el backend y sale dentro del diálogo (`candado_aviso`).
+   */
   tooltipEditar(fila: Recepcion): string {
+    if (fila.leche_pagada && fila.flete_pagado) {
+      return 'Abrir: las cifras ya pagadas quedan en firme, se corrigen las observaciones';
+    }
+    if (fila.leche_pagada) {
+      return 'Abrir: la leche ya se pagó, pero el transportador todavía se puede corregir';
+    }
+    if (fila.flete_pagado) {
+      return 'Abrir: el flete ya se pagó, pero el precio de la leche todavía se puede corregir';
+    }
     switch (fila.liquidacion_estado) {
-      case 'pagada':
-        return 'Ya pagada: no editable';
-      case 'parcial':
-        return 'Ya tiene un pago registrado: no editable';
       case 'aprobada':
         return 'Editar (la liquidación aprobada volverá a borrador y se recalculará)';
       case 'borrador':

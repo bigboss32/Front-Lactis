@@ -336,16 +336,43 @@ export interface Proveedor extends TenantFields {
 export type EstadoLiquidacionDia = 'borrador' | 'aprobada' | 'parcial' | 'pagada' | null;
 
 /**
- * ¿Este día quedó trabado porque ya salió plata por él?
+ * ¿Por este día ya salió plata, y por eso tiene CAMPOS trabados?
  *
  * Basta UN abono: si al proveedor se le pagó la mitad de la quincena y después
- * le cambian los litros, ese pago queda contra un total que ya no existe. El
- * backend rebota igual (RecepcionService._exigir_no_pagada); esto es para que
- * la pantalla no ofrezca lo que el servidor va a negar.
+ * le cambian los litros, ese pago queda contra un total que ya no existe.
+ *
+ * OJO con lo que esto significa hoy: ya NO es "el día no se puede editar". El
+ * candado del backend es por CAMPO, así que un día con la leche pagada y el
+ * flete sin liquidar tiene campos trabados Y campos corregibles a la vez. Para
+ * saber si un campo puntual se puede tocar está `campoTrabado`; esta función
+ * sirve para lo otro: decidir si el día lleva el ícono de candado.
  */
 export function diaTrabadoPorPago(estado: EstadoLiquidacionDia): boolean {
   return estado === 'pagada' || estado === 'parcial';
 }
+
+/**
+ * Los campos de una recepción, con el mismo nombre que usa el backend.
+ *
+ * Son las llaves que llegan en `campos_bloqueados` / `campos_editables`. Se
+ * escriben igual a propósito: la regla de a quién le mueve la plata cada campo
+ * vive en UN solo lugar (`_CAMPOS_DE_LA_LECHE` y `_CAMPOS_DEL_FLETE` en
+ * Back-Lactis/app/modules/recepcion/service.py) y la pantalla solo la obedece.
+ * Si se repitiera aquí, mañana las dos versiones dirían cosas distintas y la
+ * pantalla ofrecería lo que el servidor va a negar.
+ */
+export type CampoRecepcion =
+  | 'fecha'
+  | 'proveedor_id'
+  | 'cantidad_litros'
+  | 'precio_litro'
+  | 'bonificaciones'
+  | 'descuentos'
+  | 'transportador_id'
+  | 'ruta_id'
+  | 'sucursal_id'
+  | 'observaciones'
+  | 'estado';
 
 export interface Recepcion extends TenantFields {
   fecha: string;
@@ -363,8 +390,33 @@ export interface Recepcion extends TenantFields {
   valor_neto: Monto;
   observaciones: string | null;
   liquidacion_id: string | null;
+  /** La liquidación del FLETE, que es otra y de otra persona. */
+  liquidacion_transporte_id: string | null;
   /** Ver EstadoLiquidacionDia: null = todavía no está en ninguna liquidación. */
   liquidacion_estado: EstadoLiquidacionDia;
+
+  // ---------------------------------------------------- el candado por campo
+  // Un día vive en DOS liquidaciones de dos personas distintas: la leche al
+  // proveedor y el flete al transportador. `liquidacion_estado` es el estado de
+  // la MÁS TRABADA de las dos y no alcanza para decidir nada campo por campo:
+  // con la leche pagada y el flete sin liquidar decía 'pagada', y la pantalla
+  // trababa el formulario entero cuando el transportador sí se podía corregir.
+  liquidacion_estado_leche: EstadoLiquidacionDia;
+  liquidacion_estado_flete: EstadoLiquidacionDia;
+  leche_pagada: boolean;
+  flete_pagado: boolean;
+  /** Los campos que el backend va a rebotar. La pantalla los apaga. */
+  campos_bloqueados: CampoRecepcion[];
+  /** Los que sí se pueden corregir. */
+  campos_editables: CampoRecepcion[];
+  /**
+   * La explicación ya escrita en español, lista para mostrar ("la leche de este
+   * día ya se le pagó a Patricia Laguna: … sí se puede corregir el
+   * transportador, porque su flete todavía no se ha liquidado"). Viene del
+   * backend para que el aviso y el guardia no se puedan desincronizar. Null
+   * cuando no hay nada trabado.
+   */
+  candado_aviso: string | null;
 }
 
 export interface ResumenDia {
