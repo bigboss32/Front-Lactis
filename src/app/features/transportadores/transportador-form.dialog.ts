@@ -38,11 +38,36 @@ import { TransportadoresService } from './transportadores.service';
           <input matInput formControlName="telefono" />
         </mat-form-field>
         <app-select-buscable formControlName="ruta_id" [opciones]="rutas()" label="Ruta" />
+        <!--
+          Tarifa CON DECIMALES ([decimales]="2"): no es un total en pesos, es lo
+          que se le paga por cada litro, y hay transportadores a $242,76. Se puede
+          teclear con coma o con punto; inputmode="decimal" saca la coma en el
+          teclado del celular.
+        -->
         <mat-form-field>
           <mat-label>Valor de transporte por litro</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_transporte" required />
+          <input
+            matInput
+            type="text"
+            inputmode="decimal"
+            appMiles
+            [decimales]="2"
+            formControlName="valor_transporte"
+            required
+          />
           <span matTextPrefix>$&nbsp;</span>
           <span matTextSuffix>/L</span>
+          <mat-hint>Se admite coma: 242,76</mat-hint>
+          <!--
+            El mensaje es obligatorio: con esta tarifa se le paga al transportador,
+            así que si el campo queda vacío o con algo que no es un número hay que
+            decirlo, no guardar un cero callado.
+          -->
+          @if (form.controls.valor_transporte.hasError('required')) {
+            <mat-error>Escriba la tarifa por litro (ej: 242,76)</mat-error>
+          } @else if (form.controls.valor_transporte.hasError('min')) {
+            <mat-error>La tarifa no puede ser negativa</mat-error>
+          }
         </mat-form-field>
       </form>
     </mat-dialog-content>

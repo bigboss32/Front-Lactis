@@ -71,11 +71,14 @@
             matTooltip="Corregir el precio por litro de ese día"
             (click)="editarPrecio(detalle)"
           >
-            {{ detalle.precio_litro | money }}
+            {{ detalle.precio_litro | money: true }}
             <mat-icon class="lapiz">edit</mat-icon>
           </button>
         } @else {
-          {{ detalle.precio_litro | money }}
+          <!-- money: true = con centavos. En la liquidación del transportador esta
+               columna es SU tarifa por litro, y si está a $242,76 y aquí se lee
+               "$ 243" el desglose no le cuadra al dueño cuando multiplica a mano. -->
+          {{ detalle.precio_litro | money: true }}
         }
       </td>
     </ng-container>

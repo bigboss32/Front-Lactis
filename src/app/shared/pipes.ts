@@ -11,6 +11,18 @@ const COP = new Intl.NumberFormat('es-CO', {
 const NUMERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
 
 /**
+ * Pesos CON centavos, para las tarifas por unidad. Ver MoneyPipe.
+ *
+ * maximumFractionDigits sin mínimo a propósito: una tarifa entera de $238 se
+ * sigue viendo "$ 238" y no "$ 238,00".
+ */
+const COP_CENTAVOS = new Intl.NumberFormat('es-CO', {
+  style: 'currency',
+  currency: 'COP',
+  maximumFractionDigits: 2,
+});
+
+/**
  * Las barras van SIN decimales: una barra es una barra.
  *
  * No se reutiliza NUMERO (que admite un decimal) a propósito: "8,5 barras" no
@@ -19,12 +31,22 @@ const NUMERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
  */
 const ENTERO = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 });
 
-/** Formatea pesos colombianos sin decimales: 408600 → $ 408.600 */
+/**
+ * Formatea pesos colombianos sin decimales: 408600 → $ 408.600
+ *
+ * El `conCentavos` es opt-in y por defecto va apagado, o sea que TODOS los totales
+ * de la aplicación se siguen viendo igual que siempre. Se prende solo donde la
+ * cifra no es un total sino una TARIFA POR UNIDAD, que ahí sí lleva centavos: la
+ * del transportador puede ser $242,76 por litro, y redondearla a "$ 243" en la
+ * pantalla es mostrarle al dueño una tarifa que no es la que se va a pagar.
+ *
+ *     {{ fila.valor_transporte | money: true }}
+ */
 @Pipe({ name: 'money' })
 export class MoneyPipe implements PipeTransform {
-  transform(value: Monto | null | undefined): string {
+  transform(value: Monto | null | undefined, conCentavos = false): string {
     if (value === null || value === undefined || value === '') return '—';
-    return COP.format(Number(value));
+    return (conCentavos ? COP_CENTAVOS : COP).format(Number(value));
   }
 }
 
