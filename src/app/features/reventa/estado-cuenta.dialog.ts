@@ -14,7 +14,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { detalleDeError } from '../../shared/errores-ui';
-import { EstadoCuentaCliente, ReventaService } from './reventa.service';
+import { EstadoCuentaCliente, EstadoCuentaVenta, ReventaService } from './reventa.service';
 
 /**
  * Formato de cifras del estado de cuenta. A propósito NO usa los pipes globales
@@ -162,11 +162,15 @@ type Alcance = 'historico' | 'periodo';
             <table class="tabla-datos">
               <caption class="solo-lectores">Detalle de las compras del cliente</caption>
               <thead>
+                <!-- Los rótulos de cantidad y precio cambian a neutros SOLO si el
+                     cliente tiene mozzarella, igual que en el PDF: un "Kilos" encima
+                     de "8 barras" contradiría la celda, pero poner "Cantidad" siempre
+                     le cambiaría la vista a todos los clientes de hoy sin necesidad. -->
                 <tr>
                   <th scope="col">Fecha</th>
                   <th scope="col">Producto</th>
-                  <th scope="col">Kilos</th>
-                  <th scope="col">Precio/kg</th>
+                  <th scope="col">{{ hayBarras() ? 'Cantidad' : 'Kilos' }}</th>
+                  <th scope="col">{{ hayBarras() ? 'Precio' : 'Precio/kg' }}</th>
                   <th scope="col">Total</th>
                   <th scope="col">Abonado</th>
                   <th scope="col">Saldo</th>
@@ -179,8 +183,11 @@ type Alcance = 'historico' | 'periodo';
                     <!-- Solo el nombre del producto: el chip repetía la palabra
                          ("Borona  Borona") y el PDF muestra únicamente "Borona". -->
                     <td>{{ venta.producto }}</td>
-                    <td>{{ kilos(venta.kilos) }}</td>
-                    <td>{{ pesos(venta.precio_kilo) }}</td>
+                    <!-- Cada fila con SU unidad, la que manda el backend. Es lo que
+                         el cliente reconoce de su propia entrega: "8 barras" y no
+                         "0 kg" ni "8 kg". -->
+                    <td>{{ cantidadVenta(venta) }}</td>
+                    <td>{{ pesos(venta.unidad === 'barra' ? venta.precio_barra : venta.precio_kilo) }}</td>
                     <td>{{ pesos(venta.valor_total) }}</td>
                     <td>{{ pesos(venta.abonado) }}</td>
                     <td>{{ pesos(venta.saldo) }}</td>
@@ -190,7 +197,18 @@ type Alcance = 'historico' | 'periodo';
               <tfoot>
                 <tr>
                   <td colspan="2">Totales</td>
-                  <td>{{ kilos(ec.total_kilos) }}</td>
+                  <!-- Los dos subtotales en RENGLONES SEPARADOS, uno por unidad, y
+                       solo el de la unidad que el cliente de verdad compró. No hay
+                       una casilla que sume kilos con barras porque esa cifra no
+                       significaría nada. -->
+                  <td>
+                    @if (mostrarTotalKilos()) {
+                      <span class="renglon">{{ kilos(ec.total_kilos) }}</span>
+                    }
+                    @if (hayBarras()) {
+                      <span class="renglon">{{ barras(ec.total_barras) }}</span>
+                    }
+                  </td>
                   <td></td>
                   <td>{{ pesos(ec.total_facturado) }}</td>
                   <td>{{ pesos(ec.total_abonado) }}</td>
@@ -466,6 +484,10 @@ type Alcance = 'historico' | 'periodo';
         border-bottom: none;
         font-weight: 600;
       }
+
+      // Los subtotales de cantidad, uno por unidad y en renglones separados (igual
+      // que en el PDF). Nunca en la misma línea: pegados se leerían como una suma.
+      .renglon { display: block; }
     }
 
     :host-context(html.dark) {
@@ -546,6 +568,40 @@ export class ReventaEstadoCuentaDialog {
   /** Kilos con el mismo formato que el PDF: 10,34 kg, 51,7 kg y 100 kg. */
   kilos(valor: Monto): string {
     return `${formatearCifra(valor, 1, 2)} kg`;
+  }
+
+  /**
+   * Barras con el mismo formato que el PDF: "8 barras", "1 barra". Sin decimales
+   * (una barra es una barra) y pluralizado, porque esto lo lee el cliente y
+   * "1 barras" se ve como un error del sistema.
+   */
+  barras(valor: Monto): string {
+    const numero = Math.round(Number(valor) || 0);
+    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? 'barra' : 'barras'}`;
+  }
+
+  /** ¿El cliente compró mozzarella? Decide los rótulos y el subtotal de barras. */
+  readonly hayBarras = computed(() => {
+    const ec = this.datos();
+    if (!ec) return false;
+    return Number(ec.total_barras) > 0 || ec.ventas.some((v) => v.unidad === 'barra');
+  });
+
+  /**
+   * El subtotal de kilos se muestra si hay kilos, o si NO hay barras (para que un
+   * cliente de puro queso siga viendo "0 kg" como siempre en lugar de una celda
+   * vacía). En un cliente de pura mozzarella se calla: un "0 kg" al lado de "8
+   * barras" invita a leerlo como que le faltó peso.
+   */
+  readonly mostrarTotalKilos = computed(() => {
+    const ec = this.datos();
+    if (!ec) return true;
+    return Number(ec.total_kilos) > 0 || !this.hayBarras();
+  });
+
+  /** La cantidad de una venta, en su unidad. La unidad la manda el backend. */
+  cantidadVenta(venta: EstadoCuentaVenta): string {
+    return venta.unidad === 'barra' ? this.barras(venta.barras) : this.kilos(venta.kilos);
   }
 
   /** Mismos rótulos del resumen del PDF (allá van en mayúsculas por el estilo). */

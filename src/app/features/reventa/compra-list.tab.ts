@@ -20,7 +20,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { EnUnidadPipe, MoneyPipe } from '../../shared/pipes';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
@@ -29,14 +29,21 @@ import { CompraFormDialog } from './compra-form.dialog';
 import { ReventaEstadoCuentaProductorDialog } from './estado-cuenta-productor.dialog';
 import { CompraQueso, ReventaService } from './reventa.service';
 
-/** Pestaña de compras de queso a productores, con abonos por compra. */
+/**
+ * Pestaña de compras a productores, con abonos por compra.
+ *
+ * La lista mezcla las dos unidades: compras de QUESO en kilos y de MOZZARELLA en
+ * barras. La columna de cantidad y la de precio se rotulan con la unidad de CADA
+ * FILA (ver `| enUnidad` en la plantilla) y la mozzarella lleva además su
+ * distintivo, para que el dueño distinga de un vistazo qué es qué.
+ */
 @Component({
   selector: 'app-compra-list-tab',
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule,
-    EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
+    EstadoChip, MoneyPipe, EnUnidadPipe, HasPermissionDirective,
   ],
   templateUrl: './compra-list.tab.html',
   styles: `
@@ -66,6 +73,26 @@ import { CompraQueso, ReventaService } from './reventa.service';
     }
 
     :host-context(html.dark) .badge-saldo { color: #ffb74d; }
+
+    // Distintivo de la mozzarella. Verde a propósito: el ámbar ya lo usa el badge
+    // de saldo de esta misma tabla y el de borona en la de ventas, y dos chips del
+    // mismo color en la misma fila se leerían como lo mismo.
+    .badge-mozzarella {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      white-space: nowrap;
+      background: color-mix(in srgb, #2e7d32 16%, transparent);
+      color: #2e7d32;
+    }
+
+    :host-context(html.dark) .badge-mozzarella { color: #81c784; }
+
+    // La unidad del precio, en pequeño y al lado de la cifra: "$9.000 /barra".
+    .por-unidad { font-size: 0.72rem; color: var(--mat-sys-on-surface-variant); }
 
     // Contador sobre el clip: cuántos soportes tiene la compra.
     .con-badge { position: relative; display: inline-flex; }

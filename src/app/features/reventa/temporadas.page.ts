@@ -17,7 +17,7 @@ import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { isoToDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { BarrasPipe, CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ReventaFiltroService } from './reventa-filtro.service';
 import { ReventaService, TemporadaResumen, TemporadasPanel } from './reventa.service';
 import { TemporadaFormDialog } from './temporada-form.dialog';
@@ -45,6 +45,7 @@ function n(valor: Monto | null | undefined): number {
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatMenuModule,
     MatProgressBarModule, MatTooltipModule, PageHeader, MoneyPipe, CantidadPipe,
+    BarrasPipe,
     HasPermissionDirective,
   ],
   template: `
@@ -110,12 +111,24 @@ function n(valor: Monto | null | undefined): number {
             <div class="total">
               <span class="rotulo">Comprado</span>
               <span class="cifra chica">{{ p.total_compras | money }}</span>
-              <span class="detalle">{{ p.total_kilos_comprados | cantidad: 'kg' }}</span>
+              <!-- La plata de arriba es de TODO lo comprado (kilos + barras) y la
+                   cantidad de abajo es solo de kilos. Cuando hay mozzarella eso se
+                   lee mal —invita a dividir y sacar un precio por kilo que no
+                   existe—, así que la cantidad de barras va enseguida, con su
+                   unidad y separada por un punto medio, nunca sumada. -->
+              <span class="detalle">
+                {{ p.total_kilos_comprados | cantidad: 'kg' }}
+                @if (barrasCompradas() > 0) {
+                  · {{ barrasCompradas() | barras }}
+                }
+              </span>
             </div>
             <div class="total">
               <span class="rotulo">Vendido</span>
               <span class="cifra chica">{{ p.total_ventas | money }}</span>
-              <span class="detalle">queso y borona</span>
+              <span class="detalle">
+                {{ barrasVendidas() > 0 ? 'queso, borona y mozzarella' : 'queso y borona' }}
+              </span>
             </div>
             @if (p.mejor && p.temporadas.length > 1) {
               <div class="total">
@@ -287,6 +300,33 @@ function n(valor: Monto | null | undefined): number {
                         <dd>{{ absoluto(t.kilos_pendientes) | cantidad: 'kg' }}</dd>
                       </div>
                     }
+                    <!-- LA MOZZARELLA VA EN SUS PROPIOS RENGLONES, en barras: en la
+                         misma lista pero sin sumarse con los kilos de arriba. Cada
+                         renglón dice su unidad y no hay un total que los junte. Solo
+                         aparecen si la temporada tuvo mozzarella, así que las de puro
+                         queso se ven exactamente como antes. -->
+                    @if (n(t.barras_compradas) > 0 || n(t.barras_vendidas) > 0) {
+                      <div>
+                        <dt>Mozzarella comprada</dt>
+                        <dd>{{ t.barras_compradas | barras }}</dd>
+                      </div>
+                      <div>
+                        <dt>Mozzarella vendida</dt>
+                        <dd>{{ t.barras_vendidas | barras }}</dd>
+                      </div>
+                      @if (n(t.barras_pendientes) !== 0) {
+                        <div [class.ojo]="n(t.barras_pendientes) > 0">
+                          <dt>
+                            {{
+                              n(t.barras_pendientes) > 0
+                                ? 'Mozzarella sin vender'
+                                : 'Barras de temporadas anteriores'
+                            }}
+                          </dt>
+                          <dd>{{ absoluto(t.barras_pendientes) | barras }}</dd>
+                        </div>
+                      }
+                    }
                   </dl>
                 </div>
 
@@ -295,15 +335,22 @@ function n(valor: Monto | null | undefined): number {
                     <mat-icon aria-hidden="true">pending_actions</mat-icon>
                     <span>
                       Para cerrarla del todo falta:
+                      <!-- Las barras van en su propio pedazo del mensaje: sin esto la
+                           temporada decía "cerrada de verdad" (o no decía qué falta)
+                           con mozzarella todavía en la bodega. -->
                       @if (n(t.kilos_pendientes) > 0) {
                         <strong>vender o pasar a merma {{ t.kilos_pendientes | cantidad: 'kg' }}</strong>
                       }
-                      @if (n(t.por_cobrar) > 0) {
+                      @if (n(t.barras_pendientes) > 0) {
                         @if (n(t.kilos_pendientes) > 0) { · }
+                        <strong>vender {{ t.barras_pendientes | barras }} de mozzarella</strong>
+                      }
+                      @if (n(t.por_cobrar) > 0) {
+                        @if (n(t.kilos_pendientes) > 0 || n(t.barras_pendientes) > 0) { · }
                         <strong>cobrar {{ t.por_cobrar | money }}</strong>
                       }
                       @if (n(t.por_pagar) > 0) {
-                        @if (n(t.kilos_pendientes) > 0 || n(t.por_cobrar) > 0) { · }
+                        @if (n(t.kilos_pendientes) > 0 || n(t.barras_pendientes) > 0 || n(t.por_cobrar) > 0) { · }
                         <strong>pagar {{ t.por_pagar | money }}</strong>
                       }
                     </span>
@@ -657,6 +704,24 @@ export class ReventaTemporadasPage implements OnInit {
     const valores = (this.panel()?.temporadas ?? []).map((t) => Math.abs(n(t.ganancia)));
     return Math.max(...valores, 0);
   });
+
+  /**
+   * Barras de mozzarella compradas y vendidas en las temporadas listadas.
+   *
+   * Se SUMAN DE LAS TARJETAS y no se piden aparte, por el mismo motivo que los
+   * totales de plata del backend: si se consultaran por separado, con huecos entre
+   * temporadas el total daría más que la suma de la lista y el desglose dejaría de
+   * cuadrar, que es justo lo que el usuario revisa con calculadora.
+   *
+   * Y son barras con barras: nunca se juntan con `total_kilos_comprados`.
+   */
+  readonly barrasCompradas = computed(() =>
+    (this.panel()?.temporadas ?? []).reduce((suma, t) => suma + n(t.barras_compradas), 0),
+  );
+
+  readonly barrasVendidas = computed(() =>
+    (this.panel()?.temporadas ?? []).reduce((suma, t) => suma + n(t.barras_vendidas), 0),
+  );
 
   ngOnInit(): void {
     this.cargar();

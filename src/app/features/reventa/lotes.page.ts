@@ -13,7 +13,7 @@ import { Monto } from '../../core/models';
 import { isoToDate } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { BarrasPipe, CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import {
   GananciaPorDia,
   LoteResumen,
@@ -98,7 +98,7 @@ function n(valor: Monto | null | undefined): number {
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
     MatTooltipModule, MatFormFieldModule, MatInputModule, MatDatepickerModule,
-    PageHeader, MoneyPipe, CantidadPipe,
+    PageHeader, MoneyPipe, CantidadPipe, BarrasPipe,
   ],
   template: `
     <div class="page">
@@ -297,6 +297,27 @@ function n(valor: Monto | null | undefined): number {
                 compra, o cuando se anuló una compra después de haber vendido de ella.
                 Esa plata <strong>no está sumada</strong> en la ganancia de arriba,
                 porque no se sabe qué costó.
+              </span>
+            </mat-card>
+          }
+
+          <!-- EL ALCANCE DEL PANEL, DICHO DE FRENTE. El reparto por lotes trabaja en
+               KILOS de punta a punta (un lote son las compras de una fecha con UN
+               costo por kilo), así que la mozzarella no entra: metida ahí inflaría el
+               costo por kilo con pesos que no salieron de ningún kilo. No es un
+               error como el aviso de arriba —esas ventas están bien registradas—, y
+               por eso el mensaje es informativo y no de alerta. Se dice porque
+               callarlo dejaría al dueño creyendo que la ganancia de este panel es
+               todo lo que dejó el negocio. -->
+          @if (n(p.barras_fuera_del_reparto) > 0) {
+            <mat-card class="aviso info">
+              <mat-icon aria-hidden="true">info</mat-icon>
+              <span>
+                Este panel es <strong>solo del queso</strong>. La mozzarella se cuenta
+                por barras y no por kilos, así que sus
+                <strong>{{ p.barras_fuera_del_reparto | barras }}</strong> compradas no
+                entran en el reparto por lotes ni en las cifras de arriba. Su ganancia
+                está completa —y en barras— en el <strong>Resumen</strong>.
               </span>
             </mat-card>
           }
@@ -772,6 +793,12 @@ function n(valor: Monto | null | undefined): number {
     .aviso.ojo {
       color: #a06000;
       border: 1px solid color-mix(in srgb, #a06000 25%, transparent);
+    }
+    // Informativo, NO de alerta: la mozzarella fuera del reparto no es un error,
+    // es el alcance del panel. En ámbar o rojo se leería como que algo está mal.
+    .aviso.info {
+      color: var(--mat-sys-on-surface-variant);
+      border: 1px solid var(--mat-sys-outline-variant);
     }
     .aviso button { margin-left: auto; flex: none; }
 

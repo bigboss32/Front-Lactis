@@ -20,7 +20,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
-import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { EnUnidadPipe, MoneyPipe } from '../../shared/pipes';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog } from './abonos-list.dialog';
@@ -29,14 +29,20 @@ import { ReventaEstadoCuentaDialog } from './estado-cuenta.dialog';
 import { ReventaService, VentaQueso } from './reventa.service';
 import { VentaQuesoFormDialog } from './venta-form.dialog';
 
-/** Pestaña de ventas de queso de reventa, con abonos de los clientes. */
+/**
+ * Pestaña de ventas de reventa, con abonos de los clientes.
+ *
+ * La lista mezcla los tres productos: queso y borona en KILOS y mozzarella en
+ * BARRAS. La cantidad y el precio se rotulan con la unidad de CADA FILA (ver
+ * `| enUnidad`) y cada producto distinto del queso lleva su distintivo.
+ */
 @Component({
   selector: 'app-venta-queso-list-tab',
   imports: [
     ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule,
-    EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
+    EstadoChip, MoneyPipe, EnUnidadPipe, HasPermissionDirective,
   ],
   templateUrl: './venta-list.tab.html',
   styles: `
@@ -81,6 +87,26 @@ import { VentaQuesoFormDialog } from './venta-form.dialog';
     }
 
     :host-context(html.dark) .badge-borona { color: #ffb74d; }
+
+    // Chip verde para la mozzarella: distinto del ámbar de la borona, porque lo
+    // que hay que poder distinguir de un vistazo es la UNIDAD (barras contra
+    // kilos), no solo que "no es queso". Mismo color en la lista de compras.
+    .badge-mozzarella {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 500;
+      white-space: nowrap;
+      background: color-mix(in srgb, #2e7d32 16%, transparent);
+      color: #2e7d32;
+    }
+
+    :host-context(html.dark) .badge-mozzarella { color: #81c784; }
+
+    // La unidad del precio, en pequeño y al lado de la cifra: "$15.000 /barra".
+    .por-unidad { font-size: 0.72rem; color: var(--mat-sys-on-surface-variant); }
 
     // Contador sobre el clip: cuántos soportes tiene la venta.
     .con-badge { position: relative; display: inline-flex; }
@@ -213,10 +239,19 @@ export class VentaQuesoListTab {
     return Number(fila.valor_total) - Number(fila.gasto_monto);
   }
 
+  /**
+   * "Transporte · $700/barra". La unidad del gasto es la de la VENTA: un "/kg"
+   * debajo de una venta de barras sería una cifra que no significa nada, y sumar
+   * mentalmente dos gastos "por unidad" de unidades distintas es justo el error
+   * que hay que hacer imposible.
+   */
   gastoTooltip(fila: VentaQueso): string {
     const concepto = fila.gasto_concepto || 'Gasto de la venta';
-    const porKilo = Number(fila.gasto_por_kilo);
-    return porKilo > 0 ? `${concepto} · $${porKilo.toLocaleString('es-CO')}/kg` : concepto;
+    const deBarras = fila.unidad === 'barra';
+    const unitario = Number(deBarras ? fila.gasto_por_barra : fila.gasto_por_kilo);
+    if (unitario <= 0) return concepto;
+    const unidad = deBarras ? 'barra' : 'kg';
+    return `${concepto} · $${unitario.toLocaleString('es-CO')}/${unidad}`;
   }
 
   puedeAbonar(fila: VentaQueso): boolean {

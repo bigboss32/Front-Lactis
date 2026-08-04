@@ -40,6 +40,16 @@ import { hoyIso, ReventaService } from './reventa.service';
         "Registrar merma" para el queso que se perdió (baja el disponible sin sumar
         a ningún lado). Ambos dejan el inventario al día para cerrar la temporada.
       </p>
+      <!-- Se dice de frente por qué la mozzarella no sale en esta pantalla: si no,
+           el dueño la busca, no la encuentra y cree que falta algo. Pasar a borona
+           es desmenuzar queso, y la merma es peso que se perdió al pesar; una barra
+           entra como barra y sale como barra, así que no participa en ninguno de
+           los dos ajustes. -->
+      <p class="ayuda fina">
+        Estos ajustes son <strong>solo del queso en kilos</strong>. La mozzarella no
+        entra: no se desmenuza para pasarla a borona y no pierde peso en el camino,
+        porque no se está pesando — la barra entra y sale completa.
+      </p>
 
       <app-conversion-list-panel [recargar]="recargaConversiones()" (cambio)="cargarDisponible()" />
     </div>
@@ -66,6 +76,9 @@ import { hoyIso, ReventaService } from './reventa.service';
       font-size: 0.85rem;
       color: var(--mat-sys-on-surface-variant);
     }
+    // La aclaración de la mozzarella: se lee si se busca, pero no compite con la
+    // ayuda principal, que es la que explica los dos botones.
+    .ayuda.fina { font-size: 0.8rem; opacity: 0.9; }
   `,
 })
 export class ReventaAjustesPage {

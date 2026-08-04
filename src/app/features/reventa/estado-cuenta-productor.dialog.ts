@@ -14,7 +14,7 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { detalleDeError } from '../../shared/errores-ui';
-import { EstadoCuentaProductor, ReventaService } from './reventa.service';
+import { EstadoCuentaCompra, EstadoCuentaProductor, ReventaService } from './reventa.service';
 
 /**
  * Formato de cifras del estado de cuenta. A propósito NO usa los pipes globales
@@ -178,11 +178,15 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
               <caption class="solo-lectores">
                 Detalle de las compras que se le hicieron al productor
               </caption>
+              <!-- Rótulos neutros SOLO si el productor entregó mozzarella, igual
+                   que en el PDF: un "Kilos" encima de "12 barras" contradiría la
+                   celda, pero cambiárselo a todos los productores de hoy sin
+                   necesidad tampoco. -->
               <thead>
                 <tr>
                   <th scope="col">Fecha</th>
-                  <th scope="col">Kilos</th>
-                  <th scope="col">Precio/kg</th>
+                  <th scope="col">{{ hayBarras() ? 'Cantidad' : 'Kilos' }}</th>
+                  <th scope="col">{{ hayBarras() ? 'Precio' : 'Precio/kg' }}</th>
                   <th scope="col">Total</th>
                   <th scope="col">Abonado</th>
                   <th scope="col">Saldo</th>
@@ -194,9 +198,10 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
                     <td>{{ compra.fecha | date: 'dd/MM/yyyy' }}</td>
                     <!-- Los kilos son los NETOS, los que se le pagan. La borona
                          que vino con los lotes va en la nota de abajo, no en una
-                         columna, igual que en el PDF. -->
-                    <td>{{ kilos(compra.kilos) }}</td>
-                    <td>{{ pesos(compra.precio_kilo) }}</td>
+                         columna, igual que en el PDF. Y cada fila lleva SU unidad:
+                         el productor tiene que reconocer la entrega que él hizo. -->
+                    <td>{{ cantidadCompra(compra) }}</td>
+                    <td>{{ pesos(compra.unidad === 'barra' ? compra.precio_barra : compra.precio_kilo) }}</td>
                     <td>{{ pesos(compra.valor_total) }}</td>
                     <td>{{ pesos(compra.abonado) }}</td>
                     <td>{{ pesos(compra.saldo) }}</td>
@@ -206,7 +211,16 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
               <tfoot>
                 <tr>
                   <td>Totales</td>
-                  <td>{{ kilos(ec.total_kilos) }}</td>
+                  <!-- Un subtotal por unidad, en renglones separados. Nunca una
+                       casilla que sume kilos con barras. -->
+                  <td>
+                    @if (mostrarTotalKilos()) {
+                      <span class="renglon">{{ kilos(ec.total_kilos) }}</span>
+                    }
+                    @if (hayBarras()) {
+                      <span class="renglon">{{ barras(ec.total_barras) }}</span>
+                    }
+                  </td>
                   <td></td>
                   <td>{{ pesos(ec.total_comprado) }}</td>
                   <td>{{ pesos(ec.total_pagado) }}</td>
@@ -489,6 +503,10 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
         border-bottom: none;
         font-weight: 600;
       }
+
+      // Los subtotales de cantidad, uno por unidad y en renglones separados (igual
+      // que en el PDF). Pegados en la misma linea se leerian como una suma.
+      .renglon { display: block; }
     }
 
     :host-context(html.dark) {
@@ -591,6 +609,40 @@ export class ReventaEstadoCuentaProductorDialog {
   /** Kilos con el mismo formato que el PDF: 10,34 kg, 51,7 kg y 100 kg. */
   kilos(valor: Monto): string {
     return `${formatearCifra(valor, 1, 2)} kg`;
+  }
+
+  /**
+   * Barras con el mismo formato que el PDF: "12 barras", "1 barra". Sin decimales
+   * y pluralizado, por lo mismo que en el documento del cliente.
+   */
+  barras(valor: Monto): string {
+    const numero = Math.round(Number(valor) || 0);
+    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? 'barra' : 'barras'}`;
+  }
+
+  /** ¿El productor entregó mozzarella? Decide los rótulos y el subtotal de barras. */
+  readonly hayBarras = computed(() => {
+    const ec = this.datos();
+    if (!ec) return false;
+    return (
+      Number(ec.total_barras) > 0 || ec.compras_detalle.some((c) => c.unidad === 'barra')
+    );
+  });
+
+  /**
+   * El subtotal de kilos se muestra si hay kilos, o si no hay barras (para que un
+   * productor de puro queso siga viendo lo de siempre). En uno de pura mozzarella
+   * se calla: un "0 kg" al lado de "12 barras" se leería como peso faltante.
+   */
+  readonly mostrarTotalKilos = computed(() => {
+    const ec = this.datos();
+    if (!ec) return true;
+    return Number(ec.total_kilos) > 0 || !this.hayBarras();
+  });
+
+  /** La cantidad de una compra, en su unidad. La unidad la manda el backend. */
+  cantidadCompra(compra: EstadoCuentaCompra): string {
+    return compra.unidad === 'barra' ? this.barras(compra.barras) : this.kilos(compra.kilos);
   }
 
   /**

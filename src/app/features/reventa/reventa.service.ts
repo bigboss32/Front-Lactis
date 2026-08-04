@@ -16,8 +16,27 @@ export function hoyIso(): string {
 // Espejo de los schemas del backend (app/modules/reventa/schemas.py).
 // Los Decimal llegan como string; se formatean con | money y | cantidad.
 
-/** Qué se vende/registra: queso entero o borona (subproducto a menor precio). */
-export type TipoVenta = 'queso' | 'borona';
+/**
+ * Qué se vende/registra: queso entero, borona (subproducto a menor precio) o
+ * mozzarella.
+ *
+ * LA MOZZARELLA NO SE PESA, SE CUENTA: entra como barra y sale como barra, y el
+ * peso de la barra no hace falta para ninguna cuenta. Por eso sus cantidades no
+ * viven en los campos `kilos*` sino en los `barras*`, y NUNCA se suman con ellos:
+ * "20 kg + 8 barras" no es un número. La plata sí se suma, que los pesos son
+ * pesos.
+ */
+export type TipoVenta = 'queso' | 'borona' | 'mozzarella';
+
+/** Qué se compra: queso (se pesa) o mozzarella (se cuenta por barras). */
+export type TipoCompra = 'queso' | 'mozzarella';
+
+/**
+ * En qué se mide una fila. La deduce el backend del `tipo` (una sola fuente de
+ * verdad, ver `unidad_de` en models.py) y viaja en la respuesta para que la
+ * pantalla ponga el rótulo correcto sin tener que repetir la regla.
+ */
+export type Unidad = 'kg' | 'barra';
 
 export interface AbonoReventa {
   id: string;
@@ -29,10 +48,16 @@ export interface AbonoReventa {
 export interface CompraQueso extends TenantFields {
   fecha: string;
   productor: string;
+  tipo: TipoCompra;
+  /** 'kg' o 'barra': cuál de los dos pares de campos mirar. */
+  unidad: Unidad;
   kilos_brutos: Monto;
   borona_kilos: Monto;
   kilos_netos: Monto;
   precio_kilo: Monto;
+  /** Barras y su precio. En una compra de kilos van en CERO (lo exige la base). */
+  barras: Monto;
+  precio_barra: Monto;
   valor_total: Monto;
   abonado: Monto;
   saldo: Monto;
@@ -46,13 +71,24 @@ export interface VentaQueso extends TenantFields {
   fecha: string;
   cliente: string;
   tipo: TipoVenta;
+  unidad: Unidad;
   kilos: Monto;
   precio_kilo: Monto;
+  /** En una venta de kilos van en CERO, y al contrario. */
+  barras: Monto;
+  precio_barra: Monto;
   valor_total: Monto;
   /** Gastos que conlleva vender el lote (ej. transporte por kilo). No lo paga el cliente. */
   gasto_concepto: string | null;
   gasto_por_kilo: Monto;
-  gasto_monto: Monto; // total = gasto_por_kilo × kilos
+  /**
+   * El mismo gasto pero POR BARRA. Campo aparte y no reutilizando el de arriba:
+   * un valor "por barra" guardado en algo que se llama por_kilo es justo la
+   * confusión que hay que evitar.
+   */
+  gasto_por_barra: Monto;
+  /** El gasto en PESOS: por_kilo × kilos, o por_barra × barras. */
+  gasto_monto: Monto;
   abonado: Monto;
   saldo: Monto;
   observaciones: string | null;
@@ -236,6 +272,15 @@ export interface GananciaPorDia {
   ganancia: Monto;
 }
 
+/**
+ * Los lotes con lo que dejó cada uno.
+ *
+ * ESTE PANEL ES SOLO DE KILOS. La mozzarella no entra en el reparto por lotes (el
+ * motor cuesta en kilos de punta a punta), así que ninguna cifra de aquí la
+ * incluye. Eso no se esconde: `barras_fuera_del_reparto` dice cuántas barras hay
+ * compradas que no están contadas acá, y la pantalla lo advierte y manda a leer la
+ * ganancia de la mozzarella en el Resumen, que la tiene completa y en su unidad.
+ */
 export interface LotesPanel {
   lotes: LoteResumen[];
   total_ganancia: Monto;
@@ -251,6 +296,12 @@ export interface LotesPanel {
   kilos_sin_lote: Monto;
   borona_sin_lote: Monto;
   ingreso_sin_lote: Monto;
+  /**
+   * Barras compradas (histórico) que NO están contadas en este panel. A
+   * diferencia de las tres de arriba NO es un error: es el alcance del panel
+   * dicho de frente. Cero = el panel cubre todo el negocio.
+   */
+  barras_fuera_del_reparto: Monto;
 }
 
 // ------------------------------------------------------------- temporadas
@@ -284,6 +335,11 @@ export interface TemporadaResumen {
   kilos_a_borona: Monto;
   kilos_merma: Monto;
   kilos_pendientes: Monto;
+  // Mozzarella de la temporada, en BARRAS y nunca sumada con los kilos de arriba
+  barras_compradas: Monto;
+  barras_vendidas: Monto;
+  barras_pendientes: Monto;
+  // Plata: incluye las dos unidades (los pesos son pesos)
   total_compras: Monto;
   total_ventas: Monto;
   total_gastos: Monto;
@@ -291,9 +347,16 @@ export interface TemporadaResumen {
   margen_por_kilo: Monto;
   precio_promedio_compra: Monto;
   precio_promedio_venta: Monto;
+  precio_promedio_compra_barra: Monto;
+  precio_promedio_venta_barra: Monto;
   /** Lo que falta de ESTA temporada: no la cartera de siempre ni el libro anterior. */
   por_cobrar: Monto;
   por_pagar: Monto;
+  /**
+   * Ya no falta nada: sin queso pendiente, SIN BARRAS PENDIENTES, sin cobrar y
+   * sin pagar. Mira las dos unidades por separado: una temporada con 8 barras en
+   * la bodega no está cerrada aunque no le quede un gramo de queso.
+   */
   cerrada_de_verdad: boolean;
 }
 
@@ -362,54 +425,125 @@ export interface ConversionBorona extends TenantFields {
  * A dónde fue a parar el queso comprado en el período.
  * Las tres primeras son salidas reales; 'pendiente' y 'anterior' son el residuo con signo.
  */
-export type ProductoGanancia = 'queso' | 'borona' | 'merma' | 'pendiente' | 'anterior';
+export type ProductoGanancia =
+  | 'queso'
+  | 'borona'
+  | 'merma'
+  | 'pendiente'
+  | 'anterior'
+  // Los de la mozzarella, medidos en BARRAS. Solo llegan si hubo mozzarella en el
+  // período: un negocio de puro queso sigue recibiendo los cinco de arriba.
+  | 'mozzarella'
+  | 'mozzarella_pendiente'
+  | 'mozzarella_anterior';
 
-/** Fila del desglose de ganancia por producto (siempre llegan 4: queso, borona, merma y residuo). */
+/**
+ * Fila del desglose de ganancia por producto.
+ *
+ * CADA RENGLÓN TIENE SU PROPIA UNIDAD y las cantidades NO se suman entre
+ * renglones distintos. En un renglón de barras los campos de kilos llegan en
+ * CERO y al contrario, así que sumar la columna `kilos` de toda la tabla da kilos
+ * de verdad. `unidad` dice cuál de los dos pares mirar.
+ *
+ * Los pesos (ingreso, costo, gastos, ganancia) sí son comparables y sumables
+ * entre TODOS los renglones: su suma es `ganancia_estimada`.
+ */
 export interface GananciaProducto {
   producto: ProductoGanancia;
   etiqueta: string; // texto listo para mostrar en la UI
   nota: string; // sub-texto explicativo corto
+  /** 'kg' o 'barra': en qué se mide ESTE renglón. */
+  unidad: Unidad;
   /** Kilos DEL LOTE COMPRADO que fueron a este destino (siempre >= 0). */
   kilos: Monto;
   /** Kilos realmente vendidos. Solo difiere de `kilos` en la borona. */
   kilos_vendidos: Monto;
+  /** Lo mismo en barras. Solo tienen valor en los renglones de mozzarella. */
+  barras: Monto;
+  barras_vendidas: Monto;
   ingreso: Monto;
   costo: Monto; // negativo solo en la fila 'anterior': se pagó en otra temporada
   gastos: Monto;
   ganancia: Monto; // ingreso - costo - gastos
   precio_venta_kilo: Monto; // ingreso / kilos_vendidos (0 si no se vendió)
   costo_kilo: Monto; // = precio_promedio_compra
+  /** Los mismos dos precios, POR BARRA. Campos aparte: ver el comentario del tipo. */
+  precio_venta_barra: Monto;
+  costo_barra: Monto;
 }
 
-/** Ganancia estimada de lo que se le compró a cada productor en el período. */
+/**
+ * Ganancia estimada de lo que se le compró a cada productor en el período.
+ *
+ * El reparto se hace POR UNIDAD y por separado (lo neto de las ventas en kilos
+ * entre los kilos comprados, y lo de las ventas en barras entre las barras), y
+ * las dos partes se SUMAN en `ganancia_estimada` porque son pesos. Las
+ * cantidades `kilos` y `barras` van en columnas separadas y nunca se suman.
+ */
 export interface GananciaProductor {
   productor: string;
   compras: number; // cuántas compras en el período
   kilos: Monto;
-  /** Valor de sus compras. NO es lo que se le ha pagado (eso es el abonado). */
+  barras: Monto;
+  /** Valor de TODAS sus compras (kilos + barras). NO es lo que se le ha pagado. */
   total_comprado: Monto;
-  precio_promedio: Monto; // total_comprado / kilos
+  /** De ese total, el pedazo de sus compras de mozzarella. */
+  total_comprado_barras: Monto;
+  precio_promedio: Monto; // (total_comprado - total_comprado_barras) / kilos
+  precio_promedio_barra: Monto; // total_comprado_barras / barras
   por_pagar: Monto; // lo que se le debe hoy (histórico, no solo del período)
   margen_por_kilo: Monto; // valor_realizado_kilo - precio_promedio
-  ganancia_estimada: Monto; // estimación: reparte la venta neta entre sus kilos
+  margen_por_barra: Monto; // el mismo margen, por barra
+  ganancia_estimada: Monto; // la de kilos MÁS la de barras (pesos con pesos)
 }
 
+/**
+ * El resumen del período.
+ *
+ * CÓMO LEER LAS CANTIDADES: los campos `kilos_*` son kilos y los `barras_*` son
+ * barras, y NUNCA hay uno que pueda ser lo uno o lo otro. No existe ni existirá
+ * un "total de unidades" que las junte: 20 kg de queso y 8 barras de mozzarella
+ * no son 28 de nada.
+ *
+ * LA PLATA SÍ SE SUMA. `total_compras`, `total_ventas`, `total_gastos` y
+ * `ganancia_estimada` incluyen las dos unidades. Enseguida de cada uno va el
+ * pedazo de la mozzarella por separado, para poder cuadrar el desglose a mano:
+ *   total_compras = (compras en kilos) + total_compras_mozzarella
+ *   total_ventas  = ventas de queso + ventas de borona + total_ventas_mozzarella
+ */
 export interface ResumenReventa {
   desde: string;
   hasta: string;
   // Del período (queso)
   kilos_comprados: Monto;
-  total_compras: Monto;
+  total_compras: Monto; // TODA la plata comprada: kilos + barras
   kilos_vendidos: Monto; // solo ventas tipo queso
-  total_ventas: Monto; // queso + borona
-  precio_promedio_compra: Monto;
+  total_ventas: Monto; // queso + borona + mozzarella (pesos con pesos)
+  precio_promedio_compra: Monto; // por KILO: (compras en kilos) / kilos_comprados
   precio_promedio_venta: Monto; // solo queso
   total_gastos: Monto; // gastos de venta del período
   ganancia_estimada: Monto; // ventas - compras del período - gastos (neta)
-  margen_por_kilo: Monto; // ganancia neta por kilo vendido (queso + borona)
+  /**
+   * Ganancia neta por kilo vendido (queso + borona). Solo mira la plata de las
+   * ventas EN KILOS: meterle la de la mozzarella daría pesos por kilo inflados
+   * con plata que no salió de ningún kilo.
+   */
+  margen_por_kilo: Monto;
   // Del período (borona)
   kilos_borona_vendidos: Monto;
   total_ventas_borona: Monto;
+  // Del período (MOZZARELLA, en barras: su propio renglón de punta a punta)
+  barras_compradas: Monto;
+  total_compras_mozzarella: Monto;
+  barras_vendidas: Monto;
+  total_ventas_mozzarella: Monto;
+  total_gastos_mozzarella: Monto;
+  precio_promedio_compra_barra: Monto;
+  precio_promedio_venta_barra: Monto;
+  margen_por_barra: Monto; // ganancia de la mozzarella / barras vendidas
+  valor_realizado_barra: Monto; // (ventas − gastos) de barras / barras COMPRADAS
+  /** Residuo CON SIGNO: barras compradas − vendidas en el período. */
+  barras_pendientes: Monto;
   // Ajustes del período que bajan el queso disponible
   kilos_a_borona: Monto; // conversiones con destino 'borona'
   kilos_merma: Monto; // conversiones con destino 'merma': la merma real
@@ -427,6 +561,11 @@ export interface ResumenReventa {
   // Acumulados (histórico, sin filtro de fechas)
   kilos_disponibles: Monto;
   borona_disponible: Monto; // de compras + conversiones - vendida
+  /**
+   * Barras de mozzarella en bodega: compradas − vendidas. Su propio inventario,
+   * con su propia unidad, jamás sumado con los dos de arriba.
+   */
+  barras_disponibles: Monto;
   /** Incluye lo que quede pendiente del libro anterior (ver `por_pagar_libro_anterior`). */
   por_pagar_productores: Monto;
   /** Incluye lo que quede pendiente del libro anterior (ver `por_cobrar_libro_anterior`). */
@@ -451,14 +590,24 @@ export interface SugerenciasReventa {
 // puede traer datos internos de la quesera: gastos de la venta, venta libre,
 // costos de compra, margen, ganancia ni nombres de productores.
 
-/** Una compra del cliente dentro de su estado de cuenta. */
+/**
+ * Una compra del cliente dentro de su estado de cuenta.
+ *
+ * La cantidad va en el campo de SU unidad y el otro en cero; `unidad` dice cuál
+ * mirar. Le importa al cliente: si su fila de mozzarella dijera "0 kg" no
+ * reconocería su propia compra, y si dijera "8 kg" por 8 barras el documento
+ * estaría mintiendo sobre lo que se le despachó.
+ */
 export interface EstadoCuentaVenta {
   fecha: string;
   tipo: TipoVenta;
-  /** Nombre del producto listo para mostrar: 'Queso' o 'Borona'. */
+  /** Nombre del producto listo para mostrar: 'Queso', 'Borona' o 'Mozzarella'. */
   producto: string;
+  unidad: Unidad;
   kilos: Monto;
   precio_kilo: Monto;
+  barras: Monto;
+  precio_barra: Monto;
   valor_total: Monto;
   abonado: Monto;
   saldo: Monto;
@@ -502,7 +651,13 @@ export interface EstadoCuentaCliente {
   hasta: string | null;
   emitido: string; // fecha de generación
   compras: number; // cuántas ventas se le hicieron (las del sistema, no las del libro)
+  /**
+   * LAS DOS CANTIDADES VAN SEPARADAS y no hay un total que las junte: si compró
+   * 40 kg de queso y 8 barras, "48" no es nada. `total_kilos` no incluye barras y
+   * `total_barras` no incluye kilos.
+   */
   total_kilos: Monto;
+  total_barras: Monto;
   /** Solo del sistema; lo del libro anterior va aparte en los tres campos libro_anterior_*. */
   total_facturado: Monto;
   total_abonado: Monto;
@@ -530,14 +685,25 @@ export interface EstadoCuentaCliente {
 // OJO CON LOS SIGNOS: aquí un saldo positivo significa que LA QUESERA LE DEBE A
 // ÉL (al contrario del estado de cuenta del cliente).
 
-/** Una compra que se le hizo al productor dentro de su estado de cuenta. */
+/**
+ * Una compra que se le hizo al productor dentro de su estado de cuenta.
+ *
+ * Mismo criterio que en el documento del cliente: la cantidad en el campo de SU
+ * unidad y `unidad` diciendo cuál mirar. Al productor le importa igual o más: si
+ * su fila de mozzarella dijera "0 kg" no reconocería la entrega que él mismo hizo
+ * y cuadrar cuentas con él terminaría en discusión.
+ */
 export interface EstadoCuentaCompra {
   fecha: string;
+  tipo: TipoCompra;
+  unidad: Unidad;
   /** Kilos netos: los que se le pagan. */
   kilos: Monto;
   /** Borona que vino con el lote y NO se paga (0 si no hubo). */
   borona_kilos: Monto;
   precio_kilo: Monto;
+  barras: Monto;
+  precio_barra: Monto;
   valor_total: Monto;
   abonado: Monto;
   saldo: Monto;
@@ -564,7 +730,10 @@ export interface EstadoCuentaProductor {
   hasta: string | null;
   emitido: string; // fecha de generación
   compras: number; // cuántas compras se le hicieron (las del sistema, no las del libro)
+  /** Kilos netos, los que se le pagan. NO incluye barras. */
   total_kilos: Monto;
+  /** Barras de mozzarella que se le compraron, en su propio total. */
+  total_barras: Monto;
   /** Lo que valen sus compras. Solo del sistema; el libro anterior va aparte. */
   total_comprado: Monto;
   /** Lo que se le ha abonado por esas compras. */
@@ -585,24 +754,43 @@ export interface EstadoCuentaProductor {
 }
 
 // ------------------------------------------------------------------ payloads
+// EL TIPO SOLO VIAJA AL CREAR. Una compra o una venta nace en kilos o en barras y
+// se queda así: cambiárselo a una que ya tiene movimientos encima movería la
+// mercancía de una cola de inventario a la otra. El backend ni lo acepta en el
+// PUT (ver CompraQuesoUpdate/VentaQuesoUpdate en schemas.py).
+//
+// Los campos de las DOS unidades son opcionales porque solo se manda el par de la
+// unidad del tipo: una compra de mozzarella no tiene kilos que informar y una de
+// queso no tiene barras. El backend exige el par correcto y pone el otro en cero.
 export interface CompraQuesoPayload {
   fecha: string;
   productor: string;
-  kilos_brutos: number;
+  /** Solo al crear: queso (se pesa) o mozzarella (se cuenta por barras). */
+  tipo?: TipoCompra;
+  // --- si tipo = queso
+  kilos_brutos?: number;
   borona_kilos?: number;
-  precio_kilo: number;
+  precio_kilo?: number;
+  // --- si tipo = mozzarella (barras COMPLETAS: el backend rechaza decimales)
+  barras?: number;
+  precio_barra?: number;
   observaciones?: string | null;
 }
 
 export interface VentaQuesoPayload {
   fecha: string;
   cliente: string;
-  /** Solo al crear: queso o borona (no editable después). */
+  /** Solo al crear: queso, borona o mozzarella (no editable después). */
   tipo: TipoVenta;
-  kilos: number;
-  precio_kilo: number;
-  gasto_concepto?: string | null;
+  // --- si tipo = queso o borona
+  kilos?: number;
+  precio_kilo?: number;
   gasto_por_kilo?: number;
+  // --- si tipo = mozzarella (barras COMPLETAS: el backend rechaza decimales)
+  barras?: number;
+  precio_barra?: number;
+  gasto_por_barra?: number;
+  gasto_concepto?: string | null;
   observaciones?: string | null;
   /** Solo al crear: registra la venta ya pagada por completo. */
   pagada_de_contado?: boolean;

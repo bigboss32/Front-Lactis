@@ -18,15 +18,23 @@ import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SpinnerBoton } from '../../shared/spinner-boton';
-import { ReventaService, TipoVenta, VentaQueso } from './reventa.service';
+import { ReventaService, TipoVenta, VentaQueso, VentaQuesoPayload } from './reventa.service';
 
 /** Precio de venta de queso sugerido por kilo (del cuaderno del dueño). */
 const PRECIO_VENTA_SUGERIDO = 19500;
 
 /**
- * Registra o edita una venta de queso de reventa. Calcula el total en vivo,
- * permite anotar los gastos de vender (ej. transporte) y, al crear, marcarla
- * como pagada de contado.
+ * Registra o edita una venta de reventa: QUESO o BORONA en kilos, o MOZZARELLA en
+ * barras. Calcula el total en vivo, permite anotar los gastos de vender (ej.
+ * transporte) y, al crear, marcarla como pagada de contado.
+ *
+ * LAS DOS UNIDADES NO COMPARTEN CAMPOS y el par de la unidad que no toca queda
+ * DESHABILITADO: es el mismo criterio (y por las mismas razones) que en la compra;
+ * está explicado a fondo en `CompraFormDialog` y en `_sincronizarUnidad`.
+ *
+ * El `tipo` nunca se ha podido editar y sigue sin poderse: define de qué
+ * inventario sale la mercancía, y cambiarlo movería cantidades de una cola del
+ * reparto a otra.
  */
 @Component({
   selector: 'app-venta-queso-form',
@@ -36,7 +44,7 @@ const PRECIO_VENTA_SUGERIDO = 19500;
     MilesInputDirective, MatAutocompleteModule, SpinnerBoton,
   ],
   template: `
-    <h2 mat-dialog-title>{{ data?.item ? 'Editar venta' : 'Nueva venta de queso' }}</h2>
+    <h2 mat-dialog-title>{{ tituloDialogo() }}</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form-grid" id="form-venta-queso" (ngSubmit)="guardar()">
         @if (data?.item) {
@@ -48,8 +56,9 @@ const PRECIO_VENTA_SUGERIDO = 19500;
           <mat-form-field>
             <mat-label>¿Qué vende?</mat-label>
             <mat-select formControlName="tipo">
-              <mat-option value="queso">Queso</mat-option>
-              <mat-option value="borona">Borona</mat-option>
+              <mat-option value="queso">Queso (por kilo)</mat-option>
+              <mat-option value="borona">Borona (por kilo)</mat-option>
+              <mat-option value="mozzarella">Mozzarella (por barra)</mat-option>
             </mat-select>
           </mat-form-field>
         }
@@ -68,29 +77,59 @@ const PRECIO_VENTA_SUGERIDO = 19500;
             }
           </mat-autocomplete>
         </mat-form-field>
-        <mat-form-field>
-          <mat-label>Kilos</mat-label>
-          <input matInput type="number" min="0" step="0.1" formControlName="kilos" required />
-          <span matTextSuffix>kg</span>
-          <mat-hint>El peso real al vender (aquí se ve la merma)</mat-hint>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Precio por kilo</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
-          <span matTextPrefix>$&nbsp;</span>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Concepto del gasto</mat-label>
-          <input matInput formControlName="gasto_concepto" maxlength="150" placeholder="Ej. Transporte" />
-          <mat-hint>Opcional</mat-hint>
-        </mat-form-field>
-        <mat-form-field>
-          <mat-label>Gasto por kilo</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
-          <span matTextPrefix>$&nbsp;</span>
-          <span matTextSuffix>/kg</span>
-          <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
-        </mat-form-field>
+        @if (esMozzarella()) {
+          <!-- La mozzarella se cuenta: step="1" y sin decimales. El backend
+               RECHAZA "2,5 barras" en vez de redondearlas, así que el formulario no
+               puede ofrecer algo que se va a devolver con error. Y no se menciona
+               la merma: la barra no pierde peso porque no se está pesando. -->
+          <mat-form-field>
+            <mat-label>Barras</mat-label>
+            <input matInput type="number" min="1" step="1" formControlName="barras" required />
+            <span matTextSuffix>barras</span>
+            <mat-hint>Barras completas: no acepta medias barras</mat-hint>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Precio por barra</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_barra" required />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Concepto del gasto</mat-label>
+            <input matInput formControlName="gasto_concepto" maxlength="150" placeholder="Ej. Transporte" />
+            <mat-hint>Opcional</mat-hint>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Gasto por barra</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_barra" />
+            <span matTextPrefix>$&nbsp;</span>
+            <span matTextSuffix>/barra</span>
+            <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
+          </mat-form-field>
+        } @else {
+          <mat-form-field>
+            <mat-label>Kilos</mat-label>
+            <input matInput type="number" min="0" step="0.1" formControlName="kilos" required />
+            <span matTextSuffix>kg</span>
+            <mat-hint>El peso real al vender (aquí se ve la merma)</mat-hint>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Precio por kilo</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Concepto del gasto</mat-label>
+            <input matInput formControlName="gasto_concepto" maxlength="150" placeholder="Ej. Transporte" />
+            <mat-hint>Opcional</mat-hint>
+          </mat-form-field>
+          <mat-form-field>
+            <mat-label>Gasto por kilo</mat-label>
+            <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
+            <span matTextPrefix>$&nbsp;</span>
+            <span matTextSuffix>/kg</span>
+            <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
+          </mat-form-field>
+        }
         <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
@@ -105,7 +144,13 @@ const PRECIO_VENTA_SUGERIDO = 19500;
       <div class="calculo">
         <span>Total de la venta: <strong>{{ total() | money }}</strong></span>
         @if (gastoTotal() > 0) {
-          <span>Gastos: <strong>{{ gastoTotal() | money }}</strong> ({{ gastoPorKilo() | money }}/kg)</span>
+          <!-- El rótulo del gasto lleva la unidad de ESTA venta: "/kg" en una de
+               kilos y "/barra" en una de barras. Un "$700/kg" debajo de una venta
+               de barras sería una cifra que no significa nada. -->
+          <span>
+            Gastos: <strong>{{ gastoTotal() | money }}</strong>
+            ({{ gastoUnitario() | money }}/{{ esMozzarella() ? 'barra' : 'kg' }})
+          </span>
         }
       </div>
     </mat-dialog-content>
@@ -161,8 +206,17 @@ export class VentaQuesoFormDialog {
       Number(this.data?.item?.precio_kilo ?? PRECIO_VENTA_SUGERIDO),
       [Validators.required, Validators.min(0.01)],
     ],
+    // Las barras arrancan con validadores puestos pero el control DESHABILITADO
+    // (lo hace `_sincronizarUnidad`): un control deshabilitado no valida, así que
+    // una venta de queso no queda inválida por no tener barras.
+    barras: [Number(this.data?.item?.barras ?? 0), [Validators.required, Validators.min(1)]],
+    precio_barra: [
+      Number(this.data?.item?.precio_barra ?? 0),
+      [Validators.required, Validators.min(0.01)],
+    ],
     gasto_concepto: [this.data?.item?.gasto_concepto ?? ''],
     gasto_por_kilo: [Number(this.data?.item?.gasto_por_kilo ?? 0), [Validators.min(0)]],
+    gasto_por_barra: [Number(this.data?.item?.gasto_por_barra ?? 0), [Validators.min(0)]],
     observaciones: [this.data?.item?.observaciones ?? ''],
     pagada_de_contado: [false],
   });
@@ -170,12 +224,38 @@ export class VentaQuesoFormDialog {
   /** Clientes ya registrados, para autocompletar el nombre. */
   readonly clientes = signal<string[]>([]);
 
+  /**
+   * Deja habilitado el par de controles de la unidad del tipo y deshabilitado el
+   * del otro. Ver la explicación larga en `CompraFormDialog._sincronizarUnidad`:
+   * es lo que permite que los cuatro campos lleven `required` sin que el botón
+   * Guardar quede bloqueado para siempre en la unidad que no se está usando.
+   */
+  private _sincronizarUnidad(tipo: TipoVenta): void {
+    const opciones = { emitEvent: false };
+    const deBarras = tipo === 'mozzarella';
+    for (const nombre of ['barras', 'precio_barra', 'gasto_por_barra'] as const) {
+      const control = this.form.controls[nombre];
+      if (deBarras) control.enable(opciones);
+      else control.disable(opciones);
+    }
+    for (const nombre of ['kilos', 'precio_kilo', 'gasto_por_kilo'] as const) {
+      const control = this.form.controls[nombre];
+      if (deBarras) control.disable(opciones);
+      else control.enable(opciones);
+    }
+  }
+
   constructor() {
-    // Al crear: el queso sugiere 19.500/kg; la borona no sugiere precio.
+    this._sincronizarUnidad(this.data?.item?.tipo ?? this.form.getRawValue().tipo);
+    // Al crear: el queso sugiere 19.500/kg; la borona no sugiere precio. La
+    // mozzarella tampoco sugiere: su precio por barra no tiene nada que ver con el
+    // del queso por kilo, y dejar 19.500 puesto en un campo "por barra" invitaría
+    // a guardarlo sin pensar.
     if (!this.data?.item) {
       this.form.controls.tipo.valueChanges
         .pipe(takeUntilDestroyed())
         .subscribe((tipo) => {
+          this._sincronizarUnidad(tipo);
           this.form.controls.precio_kilo.setValue(tipo === 'queso' ? PRECIO_VENTA_SUGERIDO : 0);
         });
     }
@@ -186,27 +266,53 @@ export class VentaQuesoFormDialog {
   }
 
   tipoLabel(tipo: TipoVenta): string {
-    return tipo === 'borona' ? 'Borona' : 'Queso';
+    if (tipo === 'mozzarella') return 'Mozzarella (por barra)';
+    return tipo === 'borona' ? 'Borona (por kilo)' : 'Queso (por kilo)';
   }
 
   /** Re-emite en cada cambio del formulario para recalcular el total en vivo. */
   private readonly cambios = toSignal(this.form.valueChanges);
 
+  /** El tipo que manda AHORA: el de la fila si se edita, el del selector si es nueva. */
+  readonly tipo = computed<TipoVenta>(() => {
+    this.cambios();
+    return this.data?.item?.tipo ?? this.form.getRawValue().tipo;
+  });
+
+  readonly esMozzarella = computed(() => this.tipo() === 'mozzarella');
+
+  readonly tituloDialogo = computed(() => {
+    if (this.data?.item) return 'Editar venta';
+    return this.esMozzarella() ? 'Nueva venta de mozzarella' : 'Nueva venta de queso';
+  });
+
   readonly total = computed(() => {
     this.cambios();
     const valores = this.form.getRawValue();
-    return Number(valores.kilos || 0) * Number(valores.precio_kilo || 0);
+    // Cada unidad multiplica lo suyo: barras × precio por barra, o kilos × precio
+    // por kilo. Nunca se cruzan.
+    return this.esMozzarella()
+      ? Number(valores.barras || 0) * Number(valores.precio_barra || 0)
+      : Number(valores.kilos || 0) * Number(valores.precio_kilo || 0);
   });
 
-  readonly gastoPorKilo = computed(() => {
+  /** El gasto UNITARIO de esta venta: por kilo o por barra, según el tipo. */
+  readonly gastoUnitario = computed(() => {
     this.cambios();
-    return Number(this.form.getRawValue().gasto_por_kilo || 0);
+    const valores = this.form.getRawValue();
+    return Number(
+      (this.esMozzarella() ? valores.gasto_por_barra : valores.gasto_por_kilo) || 0,
+    );
   });
 
   readonly gastoTotal = computed(() => {
     this.cambios();
     const valores = this.form.getRawValue();
-    return Number(valores.gasto_por_kilo || 0) * Number(valores.kilos || 0);
+    // El total en PESOS: unitario × cantidad, cada uno en su unidad.
+    return (
+      this.gastoUnitario() *
+      Number((this.esMozzarella() ? valores.barras : valores.kilos) || 0)
+    );
   });
 
   readonly clientesFiltrados = computed(() => {
@@ -222,15 +328,27 @@ export class VentaQuesoFormDialog {
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
-      const payload = {
+      const comun = {
         fecha: dateToIso(valores.fecha),
         cliente: valores.cliente.trim(),
-        kilos: Number(valores.kilos),
-        precio_kilo: Number(valores.precio_kilo),
         gasto_concepto: valores.gasto_concepto?.trim() || null,
-        gasto_por_kilo: Number(valores.gasto_por_kilo || 0),
         observaciones: valores.observaciones || null,
       };
+      // El payload SE ARMA NOMBRANDO LOS CAMPOS DE LA UNIDAD y los del otro par no
+      // viajan ni en cero (mismo criterio que en la compra: ver CompraFormDialog).
+      const payload: Omit<VentaQuesoPayload, 'tipo' | 'pagada_de_contado'> = this.esMozzarella()
+        ? {
+            ...comun,
+            barras: Number(valores.barras),
+            precio_barra: Number(valores.precio_barra),
+            gasto_por_barra: Number(valores.gasto_por_barra || 0),
+          }
+        : {
+            ...comun,
+            kilos: Number(valores.kilos),
+            precio_kilo: Number(valores.precio_kilo),
+            gasto_por_kilo: Number(valores.gasto_por_kilo || 0),
+          };
       const guardada = await firstValueFrom(
         this.data?.item
           ? this.servicio.editarVenta(this.data.item.id, payload)

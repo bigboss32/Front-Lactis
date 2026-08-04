@@ -45,19 +45,39 @@
 
         <ng-container matColumnDef="productor">
           <th mat-header-cell *matHeaderCellDef>Productor</th>
-          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Productor'">{{ fila.productor }}</td>
+          <td mat-cell *matCellDef="let fila" [attr.data-label]="'Productor'">
+            {{ fila.productor }}
+            <!-- La mozzarella se marca en la fila misma. Sin este distintivo, dos
+                 compras al mismo productor —una de 100 kg y otra de 100 barras— se
+                 verían casi idénticas y solo se distinguirían por la palabra
+                 "barras" de la columna de al lado. -->
+            @if (fila.tipo === 'mozzarella') {
+              <span class="badge-mozzarella" matTooltip="Se compra y se vende por barra completa">
+                Mozzarella
+              </span>
+            }
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="kilos">
-          <th mat-header-cell *matHeaderCellDef class="num">Kilos</th>
-          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Kilos'">
-            <strong>{{ fila.kilos_netos | cantidad: 'kg' }}</strong>
+          <!-- La columna se llama "Cantidad" y no "Kilos": puede traer las dos
+               unidades, y un encabezado que dijera "Kilos" encima de "8 barras"
+               contradiría la celda. Cada celda lleva SU unidad, que la decide el
+               campo unidad que manda el backend y no la plantilla. -->
+          <th mat-header-cell *matHeaderCellDef class="num">Cantidad</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Cantidad'">
+            <strong>
+              {{ (fila.unidad === 'barra' ? fila.barras : fila.kilos_netos) | enUnidad: fila.unidad }}
+            </strong>
           </td>
         </ng-container>
 
         <ng-container matColumnDef="precio_kilo">
-          <th mat-header-cell *matHeaderCellDef class="num">Precio/kg</th>
-          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Precio/kg'">{{ fila.precio_kilo | money }}</td>
+          <th mat-header-cell *matHeaderCellDef class="num">Precio</th>
+          <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Precio'">
+            {{ (fila.unidad === 'barra' ? fila.precio_barra : fila.precio_kilo) | money }}
+            <span class="por-unidad">/{{ fila.unidad === 'barra' ? 'barra' : 'kg' }}</span>
+          </td>
         </ng-container>
 
         <ng-container matColumnDef="valor_total">
