@@ -32,11 +32,109 @@ export type TipoVenta = 'queso' | 'borona' | 'mozzarella';
 export type TipoCompra = 'queso' | 'mozzarella';
 
 /**
+ * Los mismos dos tipos de arriba, como LISTA, para poder preguntar «¿este
+ * producto ya se puede registrar?».
+ *
+ * Están tipadas contra las uniones de arriba a propósito: si mañana el backend
+ * acepta un tipo más y se agrega a `TipoVenta`, TypeScript no obliga a agregarlo
+ * aquí, pero si se escribe aquí uno que la unión no tiene, no compila. Es la
+ * dirección que importa: la lista no puede inventar un tipo que el servidor
+ * rechazaría.
+ *
+ * PARA QUÉ SIRVEN. La pestaña de Productos las usa para decirle al dueño, de
+ * frente, cuáles de sus productos ya se ofrecen al registrar una compra o una
+ * venta: en este corte los renglones siguen guardando el producto en su columna
+ * `tipo` y el backend solo acepta estas cadenas, así que un producto nuevo del
+ * catálogo todavía no aparece en los formularios. Callarlo dejaría al dueño
+ * agregando "Cuajada" y buscándola en vano en la pantalla de ventas.
+ */
+export const TIPOS_COMPRA: readonly TipoCompra[] = ['queso', 'mozzarella'];
+export const TIPOS_VENTA: readonly TipoVenta[] = ['queso', 'borona', 'mozzarella'];
+
+/**
  * En qué se mide una fila. La deduce el backend del `tipo` (una sola fuente de
  * verdad, ver `unidad_de` en models.py) y viaja en la respuesta para que la
  * pantalla ponga el rótulo correcto sin tener que repetir la regla.
  */
 export type Unidad = 'kg' | 'barra';
+
+// ------------------------------------------- catálogo de productos de reventa
+/**
+ * En qué se mide un PRODUCTO del catálogo: se pesa ('kg') o se cuenta ('unidad').
+ *
+ * OJO, NO ES `Unidad`. Esa dice en qué está medida una FILA ya registrada y sus
+ * valores son 'kg' y 'barra' (la barra es la pieza de mozzarella). Esta dice cómo
+ * se mide el producto en el catálogo, y el backend la escribe 'unidad' porque no
+ * toda pieza es una barra. Son dos vocabularios distintos y por eso son dos
+ * tipos distintos: mezclarlos dejaría un 'barra' viajando a un campo que solo
+ * acepta 'unidad'.
+ */
+export type UnidadProducto = 'kg' | 'unidad';
+
+/**
+ * UN PRODUCTO DEL CATÁLOGO: qué se compra y se revende, como dato y no como una
+ * lista escrita en el código.
+ *
+ * `clave` es la identidad y NO cambia nunca, ni al renombrar: es la misma cadena
+ * que las filas de compras y de ventas ya tienen guardada en su columna `tipo`
+ * (ver el modelo del backend). `nombre` es solo el rótulo, y por eso renombrar no
+ * tiene riesgo.
+ *
+ * `decimales` y `admite_ajustes` los DEDUCE el backend de la unidad y no se
+ * preguntan; llegan aquí para poder mostrar cómo quedó el producto.
+ */
+export interface ProductoReventa extends TenantFields {
+  nombre: string;
+  clave: string;
+  unidad: UnidadProducto;
+  /** 2 si se pesa, 0 si se cuenta. */
+  decimales: number;
+  /** De qué producto es subproducto (la borona lo es del queso). */
+  subproducto_de_id: string | null;
+  /** El nombre del padre, ya resuelto por el servidor. */
+  subproducto_de_nombre: string | null;
+  /** Si su cantidad puede corregirse con merma o pasándola a borona. */
+  admite_ajustes: boolean;
+  /** La misma pregunta que `unidad === 'kg'`, dicha como se lee en el negocio. */
+  se_pesa: boolean;
+  /** Solo presentación: en qué orden se le muestran al dueño. */
+  orden: number;
+}
+
+/**
+ * Lo que se pregunta para agregar un producto: el nombre, cómo se mide y de quién
+ * es subproducto. NADA MÁS.
+ *
+ * No van la clave, los decimales ni `admite_ajustes`: los deduce el backend (la
+ * clave del nombre, los otros dos de la unidad). Un campo deducible que además se
+ * pregunta es una segunda fuente para el mismo hecho. `orden` tampoco: sin él el
+ * producto va al final, que es lo que uno espera al agregar.
+ */
+export interface ProductoReventaPayload {
+  nombre: string;
+  unidad?: UnidadProducto;
+  subproducto_de_id?: string | null;
+}
+
+/**
+ * Lo que se puede corregir de un producto ya creado.
+ *
+ * NI LA CLAVE NI LA UNIDAD ESTÁN, igual que en el esquema del backend: la clave es
+ * la identidad con la que su historia lo nombra, y la unidad decide la forma de la
+ * cantidad. Renombrar sí, y siempre.
+ */
+export interface ProductoReventaUpdatePayload {
+  nombre?: string;
+  subproducto_de_id?: string | null;
+  estado?: 'activo' | 'inactivo';
+}
+
+export interface ProductoListOpts extends QueryParams {
+  page?: number;
+  page_size?: number;
+  search?: string | null;
+  estado?: string | null;
+}
 
 export interface AbonoReventa {
   id: string;
@@ -48,6 +146,19 @@ export interface AbonoReventa {
 export interface CompraQueso extends TenantFields {
   fecha: string;
   productor: string;
+  /**
+   * A qué FACTURA pertenece este renglón, y en qué lugar de ella.
+   *
+   * Un renglón es un producto: su cantidad, su precio, su plata y sus abonos. La
+   * factura es la cabecera que agrupa varios, y no guarda ni una cifra de plata
+   * (su total es la suma de estos renglones, ver `DocumentoReventa`). El `orden`
+   * es el que escribió el usuario, que además es el orden en que se derraman los
+   * abonos de la factura.
+   *
+   * `documento_id` en nulo = una compra de las de antes, sin cabecera.
+   */
+  documento_id: string | null;
+  orden: number;
   tipo: TipoCompra;
   /** 'kg' o 'barra': cuál de los dos pares de campos mirar. */
   unidad: Unidad;
@@ -70,6 +181,9 @@ export interface CompraQueso extends TenantFields {
 export interface VentaQueso extends TenantFields {
   fecha: string;
   cliente: string;
+  /** Mismo criterio que en la compra: ver `CompraQueso.documento_id`. */
+  documento_id: string | null;
+  orden: number;
   tipo: TipoVenta;
   unidad: Unidad;
   kilos: Monto;
@@ -95,6 +209,204 @@ export interface VentaQueso extends TenantFields {
   abonos: AbonoReventa[];
   /** Cuántos soportes de pago tiene. Solo el número: las fotos se piden aparte. */
   adjuntos_count: number;
+}
+
+// --------------------------------- documentos (la factura de varios productos)
+/** De qué clase es la factura: una compra a un productor o una venta a un cliente. */
+export type TipoDocumento = 'compra' | 'venta';
+
+/** Cuántos productos caben en una factura (el tope es el mismo del backend). */
+export const MAX_RENGLONES = 50;
+
+/**
+ * Lo COMÚN de una factura de reventa, que es casi todo: la cabecera y las cifras
+ * que salen de sumar sus renglones.
+ *
+ * NINGUNA DE LAS CIFRAS ESTÁ GUARDADA en el servidor: todas se calculan al leer,
+ * sumando los renglones. Por eso no pueden desactualizarse ni contradecir el
+ * desglose que va al lado, y por eso la pantalla puede imprimir el desglose
+ * confiada en que suma la cifra grande.
+ *
+ * LAS IGUALDADES QUE EL DUEÑO VERIFICA A MANO:
+ *
+ *     total + total_anulado           === la suma del valor_total de TODOS los renglones
+ *     total − abonado + saldo_a_favor === saldo
+ *
+ * `total` y `abonado` solo cuentan los renglones NO anulados. La plata de un
+ * renglón anulado no se esconde: sale aparte en `total_anulado`, que es la única
+ * forma honesta de que la columna siga cerrando cuando algo se anula.
+ */
+interface DocumentoReventaBase extends TenantFields {
+  fecha: string;
+  /** El cliente (si es venta) o el productor (si es compra). */
+  tercero: string;
+  observaciones: string | null;
+  total: Monto;
+  abonado: Monto;
+  /**
+   * LO QUE DE VERDAD LE FALTA PAGAR: la suma de los saldos POSITIVOS de sus
+   * renglones, y NO `total − abonado`.
+   *
+   * Las dos cuentas se separan cuando a un renglón se le rebajó el precio DESPUÉS
+   * de pagarlo, que es un caso permitido a propósito (ver el comentario del
+   * `actualizar` de ventas en el backend): ahí ese renglón queda con saldo
+   * negativo. `total − abonado` le restaba ese sobrante al saldo de los OTROS
+   * renglones, y entonces la factura decía que le faltaban $30.000 cuando de
+   * verdad le faltaban $50.000. Acotando en cero el saldo de cada renglón, esta
+   * cifra es la MISMA que acota el abono a la factura (ver `capacidad` en el
+   * derrame) y la MISMA que suma la cartera (`saldo_pendiente`), así que las tres
+   * no pueden contradecirse.
+   */
+  saldo: Monto;
+  /**
+   * LO QUE QUEDÓ PAGADO DE MÁS, en positivo y con su propio campo: la suma de los
+   * saldos negativos de los renglones, con el signo volteado. Antes se escondía
+   * restándose por dentro de `saldo`.
+   *
+   * OPCIONAL a propósito, y no por descuido: el backend la está agregando en este
+   * mismo corte y la pantalla tiene que servir con las dos versiones. Cuando no
+   * viene, la vista deriva las dos cifras de los renglones —que sí llegan
+   * completos en la respuesta— y saca exactamente la misma cuenta; ver
+   * `cifrasDelSaldo` en documento-list.tab.ts.
+   */
+  saldo_a_favor?: Monto;
+  /** La plata de los renglones anulados, aparte. Ver la igualdad de arriba. */
+  total_anulado: Monto;
+  /** Derivado de los renglones: pendiente | parcial | pagada | anulada. */
+  estado_pago: string;
+  cantidad_renglones: number;
+}
+
+/** Una factura de COMPRA: sus renglones son filas de `compras_queso`. */
+export interface DocumentoCompra extends DocumentoReventaBase {
+  tipo: 'compra';
+  renglones: CompraQueso[];
+}
+
+/** Una factura de VENTA: sus renglones son filas de `ventas_queso`. */
+export interface DocumentoVenta extends DocumentoReventaBase {
+  tipo: 'venta';
+  renglones: VentaQueso[];
+}
+
+/**
+ * Una factura de reventa. Se discrimina por `tipo`, igual que en el backend: es
+ * lo que hace que `documento.renglones` tenga la forma correcta sin castings ni
+ * `any` en las pantallas.
+ */
+export type DocumentoReventa = DocumentoCompra | DocumentoVenta;
+
+/**
+ * UN PRODUCTO de una venta: qué, cuánto y a qué precio. Sin fecha ni cliente,
+ * que son de la factura y no del renglón.
+ *
+ * Solo viaja el par de campos de LA UNIDAD del producto (kilos para el queso y
+ * la borona, barras para la mozzarella) y los del otro par no viajan ni en cero:
+ * es el mismo criterio del payload plano, y es lo que hace imposible que un
+ * intento previo en kilos se cuele en un renglón de barras.
+ */
+export interface RenglonVentaPayload {
+  tipo: TipoVenta;
+  // --- si tipo = queso o borona (se pesa)
+  kilos?: number;
+  precio_kilo?: number;
+  gasto_por_kilo?: number;
+  // --- si tipo = mozzarella (barras COMPLETAS: el backend rechaza decimales)
+  barras?: number;
+  precio_barra?: number;
+  gasto_por_barra?: number;
+  gasto_concepto?: string | null;
+  observaciones?: string | null;
+}
+
+/** UN PRODUCTO de una compra. Mismo criterio que el renglón de venta. */
+export interface RenglonCompraPayload {
+  tipo: TipoCompra;
+  // --- si tipo = queso (se pesa)
+  kilos_brutos?: number;
+  borona_kilos?: number;
+  precio_kilo?: number;
+  // --- si tipo = mozzarella (se cuenta)
+  barras?: number;
+  precio_barra?: number;
+  observaciones?: string | null;
+}
+
+/**
+ * Una VENTA de varios productos: la cabecera y sus renglones.
+ *
+ * La cabecera NO LLEVA NI UNA CIFRA DE PLATA, a propósito y por contrato: el
+ * total es la suma de los renglones y se calcula al leer. Dos fuentes para el
+ * mismo hecho terminan contradiciéndose.
+ */
+export interface DocumentoVentaPayload {
+  tipo: 'venta';
+  fecha: string;
+  tercero: string;
+  observaciones?: string | null;
+  renglones: RenglonVentaPayload[];
+  /** Registra la factura completa ya pagada. Se derrama sobre los renglones. */
+  pagada_de_contado?: boolean;
+}
+
+/** Una COMPRA de varios productos. Sin `pagada_de_contado`: no existe al comprar. */
+export interface DocumentoCompraPayload {
+  tipo: 'compra';
+  fecha: string;
+  tercero: string;
+  observaciones?: string | null;
+  renglones: RenglonCompraPayload[];
+}
+
+export type DocumentoReventaPayload = DocumentoCompraPayload | DocumentoVentaPayload;
+
+/**
+ * Edición de una factura.
+ *
+ * `tipo` ES OBLIGATORIO aunque el id ya diga cuál es: es el discriminador con el
+ * que el backend decide la forma de los renglones, y tiene que coincidir con el
+ * de la factura guardada.
+ *
+ * `renglones` AUSENTE (o en nulo) significa «no me toque los productos»: es la
+ * edición de solo cabecera, la única que se permite cuando la factura ya tiene
+ * abonos. Mandar la lista significa REHACERLOS.
+ */
+export interface DocumentoVentaUpdatePayload {
+  tipo: 'venta';
+  fecha: string;
+  tercero: string;
+  observaciones?: string | null;
+  renglones?: RenglonVentaPayload[] | null;
+}
+
+export interface DocumentoCompraUpdatePayload {
+  tipo: 'compra';
+  fecha: string;
+  tercero: string;
+  observaciones?: string | null;
+  renglones?: RenglonCompraPayload[] | null;
+}
+
+export type DocumentoReventaUpdatePayload =
+  | DocumentoCompraUpdatePayload
+  | DocumentoVentaUpdatePayload;
+
+/**
+ * Filtros del listado de facturas.
+ *
+ * NO LLEVA `estado`: el backend todavía no sabe filtrar facturas por estado de
+ * pago (el estado de la factura es DERIVADO de sus renglones, no una columna que
+ * se pueda comparar en SQL). Las pestañas lo resuelven mirando la página que ya
+ * tienen y diciéndolo de frente; ver `coincideEstado` en las listas.
+ */
+export interface DocumentoListOpts extends QueryParams {
+  page?: number;
+  page_size?: number;
+  tipo?: TipoDocumento | null;
+  /** Busca por el nombre del tercero. */
+  search?: string | null;
+  desde?: string | null;
+  hasta?: string | null;
 }
 
 // ------------------------------------- adjuntos (soportes de transferencia)
@@ -853,6 +1165,97 @@ export class ReventaService {
   /** Nombres ya usados de productores y clientes, para autocompletar. */
   sugerencias(): Observable<SugerenciasReventa> {
     return this.api.get<SugerenciasReventa>(`${this.base}/sugerencias`);
+  }
+
+  // ------------------------------------------ catálogo de productos de reventa
+  /** El catálogo EN EL ORDEN EN QUE EL DUEÑO LO PUSO (no por fecha: lo ordena el servidor). */
+  listarProductos(opts: ProductoListOpts = {}): Observable<Page<ProductoReventa>> {
+    return this.api.get<Page<ProductoReventa>>(`${this.base}/productos`, opts);
+  }
+
+  /**
+   * Agrega un producto. Si ese producto YA EXISTIÓ y se había quitado, el servidor
+   * devuelve LA MISMA FILA reactivada —mismo id y misma clave, para que sus
+   * movimientos viejos sigan cuadrando con él— y no la redefine: vuelve con la
+   * unidad que tenía. Por eso la pantalla mira la unidad de la respuesta y no la
+   * que se pidió.
+   */
+  crearProducto(payload: ProductoReventaPayload): Observable<ProductoReventa> {
+    return this.api.post<ProductoReventa>(`${this.base}/productos`, payload);
+  }
+
+  /** Renombrar, moverlo de padre (solo sin movimientos) o activarlo/desactivarlo. */
+  editarProducto(
+    id: string,
+    payload: ProductoReventaUpdatePayload,
+  ): Observable<ProductoReventa> {
+    return this.api.put<ProductoReventa>(`${this.base}/productos/${id}`, payload);
+  }
+
+  /**
+   * Quita un producto del catálogo. El servidor lo RECHAZA si ya tiene compras o
+   * ventas, y en el mensaje dice cuántas y ofrece la salida: desactivarlo. Ese
+   * mensaje se muestra tal cual, porque es el que trae la cuenta exacta.
+   */
+  eliminarProducto(id: string): Observable<void> {
+    return this.api.delete(`${this.base}/productos/${id}`);
+  }
+
+  // ------------------------------------- documentos (facturas de N productos)
+  /**
+   * Las facturas de VENTA con sus renglones y su total calculado.
+   *
+   * Hay un método por clase de factura, y no uno con el tipo por parámetro, para
+   * que el tipo de la respuesta sea el correcto: quien pide ventas recibe
+   * `DocumentoVenta` y sus renglones son `VentaQueso`, sin castings.
+   */
+  listarDocumentosVenta(opts: DocumentoListOpts = {}): Observable<Page<DocumentoVenta>> {
+    return this.api.get<Page<DocumentoVenta>>(`${this.base}/documentos`, {
+      ...opts,
+      tipo: 'venta',
+    });
+  }
+
+  listarDocumentosCompra(opts: DocumentoListOpts = {}): Observable<Page<DocumentoCompra>> {
+    return this.api.get<Page<DocumentoCompra>>(`${this.base}/documentos`, {
+      ...opts,
+      tipo: 'compra',
+    });
+  }
+
+  crearDocumento(payload: DocumentoReventaPayload): Observable<DocumentoReventa> {
+    return this.api.post<DocumentoReventa>(`${this.base}/documentos`, payload);
+  }
+
+  /**
+   * Corrige una factura. La fecha, el nombre y la nota se pueden cambiar SIEMPRE
+   * (y el backend se los copia a todos los renglones, que es de donde leen el
+   * resumen y la cartera). Mandar `renglones` REHACE los productos, y eso el
+   * backend solo lo permite si la factura no tiene abonos.
+   */
+  editarDocumento(
+    id: string,
+    payload: DocumentoReventaUpdatePayload,
+  ): Observable<DocumentoReventa> {
+    return this.api.put<DocumentoReventa>(`${this.base}/documentos/${id}`, payload);
+  }
+
+  /**
+   * Un abono a la factura entera. SE DERRAMA, NO SE DIVIDE: entra a los renglones
+   * en su orden, `min(lo que queda, el saldo del renglón)` a cada uno. Sin
+   * división no hay redondeo, así que la suma de los abonos da el abono exacto.
+   */
+  abonarDocumento(id: string, payload: AbonoPayload): Observable<DocumentoReventa> {
+    return this.api.post<DocumentoReventa>(`${this.base}/documentos/${id}/abonos`, payload);
+  }
+
+  /** Anula la factura anulando todos sus renglones (uno por uno, con sus reglas). */
+  anularDocumento(id: string): Observable<DocumentoReventa> {
+    return this.api.post<DocumentoReventa>(`${this.base}/documentos/${id}/anular`);
+  }
+
+  eliminarDocumento(id: string): Observable<void> {
+    return this.api.delete(`${this.base}/documentos/${id}`);
   }
 
   // ----------------------------------------------------------------- compras

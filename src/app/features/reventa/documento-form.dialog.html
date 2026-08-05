@@ -1,0 +1,305 @@
+<h2 mat-dialog-title>{{ titulo }}</h2>
+<mat-dialog-content>
+  @if (conAbonos) {
+    <!-- Se dice ANTES de que intente escribir, y se dice en plata: qué sí se puede
+         corregir y qué no. Los abonos cuelgan de los productos, así que rehacerlos
+         sería mover pagos ya recibidos a productos distintos de los que el dueño
+         tenía al frente cuando le entregaron la plata. -->
+    <p class="aviso-abonos">
+      <mat-icon>lock</mat-icon>
+      <span>
+        Esta factura ya tiene abonos ({{ abonado | money: true }}). Aquí se puede
+        corregir <strong>la fecha, el nombre y la nota</strong>. Para cambiar los
+        productos hay que anularla y volverla a registrar; la cantidad y el precio
+        de un producto se corrigen en el producto mismo, desde la lista.
+      </span>
+    </p>
+  }
+
+  @if (soportesEnRiesgo() > 0) {
+    <!-- Cambiar los productos los REHACE, y eso se lleva sus soportes de pago del
+         almacenamiento. Se avisa antes de guardar y se manda al camino que no los
+         toca. -->
+    <p class="aviso-soportes">
+      <mat-icon>warning</mat-icon>
+      <span>
+        Cambió los productos, y guardar así
+        <strong>
+          borra {{ soportesEnRiesgo() }}
+          {{ soportesEnRiesgo() === 1 ? 'soporte de pago' : 'soportes de pago' }}
+        </strong>
+        anexado{{ soportesEnRiesgo() === 1 ? '' : 's' }} a esta factura. Si solo
+        necesita corregir la cantidad o el precio de un producto, cierre esto y use el
+        lápiz del producto en la lista: por ahí las fotos no se tocan.
+      </span>
+    </p>
+  }
+
+  <form [formGroup]="form" id="form-documento-reventa" (ngSubmit)="guardar()">
+    <!-- LA CABECERA SON DOS CAMPOS Y NADA MÁS: cuándo y a quién. Todo lo demás es
+         de los productos, y va abajo renglón por renglón. -->
+    <div class="cabecera">
+      <mat-form-field>
+        <mat-label>Fecha</mat-label>
+        <input
+          matInput
+          [matDatepicker]="pFecha"
+          (click)="pFecha.open()"
+          formControlName="fecha"
+          required
+        />
+        <mat-datepicker-toggle matSuffix [for]="pFecha" />
+        <mat-datepicker #pFecha />
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>{{ esVenta ? 'Cliente' : 'Productor' }}</mat-label>
+        <input
+          matInput
+          formControlName="tercero"
+          required
+          maxlength="150"
+          [matAutocomplete]="autoTercero"
+        />
+        <mat-autocomplete #autoTercero="matAutocomplete">
+          @for (nombre of terceros(); track nombre) {
+            <mat-option [value]="nombre">{{ nombre }}</mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+    </div>
+
+    <h3 class="seccion">{{ esVenta ? '¿Qué le vendió?' : '¿Qué le compró?' }}</h3>
+    <p class="ayuda">
+      @if (esVenta) {
+        El peso REAL al despachar: es aquí donde se ve la merma. La mozzarella no se
+        pesa, se cuenta por barras completas.
+      } @else {
+        Lo que recibió y le paga al productor. La mozzarella no se pesa, se cuenta
+        por barras completas.
+      }
+    </p>
+
+    <div formArrayName="renglones">
+      @for (fila of renglones.controls; track fila; let i = $index) {
+        <div class="renglon" [formGroupName]="i">
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Producto</mat-label>
+            <!-- El producto TRAE SU UNIDAD: al escogerlo, el sufijo de la cantidad
+                 pasa a kg o a barras y el rótulo del precio con él. Por eso no hay
+                 un par de campos apagados esperando la otra unidad. -->
+            <mat-select
+              formControlName="producto"
+              (selectionChange)="productoCambio(i, $event.value)"
+            >
+              @for (p of catalogo; track p.tipo) {
+                <mat-option [value]="p.tipo">{{ p.etiqueta }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>Cantidad</mat-label>
+            <input
+              matInput
+              type="number"
+              formControlName="cantidad"
+              required
+              [min]="esDeBarras(i) ? 1 : 0"
+              [step]="esDeBarras(i) ? 1 : 0.1"
+              [attr.inputmode]="esDeBarras(i) ? 'numeric' : 'decimal'"
+            />
+            <span matTextSuffix>{{ esDeBarras(i) ? 'barras' : 'kg' }}</span>
+            @if (fila.controls.cantidad.hasError('barrasEnteras')) {
+              <mat-error>Las barras van completas: no acepta medias barras</mat-error>
+            }
+          </mat-form-field>
+
+          <!-- CON DECIMALES: no es un total, es el precio de UN kilo o de UNA barra,
+               y de él sale la plata del renglón. -->
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>{{ esDeBarras(i) ? 'Precio por barra' : 'Precio por kilo' }}</mat-label>
+            <input
+              matInput
+              type="text"
+              inputmode="decimal"
+              appMiles
+              [decimales]="2"
+              formControlName="precio"
+              required
+            />
+            <span matTextPrefix>$&nbsp;</span>
+          </mat-form-field>
+
+          <span class="subtotal-renglon">{{ subtotales()[i] | money: true }}</span>
+
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Quitar este producto"
+            [disabled]="renglones.length === 1 || conAbonos"
+            (click)="quitarRenglon(i)"
+          >
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      }
+    </div>
+
+    @if (!conAbonos) {
+      <button
+        mat-stroked-button
+        type="button"
+        class="agregar"
+        [disabled]="renglones.length >= maxRenglones"
+        (click)="agregarRenglon()"
+      >
+        <mat-icon>add</mat-icon> Agregar otro producto
+      </button>
+    }
+
+    @if (esVenta) {
+      <!-- ARRANCA PLEGADO a propósito: hoy son dos de los ocho campos siempre a la
+           vista y la enorme mayoría de las ventas no lleva ningún gasto. Plegado,
+           una factura de tres productos se ve MÁS CORTA que la de un producto de
+           antes. La pastilla dice cuánto hay adentro sin tener que abrirlo. -->
+      <button type="button" class="plegable" (click)="alternarGastos()">
+        <mat-icon>{{ gastosAbiertos() ? 'expand_less' : 'expand_more' }}</mat-icon>
+        <span class="rotulo">Gastos de vender (transporte)</span>
+        @if (gastoTotal() > 0) {
+          <span class="pastilla">{{ gastoTotal() | money: true }}</span>
+        } @else {
+          <span class="pastilla neutra">Ninguno</span>
+        }
+      </button>
+
+      @if (gastosAbiertos()) {
+        <div class="gastos">
+          <p class="ayuda">
+            Lo que a usted le cuesta vender: el transporte, por ejemplo.
+            <strong>No se le cobra al cliente</strong> — sale de su bolsillo, y es lo
+            que hace que la venta le deje menos de lo que dice el total.
+          </p>
+
+          <mat-form-field class="concepto" subscriptSizing="dynamic">
+            <mat-label>Concepto</mat-label>
+            <input
+              matInput
+              formControlName="gasto_concepto"
+              maxlength="150"
+              placeholder="Ej. Transporte"
+            />
+            <mat-hint>El mismo para todos los productos de esta factura</mat-hint>
+          </mat-form-field>
+
+          <!-- La tarifa va POR PRODUCTO porque va por unidad: $/kg en el queso y la
+               borona, $/barra en la mozzarella. Un "$700 por kilo" cobrado sobre
+               barras no significa nada, y esa es justo la confusión que este módulo
+               no permite. -->
+          <div formArrayName="renglones">
+            @for (fila of renglones.controls; track fila; let i = $index) {
+              <div class="gasto-renglon" [formGroupName]="i">
+                <span class="nombre">{{ etiquetaDe(i) }}</span>
+                <mat-form-field subscriptSizing="dynamic">
+                  <mat-label>Cuánto por {{ esDeBarras(i) ? 'barra' : 'kilo' }}</mat-label>
+                  <input
+                    matInput
+                    type="text"
+                    inputmode="decimal"
+                    appMiles
+                    [decimales]="2"
+                    formControlName="gasto"
+                  />
+                  <span matTextPrefix>$&nbsp;</span>
+                </mat-form-field>
+                <span class="gasto-total">{{ gastosRenglon()[i] | money: true }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    }
+
+    <!-- EL RECIBO. La cuenta que el dueño haría a mano: cada producto con su
+         multiplicación escrita, y el total como la SUMA DE ESTOS RENGLONES
+         IMPRESOS y de nada más. Con centavos, porque es un documento que él cuadra
+         a mano y el PDF también los imprime. -->
+    <div class="cuenta">
+      @if (desglose().length > 0) {
+        @for (r of desglose(); track $index) {
+          <div class="renglon-cuenta">
+            <span
+              >{{ r.etiqueta }} · {{ r.cantidad | enUnidad: r.unidad : 2 }} ×
+              {{ r.precio | money: true }}</span
+            >
+            <strong>{{ r.total | money: true }}</strong>
+          </div>
+        }
+      } @else {
+        <p class="sin-cuenta">
+          Escriba la cantidad y el precio para que aparezca la cuenta.
+        </p>
+      }
+
+      <div class="renglon-cuenta total-final">
+        <span>{{ esVenta ? 'Total de la venta' : 'Total a pagar' }}</span>
+        <strong>{{ total() | money: true }}</strong>
+      </div>
+
+      @if (gastoTotal() > 0) {
+        <!-- Va DESPUÉS del total y separado por una línea: antes se leería como que
+             el gasto está incluido en lo que paga el cliente, y no lo está. -->
+        <div class="bloque-gastos">
+          @for (g of desgloseGastos(); track $index) {
+            <div class="aparte cuenta-gasto">
+              <span
+                >{{ g.etiqueta }}: {{ g.cantidad | enUnidad: g.unidad : 2 }} ×
+                {{ g.porUnidad | money: true }} por
+                {{ g.unidad === 'barra' ? 'barra' : 'kilo' }}</span
+              >
+              <strong>{{ g.total | money: true }}</strong>
+            </div>
+          }
+          <div class="aparte">
+            <span>{{ conceptoGasto() }} (lo paga usted)</span>
+            <strong>&minus; {{ gastoTotal() | money: true }}</strong>
+          </div>
+          <div class="aparte">
+            <span>Le queda</span>
+            <strong>{{ total() - gastoTotal() | money: true }}</strong>
+          </div>
+        </div>
+      }
+    </div>
+
+    <mat-form-field class="obs" subscriptSizing="dynamic">
+      <mat-label>Observaciones</mat-label>
+      <textarea matInput formControlName="observaciones" rows="2"></textarea>
+    </mat-form-field>
+
+    @if (esVenta && !editando) {
+      <mat-checkbox formControlName="pagada_de_contado">
+        Pagada de contado
+        <span class="nota-contado">
+          — se registra el pago de toda la factura, producto por producto
+        </span>
+      </mat-checkbox>
+    }
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancelar</button>
+  <button
+    mat-flat-button
+    type="submit"
+    form="form-documento-reventa"
+    [disabled]="form.invalid || guardando()"
+  >
+    @if (guardando()) {
+      <app-spinner-boton /> Guardando…
+    } @else {
+      {{ rotuloGuardar }}
+    }
+  </button>
+</mat-dialog-actions>

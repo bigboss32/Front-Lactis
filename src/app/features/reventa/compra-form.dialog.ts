@@ -1,13 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
 
@@ -19,10 +19,31 @@ import { protegerCambios } from '../../shared/proteger-cambios';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './reventa.service';
 
+/** Lo que se le puede corregir a un renglón de compra: todo menos el `tipo`. */
+type RenglonCompraUpdate = Partial<Omit<CompraQuesoPayload, 'tipo'>>;
+
+/** Lo que recibe el diálogo: el renglón y de qué factura sale. */
+export interface CompraFormData {
+  item: CompraQueso;
+  /**
+   * Cuántos productos tiene la factura de la que sale este renglón. Con más de uno,
+   * la fecha y el productor se cambian en la factura y no aquí (ver `conHermanos`).
+   */
+  cuantosRenglones?: number;
+}
+
 /**
- * Registra o edita una compra a un productor: QUESO en kilos o MOZZARELLA en
+ * Corrige UN PRODUCTO de una factura de compra: QUESO en kilos o MOZZARELLA en
  * barras. Al comprar se paga por todo lo recibido (no hay merma: la merma real se
  * ve al vender). Muestra en vivo el total a pagar mientras se escribe.
+ *
+ * SOLO CORRIGE, NO REGISTRA. Las compras se registran en
+ * `DocumentoReventaFormDialog`, que es la factura de varios productos. Este diálogo
+ * quedó para corregir la cantidad o el precio de UN producto suelto, que es lo que
+ * la factura no puede hacer cuando ya tiene abonos.
+ *
+ * CON HERMANOS, LA FECHA Y EL PRODUCTOR NO SE TOCAN AQUÍ: son de la factura y valen
+ * para todos sus productos (ver `conHermanos`).
  *
  * LAS DOS UNIDADES NO COMPARTEN CAMPOS. Según el tipo se habilita el par de
  * controles de su unidad y se DESHABILITA el del otro, en vez de reutilizar un
@@ -33,42 +54,48 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
  * rechazaría con el CHECK de la tabla, pero un 500 de la base no le dice nada al
  * dueño.
  *
- * EL TIPO NO SE EDITA. Al editar se muestra de solo lectura, igual que en la
- * venta: cambiárselo a una compra que ya tiene ventas encima movería mercancía de
- * una cola de inventario a la otra. Si se registró mal, se elimina o se anula.
+ * EL TIPO NO SE EDITA: cambiárselo a una compra que ya tiene ventas encima movería
+ * mercancía de una cola de inventario a la otra. Si se registró mal, se elimina o
+ * se anula.
+ *
+ * LA BORONA QUE VINO GRATIS con el queso no tiene campo aquí y no se toca: el PUT
+ * es parcial, así que no mandarla la deja como está. Es la misma razón por la que la
+ * factura la lleva escondida (ver `DocumentoReventaFormDialog`).
  */
 @Component({
   selector: 'app-compra-form',
   imports: [
     ReactiveFormsModule, MatDialogModule, MatFormFieldModule, MatInputModule,
-    MatDatepickerModule, MatButtonModule, MatAutocompleteModule, MatSelectModule,
+    MatDatepickerModule, MatButtonModule, MatAutocompleteModule, MatIconModule,
     MoneyPipe, MilesInputDirective, SpinnerBoton,
   ],
   template: `
-    <h2 mat-dialog-title>{{ tituloDialogo() }}</h2>
+    <h2 mat-dialog-title>Corregir {{ nombreProducto() }}</h2>
     <mat-dialog-content>
+      @if (conHermanos) {
+        <p class="aviso-factura">
+          <mat-icon>receipt_long</mat-icon>
+          <span>
+            Este es uno de los {{ data.cuantosRenglones }} productos de una factura.
+            Aquí se corrigen <strong>la cantidad y el precio</strong>; la fecha y el
+            productor se cambian en la factura, porque valen para todos sus productos.
+          </span>
+        </p>
+      }
       <form [formGroup]="form" class="form-grid" id="form-compra" (ngSubmit)="guardar()">
-        @if (data?.item) {
-          <!-- Al editar el tipo se ve pero no se toca (ver el comentario del componente). -->
-          <mat-form-field>
-            <mat-label>Producto</mat-label>
-            <input matInput [value]="tipoLabel(tipo())" readonly />
-            <mat-hint>El producto no se cambia: anule y registre de nuevo</mat-hint>
-          </mat-form-field>
-        } @else {
-          <mat-form-field>
-            <mat-label>Producto</mat-label>
-            <mat-select formControlName="tipo">
-              <mat-option value="queso">Queso (por kilo)</mat-option>
-              <mat-option value="mozzarella">Mozzarella (por barra)</mat-option>
-            </mat-select>
-          </mat-form-field>
-        }
+        <mat-form-field>
+          <mat-label>Producto</mat-label>
+          <input matInput [value]="tipoLabel(tipo)" readonly />
+          <mat-hint>El producto no se cambia: anule y registre de nuevo</mat-hint>
+        </mat-form-field>
         <mat-form-field>
           <mat-label>Fecha</mat-label>
           <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
-          <mat-datepicker-toggle matSuffix [for]="pFecha" />
+          <mat-datepicker-toggle matSuffix [for]="pFecha" [disabled]="conHermanos" />
           <mat-datepicker #pFecha />
+          @if (conHermanos) {
+            <mat-hint>Se cambia en la factura</mat-hint>
+          }
         </mat-form-field>
         <mat-form-field>
           <mat-label>Productor</mat-label>
@@ -78,9 +105,12 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
               <mat-option [value]="nombre">{{ nombre }}</mat-option>
             }
           </mat-autocomplete>
+          @if (conHermanos) {
+            <mat-hint>Se cambia en la factura</mat-hint>
+          }
         </mat-form-field>
 
-        @if (esMozzarella()) {
+        @if (esMozzarella) {
           <!-- step="1" y sin decimales: una barra es una barra. El backend RECHAZA
                "8,5 barras" (no las redondea), así que el formulario no puede
                ofrecer algo que se va a devolver con error. -->
@@ -105,8 +135,6 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
             <span matTextSuffix>kg</span>
             <mat-hint>Lo que compras y pagas al productor</mat-hint>
           </mat-form-field>
-          <!-- CON DECIMALES: mismo caso, el precio de UN kilo de lo que se le compra
-               al productor. -->
           <mat-form-field>
             <mat-label>Precio por kilo</mat-label>
             <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
@@ -122,8 +150,8 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
       </form>
 
       <div class="calculo">
-        <span>Total a pagar: <strong>{{ totalPagar() | money }}</strong></span>
-        @if (esMozzarella()) {
+        <span>Total a pagar: <strong>{{ totalPagar() | money: true }}</strong></span>
+        @if (esMozzarella) {
           <!-- Se repite la cuenta con la unidad puesta para que el dueño la pueda
                verificar de un vistazo contra su calculadora. -->
           <span class="detalle">{{ detalleCuenta() }}</span>
@@ -141,7 +169,7 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
         @if (guardando()) {
           <app-spinner-boton /> Guardando…
         } @else {
-          Guardar
+          Guardar cambios
         }
       </button>
     </mat-dialog-actions>
@@ -163,6 +191,23 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
       strong { color: var(--mat-sys-on-surface); font-variant-numeric: tabular-nums; }
       .detalle { font-size: 12px; font-variant-numeric: tabular-nums; }
     }
+
+    // Aviso de "esto es un renglón de una factura": los dos campos de la cabecera
+    // quedan a la vista pero apagados, así que hay que decir por qué.
+    .aviso-factura {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin: 0 0 8px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--mat-sys-secondary-container);
+      color: var(--mat-sys-on-secondary-container);
+      font-size: 0.86rem;
+      line-height: 1.45;
+
+      mat-icon { flex: none; font-size: 20px; width: 20px; height: 20px; }
+    }
   `,
 })
 export class CompraFormDialog {
@@ -171,40 +216,40 @@ export class CompraFormDialog {
   private readonly dialogRef = inject(MatDialogRef<CompraFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
-  readonly data = inject<{ item?: CompraQueso } | null>(MAT_DIALOG_DATA, { optional: true });
+  readonly data = inject<CompraFormData>(MAT_DIALOG_DATA);
   readonly guardando = signal(false);
 
+  /** El tipo de la fila guardada. No cambia nunca: ver el comentario del componente. */
+  readonly tipo: TipoCompra = this.data.item.tipo;
+  readonly esMozzarella = this.tipo === 'mozzarella';
+
+  /**
+   * Este renglón COMPARTE FACTURA con otros, así que la fecha y el productor se
+   * cambian en la factura: el backend devuelve 422 si llegan por aquí.
+   */
+  readonly conHermanos = (this.data.cuantosRenglones ?? 1) > 1;
+
   readonly form = this.fb.group({
-    // Al editar manda el tipo de la fila guardada; el control existe igual para no
-    // tener dos formularios, pero la plantilla no lo deja tocar.
-    tipo: [(this.data?.item?.tipo ?? 'queso') as TipoCompra, Validators.required],
-    fecha: [this.data?.item ? (isoToDate(this.data.item.fecha) ?? hoyDate()) : hoyDate(), Validators.required],
-    productor: [this.data?.item?.productor ?? '', [Validators.required, Validators.minLength(2)]],
-    kilos_brutos: [Number(this.data?.item?.kilos_brutos ?? 0), [Validators.required, Validators.min(0.01)]],
-    precio_kilo: [Number(this.data?.item?.precio_kilo ?? 0), [Validators.required, Validators.min(0.01)]],
+    fecha: [isoToDate(this.data.item.fecha) ?? hoyDate(), Validators.required],
+    productor: [this.data.item.productor, [Validators.required, Validators.minLength(2)]],
+    kilos_brutos: [
+      Number(this.data.item.kilos_brutos),
+      [Validators.required, Validators.min(0.01)],
+    ],
+    precio_kilo: [Number(this.data.item.precio_kilo), [Validators.required, Validators.min(0.01)]],
     // Las barras arrancan con los validadores puestos pero el control DESHABILITADO
     // (lo hace `_sincronizarUnidad` en el constructor): un control deshabilitado no
     // valida, así que una compra de queso no queda inválida por no tener barras.
-    barras: [Number(this.data?.item?.barras ?? 0), [Validators.required, Validators.min(1)]],
-    precio_barra: [Number(this.data?.item?.precio_barra ?? 0), [Validators.required, Validators.min(0.01)]],
-    observaciones: [this.data?.item?.observaciones ?? ''],
+    barras: [Number(this.data.item.barras), [Validators.required, Validators.min(1)]],
+    precio_barra: [
+      Number(this.data.item.precio_barra),
+      [Validators.required, Validators.min(0.01)],
+    ],
+    observaciones: [this.data.item.observaciones ?? ''],
   });
 
   /** Re-emite en cada cambio del formulario para recalcular en vivo. */
   private readonly cambios = toSignal(this.form.valueChanges);
-
-  /** El tipo que manda AHORA: el de la fila si se edita, el del selector si es nueva. */
-  readonly tipo = computed<TipoCompra>(() => {
-    this.cambios();
-    return this.data?.item?.tipo ?? this.form.getRawValue().tipo;
-  });
-
-  readonly esMozzarella = computed(() => this.tipo() === 'mozzarella');
-
-  readonly tituloDialogo = computed(() => {
-    if (this.data?.item) return 'Editar compra';
-    return this.esMozzarella() ? 'Nueva compra de mozzarella' : 'Nueva compra de queso';
-  });
 
   readonly totalPagar = computed(() => {
     this.cambios();
@@ -212,7 +257,7 @@ export class CompraFormDialog {
     // Cada unidad multiplica lo suyo. No hay un camino común con un "precio
     // unitario": un precio por barra usado como precio por kilo daría un total que
     // no coincide con lo que el productor espera cobrar.
-    return this.esMozzarella()
+    return this.esMozzarella
       ? Number(valores.barras || 0) * Number(valores.precio_barra || 0)
       : Number(valores.kilos_brutos || 0) * Number(valores.precio_kilo || 0);
   });
@@ -231,7 +276,7 @@ export class CompraFormDialog {
   readonly productores = signal<string[]>([]);
   readonly productoresFiltrados = computed(() => {
     this.cambios();
-    const texto = (this.form.getRawValue().productor ?? '').toLowerCase().trim();
+    const texto = (this.form.controls.productor.value ?? '').toLowerCase().trim();
     const todos = this.productores();
     const filtrados = texto ? todos.filter((n) => n.toLowerCase().includes(texto)) : todos;
     return filtrados.slice(0, 20);
@@ -239,6 +284,10 @@ export class CompraFormDialog {
 
   tipoLabel(tipo: TipoCompra): string {
     return tipo === 'mozzarella' ? 'Mozzarella (por barra)' : 'Queso (por kilo)';
+  }
+
+  nombreProducto(): string {
+    return this.esMozzarella ? 'la mozzarella' : 'el queso';
   }
 
   /**
@@ -252,17 +301,16 @@ export class CompraFormDialog {
    * en cada cambio— es la que se olvida el día que alguien toque una de las dos
    * ramas.
    */
-  private _sincronizarUnidad(tipo: TipoCompra): void {
+  private _sincronizarUnidad(): void {
     const opciones = { emitEvent: false };
-    const deBarras = tipo === 'mozzarella';
     for (const nombre of ['barras', 'precio_barra'] as const) {
       const control = this.form.controls[nombre];
-      if (deBarras) control.enable(opciones);
+      if (this.esMozzarella) control.enable(opciones);
       else control.disable(opciones);
     }
     for (const nombre of ['kilos_brutos', 'precio_kilo'] as const) {
       const control = this.form.controls[nombre];
-      if (deBarras) control.disable(opciones);
+      if (this.esMozzarella) control.disable(opciones);
       else control.enable(opciones);
     }
   }
@@ -271,12 +319,13 @@ export class CompraFormDialog {
     firstValueFrom(this.servicio.sugerencias())
       .then((s) => this.productores.set(s.productores))
       .catch(() => undefined);
-    // El estado inicial y cada cambio del selector. Al editar, el tipo no cambia
-    // nunca, así que esto corre una sola vez con el tipo de la fila guardada.
-    this._sincronizarUnidad(this.data?.item?.tipo ?? this.form.getRawValue().tipo);
-    this.form.controls.tipo.valueChanges
-      .pipe(takeUntilDestroyed())
-      .subscribe((tipo) => this._sincronizarUnidad(tipo));
+    this._sincronizarUnidad();
+    if (this.conHermanos) {
+      // Apagados, no escondidos: el dueño necesita seguir viendo de qué compra se
+      // trata mientras corrige la cantidad o el precio.
+      this.form.controls.fecha.disable();
+      this.form.controls.productor.disable();
+    }
     protegerCambios(this.dialogRef, () => this.form);
   }
 
@@ -285,37 +334,31 @@ export class CompraFormDialog {
     this.guardando.set(true);
     try {
       const valores = this.form.getRawValue();
-      const comun = {
-        fecha: dateToIso(valores.fecha),
-        productor: valores.productor.trim(),
+      // La fecha y el productor NO VIAJAN cuando el renglón tiene hermanos: el
+      // backend rechaza el PUT si llegan (mira si vienen, no si cambiaron).
+      const comun: RenglonCompraUpdate = {
+        ...(this.conHermanos
+          ? {}
+          : { fecha: dateToIso(valores.fecha), productor: valores.productor.trim() }),
         observaciones: valores.observaciones || null,
       };
       // El payload SE ARMA NOMBRANDO LOS CAMPOS DE LA UNIDAD, no mandando los seis
       // y dejando que el backend elija: los del otro par no pueden viajar ni en
-      // cero. Y el `tipo` solo va al crear, porque no se edita.
-      const payload: CompraQuesoPayload = this.esMozzarella()
+      // cero.
+      const payload: RenglonCompraUpdate = this.esMozzarella
         ? {
             ...comun,
-            ...(this.data?.item ? {} : { tipo: 'mozzarella' as const }),
             barras: Number(valores.barras),
             precio_barra: Number(valores.precio_barra),
           }
         : {
             ...comun,
-            ...(this.data?.item ? {} : { tipo: 'queso' as const }),
             kilos_brutos: Number(valores.kilos_brutos),
             precio_kilo: Number(valores.precio_kilo),
           };
       const guardada = await firstValueFrom(
-        this.data?.item
-          ? this.servicio.editarCompra(this.data.item.id, payload)
-          : this.servicio.crearCompra(payload),
+        this.servicio.editarCompra(this.data.item.id, payload),
       );
-      // Se devuelve la compra guardada y no un simple `true`: quien abrió el
-      // diálogo la necesita para ofrecer «Anexar soporte» justo después de
-      // registrarla, que es cuando el dueño tiene la foto de la transferencia a
-      // mano. Sigue siendo un valor "verdadero", así que quien solo pregunta si
-      // se guardó no se entera del cambio.
       this.dialogRef.close(guardada);
     } catch (err) {
       avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar la compra');

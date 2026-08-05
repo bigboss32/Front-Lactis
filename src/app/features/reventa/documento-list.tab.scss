@@ -1,0 +1,351 @@
+.spacer { flex: 1; }
+
+// Siete iconos en la fila (estado de cuenta, abonar, ver abonos, soportes,
+// editar, anular, eliminar): el ancho tiene que alcanzar para todos.
+.table-card .col-acciones { width: 315px; }
+
+// La columna del chevron: solo el botón.
+.table-card .col-expandir { width: 48px; padding-right: 0; }
+
+// En celular la tabla se vuelve tarjetas y los iconos envuelven: la celda toma el
+// ancho de la tarjeta. Con un ancho fijo mayor que la pantalla el primer icono
+// quedaría recortado (ya pasó con el icono de abonos).
+@media (max-width: 700px) {
+  .table-card.tarjetas .col-acciones { width: auto; }
+}
+
+.badge-saldo {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  background: color-mix(in srgb, #1565c0 15%, transparent);
+  color: #1565c0;
+}
+
+:host-context(html.dark) .badge-saldo { color: #64b5f6; }
+
+// LO QUE SE PAGÓ DE MÁS. En el color de error del tema y NO en el azul del saldo
+// pendiente: esta plata va al revés de la normal (al vender la debe la quesera,
+// al comprar la debe el tercero) y el dueño no puede confundirla con algo por
+// cobrar. Es el mismo criterio del ".al-reves" del detalle de la liquidación: no
+// es una alarma del sistema, es que la dirección de la plata cambió.
+.badge-a-favor {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--mat-sys-error) 14%, transparent);
+  color: var(--mat-sys-error);
+}
+
+// Distintivo de cada producto. El color dice de un vistazo qué es qué, y sobre
+// todo EN QUÉ UNIDAD está: verde = barras (mozzarella), ámbar = borona, neutro =
+// queso. Lo que hay que poder distinguir sin leer es la unidad, no solo el nombre.
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.badge.badge-borona {
+  background: color-mix(in srgb, #b26a00 18%, transparent);
+  color: #b26a00;
+}
+
+.badge.badge-mozzarella {
+  background: color-mix(in srgb, #2e7d32 16%, transparent);
+  color: #2e7d32;
+}
+
+:host-context(html.dark) {
+  .badge.badge-borona { color: #ffb74d; }
+  .badge.badge-mozzarella { color: #81c784; }
+}
+
+// El chip de "anulado" en un producto: rojo, y el renglón se atenúa.
+.badge-anulado {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: color-mix(in srgb, #c62828 15%, transparent);
+  color: #c62828;
+}
+
+:host-context(html.dark) .badge-anulado { color: #e57373; }
+
+// La celda "Productos": los distintivos con su cantidad, envolviendo.
+.productos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+
+  .producto {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mas {
+    font-size: 0.76rem;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+// Cuántos soportes hay repartidos entre los productos de la factura. NO es un
+// botón: los soportes cuelgan del producto y se abren desde el producto, así que
+// aquí solo se informa (con varios productos no hay un "soporte de la factura"
+// que se pueda abrir sin escoger a dedo a cuál va).
+.clip-informativo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.76rem;
+  color: var(--mat-sys-on-surface-variant);
+
+  mat-icon { font-size: 15px; width: 15px; height: 15px; }
+}
+
+// Contador sobre el clip: cuántos soportes tiene el producto.
+.con-badge { position: relative; display: inline-flex; }
+.badge-adjuntos {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 0.62rem;
+  line-height: 14px;
+  font-weight: 600;
+  text-align: center;
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+}
+
+// El chevron gira al abrir, para que se vea que es la misma fila y no otra.
+.chevron {
+  transition: transform 150ms ease;
+  &.girado { transform: rotate(180deg); }
+}
+
+// ------------------------------------------------------------ el detalle
+// La fila del detalle vive escondida hasta que se despliega. Se oculta con
+// display:none en vez de no pintarla: mat-table necesita la fila para que la
+// plantilla de dos filas por dato siga cuadrando.
+tr.fila-detalle.oculta { display: none; }
+
+td.celda-detalle {
+  padding: 0 16px 14px;
+  border-bottom-width: 1px;
+}
+
+.detalle {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--mat-sys-surface-container);
+}
+
+// Un producto dentro del detalle: qué es, la cuenta escrita, su plata y sus
+// botones. Es EL RECIBO: la columna de la derecha tiene que poder sumarse con el
+// dedo, y para eso las cifras van tabulares y alineadas.
+.renglon-detalle {
+  display: grid;
+  grid-template-columns: 1fr 130px auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 4px 0;
+
+  .que {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.86rem;
+  }
+
+  .plata {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .acciones-renglon {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0;
+  }
+
+  &.anulado .que,
+  &.anulado .plata { opacity: 0.55; }
+  &.anulado .plata { text-decoration: line-through; }
+}
+
+// La nota de la borona que llegó gratis: cuelga del renglón de queso.
+.nota-renglon {
+  display: grid;
+  grid-template-columns: 1fr 130px auto;
+  gap: 12px;
+  padding: 0 0 4px;
+  font-size: 0.76rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+// LAS SUMAS. Cada renglón alineado con la columna de plata de arriba, para que la
+// cifra grande quede justo debajo de los números que la forman.
+.sumas {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--mat-sys-outline-variant);
+
+  .suma {
+    display: grid;
+    grid-template-columns: 1fr 130px auto;
+    gap: 12px;
+    font-size: 0.84rem;
+    color: var(--mat-sys-on-surface-variant);
+
+    .plata {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+  }
+
+  .suma.fuerte {
+    font-size: 0.95rem;
+    color: var(--mat-sys-on-surface);
+    .plata { font-weight: 600; }
+  }
+
+  // El renglón de lo pagado de más: es el único que SUMA en una columna de restas,
+  // así que va marcado. La cifra en el color de error por lo mismo que el
+  // distintivo: esa plata va en la dirección contraria.
+  .suma.a-favor {
+    color: var(--mat-sys-on-surface);
+    .plata { color: var(--mat-sys-error); }
+  }
+
+  .bloque-gastos {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid var(--mat-sys-outline-variant);
+  }
+  .cuenta-gasto { font-size: 0.78rem; }
+}
+
+// La explicación de lo pagado de más: de quién es esa plata, por qué apareció y
+// por qué NO le baja lo que todavía deben. Va DEBAJO de las sumas y no dentro: la
+// rejilla de sumas es rótulo + cifra y el dueño la lee de arriba abajo sumando, y
+// una explicación de dos líneas ahí sería una tercera cifra en esa columna.
+.nota-a-favor {
+  max-width: 560px;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--mat-sys-error);
+}
+
+.nota-factura {
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+// El aviso de que el filtro de estado solo mira ESTA página. Es la verdad dicha
+// de frente: el servidor no sabe filtrar facturas por estado de pago porque el
+// estado es derivado de sus productos y no una columna.
+.aviso-filtro {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 10px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+  font-size: 0.82rem;
+  line-height: 1.45;
+
+  mat-icon { flex: none; font-size: 18px; width: 18px; height: 18px; }
+}
+
+// ------------------------------------------------- la tabla en celular
+@media (max-width: 700px) {
+  // El chevron es la PRIMERA línea de la tarjeta y lleva su rótulo ("Ver la
+  // cuenta"): en una tarjeta, un chevron suelto a la derecha no se lee como nada.
+  .table-card.tarjetas td.mat-mdc-cell.col-expandir {
+    width: auto;
+    padding-right: 0;
+    &::before { font-weight: 500; }
+  }
+
+  // El detalle NO se convierte en una celda "Etiqueta: valor" como las demás:
+  // adentro lleva su propio recibo, así que la celda vuelve a ser un bloque
+  // normal y se pega a la tarjeta de su factura para que se lea como una sola.
+  .table-card.tarjetas td.mat-mdc-cell.celda-detalle {
+    display: block;
+    padding: 0 0 8px;
+    text-align: left;
+
+    &::before { content: none; }
+  }
+
+  .table-card.tarjetas tr.mat-mdc-row.fila-detalle {
+    margin: -14px 10px 10px;
+    padding-top: 8px;
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  // Con la pantalla angosta la cuenta se apila: qué es arriba, la plata debajo y
+  // alineada a la derecha, y los botones en su propia línea.
+  .renglon-detalle,
+  .nota-renglon,
+  .sumas .suma {
+    grid-template-columns: 1fr auto;
+  }
+
+  .renglon-detalle {
+    grid-template-areas:
+      'que plata'
+      'acciones acciones';
+    .que { grid-area: que; }
+    .plata { grid-area: plata; }
+    .acciones-renglon { grid-area: acciones; }
+  }
+}

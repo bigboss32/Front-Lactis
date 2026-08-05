@@ -1,0 +1,566 @@
+<div class="page-toolbar">
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>{{ esVenta() ? 'Buscar cliente' : 'Buscar productor' }}</mat-label>
+    <input
+      matInput
+      [formControl]="buscar"
+      [placeholder]="esVenta() ? 'Nombre del cliente' : 'Nombre del productor'"
+    />
+    @if (buscar.value) {
+      <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+        <mat-icon>close</mat-icon>
+      </button>
+    }
+    <mat-icon matSuffix>search</mat-icon>
+  </mat-form-field>
+  <mat-form-field subscriptSizing="dynamic">
+    <mat-label>Estado</mat-label>
+    <mat-select [formControl]="estado">
+      <mat-option [value]="null">Todos</mat-option>
+      <mat-option value="pendiente">Pendiente</mat-option>
+      <mat-option value="parcial">Parcial</mat-option>
+      <mat-option value="pagada">Pagada</mat-option>
+      <mat-option value="anulada">Anulada</mat-option>
+    </mat-select>
+  </mat-form-field>
+  <span class="spacer"></span>
+  <button mat-flat-button *hasPermission="'reventa:crear'" (click)="nueva()">
+    <mat-icon>add</mat-icon> {{ esVenta() ? 'Nueva venta' : 'Nueva compra' }}
+  </button>
+</div>
+
+<mat-card class="table-card tarjetas alto-limitado">
+  @if (cargando()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  <!-- El filtro de estado se aplica sobre la página que ya está cargada, y se dice:
+       el servidor no sabe filtrar facturas por estado de pago porque el estado de la
+       factura es DERIVADO de sus productos y no una columna. Callarlo dejaría al
+       dueño creyendo que revisó todas sus facturas. -->
+  @if (!errorCarga() && estado.value && escondidas() > 0) {
+    <p class="aviso-filtro">
+      <mat-icon aria-hidden="true">filter_alt</mat-icon>
+      <span>
+        De las {{ vistas().length }} facturas de esta página se están mostrando
+        {{ visibles().length }}: las que están <strong>{{ estado.value }}</strong>. El
+        estado se revisa página por página; pase de página para ver las demás.
+      </span>
+    </p>
+  }
+
+  <!-- La tabla se oculta si la consulta falló: una tabla con solo el encabezado se
+       lee igual que "no hay nada". -->
+  @if (!errorCarga()) {
+    <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita un
+         antecesor con scroll al que pegarse, y el paginador queda fuera de este div
+         para no irse de vista al bajar. -->
+    <div class="zona-tabla">
+      <!-- multiTemplateDataRows: cada factura pinta DOS filas, la de la factura y la
+           de su detalle (escondida hasta que se despliega el chevron). -->
+      <table mat-table [dataSource]="visibles()" multiTemplateDataRows>
+        <ng-container matColumnDef="expandir">
+          <th mat-header-cell *matHeaderCellDef class="col-expandir"></th>
+          <!-- En celular la tabla se vuelve tarjetas y cada celda se rotula con su
+               data-label: aquí el rótulo es la invitación a abrir la cuenta, que si
+               no un chevron suelto en una tarjeta no se lee como nada. En pantalla
+               grande el rótulo no se pinta (solo existe dentro de la @media). -->
+          <td
+            mat-cell
+            *matCellDef="let f"
+            class="col-expandir"
+            [attr.data-label]="abierto(f.id) ? 'Ocultar la cuenta' : 'Ver la cuenta'"
+          >
+            <button
+              mat-icon-button
+              type="button"
+              [attr.aria-expanded]="abierto(f.id)"
+              [matTooltip]="
+                abierto(f.id)
+                  ? 'Ocultar los productos'
+                  : (f.renglones.length === 1
+                      ? 'Ver el producto y la cuenta'
+                      : 'Ver los ' + f.renglones.length + ' productos y la cuenta')
+              "
+              (click)="alternar(f.id)"
+            >
+              <mat-icon class="chevron" [class.girado]="abierto(f.id)">expand_more</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="fecha">
+          <th mat-header-cell *matHeaderCellDef>Fecha</th>
+          <td mat-cell *matCellDef="let f" [attr.data-label]="'Fecha'">
+            {{ f.fecha | date: 'dd/MM/yyyy' }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="tercero">
+          <th mat-header-cell *matHeaderCellDef>{{ esVenta() ? 'Cliente' : 'Productor' }}</th>
+          <td mat-cell *matCellDef="let f" [attr.data-label]="esVenta() ? 'Cliente' : 'Productor'">
+            {{ f.tercero }}
+          </td>
+        </ng-container>
+
+        <!-- "Productos" y no "Cantidad"/"Precio": una factura de tres productos
+             distintos no tiene UNA cantidad ni UN precio ("99,11 kg, 12,35 kg y 7
+             barras" no es un número), y ponerlos ahí sería mentir. Cada producto
+             lleva su cantidad EN SU UNIDAD. -->
+        <ng-container matColumnDef="productos">
+          <th mat-header-cell *matHeaderCellDef>Productos</th>
+          <td mat-cell *matCellDef="let f" [attr.data-label]="'Productos'">
+            <span class="productos">
+              @for (r of chips(f); track r.id) {
+                <span class="producto">
+                  <span class="badge" [class]="'badge badge-' + r.tipo">{{ r.etiqueta }}</span>
+                  {{ r.cantidad | enUnidad: r.unidad : 2 }}
+                </span>
+              }
+              @if (masProductos(f) > 0) {
+                <span class="mas">+{{ masProductos(f) }} más</span>
+              }
+              <!-- Con varios productos el clip no es un botón: ver .clip-informativo -->
+              @if (f.renglones.length > 1 && f.adjuntos > 0) {
+                <span
+                  class="clip-informativo"
+                  [matTooltip]="
+                    f.adjuntos +
+                    ' soporte(s) de pago en los productos de esta factura: despliéguela para verlos'
+                  "
+                >
+                  <mat-icon aria-hidden="true">attach_file</mat-icon>{{ f.adjuntos }}
+                </span>
+              }
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="total">
+          <th mat-header-cell *matHeaderCellDef class="num">Total</th>
+          <td mat-cell *matCellDef="let f" class="num" [attr.data-label]="'Total'">
+            {{ f.total | money }}
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="gastos">
+          <th mat-header-cell *matHeaderCellDef class="num">Gastos</th>
+          <td mat-cell *matCellDef="let f" class="num" [attr.data-label]="'Gastos'">
+            @if (f.gastos > 0) {
+              <span matTooltip="Gastos de vender (los paga usted). El detalle está adentro.">
+                {{ f.gastos | money }}
+              </span>
+            } @else {
+              —
+            }
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="venta_libre">
+          <th mat-header-cell *matHeaderCellDef class="num">Venta libre</th>
+          <td mat-cell *matCellDef="let f" class="num" [attr.data-label]="'Venta libre'">
+            <strong matTooltip="Total de la factura menos los gastos">
+              {{ f.ventaLibre | money }}
+            </strong>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="abonado">
+          <th mat-header-cell *matHeaderCellDef class="num">Abonado</th>
+          <td mat-cell *matCellDef="let f" class="num" [attr.data-label]="'Abonado'">
+            {{ f.abonado | money }}
+          </td>
+        </ng-container>
+
+        <!-- LA COLUMNA DEL SALDO dice lo que DE VERDAD le falta pagar (la suma de
+             los saldos positivos de sus productos), que es la misma cifra que
+             imprime el detalle y la misma que suma la cartera. Y cuando algo quedó
+             pagado de más, lo dice AQUÍ también: una factura pagada de más que en
+             la lista se viera igual que una con plata pendiente sería justo el
+             descuadre que este módulo evita. -->
+        <ng-container matColumnDef="saldo">
+          <th mat-header-cell *matHeaderCellDef class="num">Saldo</th>
+          <td mat-cell *matCellDef="let f" class="num" [attr.data-label]="'Saldo'">
+            {{ f.faltaPagar | money }}
+            @if (conSaldo(f)) {
+              <span
+                class="badge-saldo"
+                [matTooltip]="
+                  esVenta()
+                    ? 'Saldo pendiente por cobrar al cliente'
+                    : 'Saldo pendiente por pagar al productor'
+                "
+              >
+                {{ esVenta() ? 'por cobrar' : 'por pagar' }}
+              </span>
+            }
+            @if (f.aFavor > 0) {
+              <span class="badge-a-favor" [matTooltip]="tooltipAFavor(f)">
+                {{ f.aFavor | money }} de más
+              </span>
+            }
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="estado">
+          <th mat-header-cell *matHeaderCellDef>Estado</th>
+          <td mat-cell *matCellDef="let f" [attr.data-label]="'Estado'">
+            <app-estado-chip [estado]="f.estado" />
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="acciones">
+          <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+          <td mat-cell *matCellDef="let f" class="col-acciones">
+            <!-- Abrir el diálogo solo necesita 'consultar': el PDF es lo único que
+                 pide 'imprimir' y esos botones ya están gateados adentro. -->
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:consultar'"
+              [matTooltip]="
+                esVenta() ? 'Estado de cuenta del cliente' : 'Estado de cuenta del productor (PDF)'
+              "
+              (click)="estadoCuenta(f)"
+            >
+              <mat-icon>picture_as_pdf</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:crear'"
+              [matTooltip]="
+                f.renglones.length === 1
+                  ? (esVenta() ? 'Registrar abono del cliente' : 'Abonar al productor')
+                  : 'Abonar a la factura entera (se reparte entre sus productos, en orden)'
+              "
+              [disabled]="!puedeAbonar(f)"
+              (click)="abonar(f)"
+            >
+              <mat-icon>payments</mat-icon>
+            </button>
+            <button mat-icon-button matTooltip="Ver abonos" (click)="verAbonos(f)">
+              <mat-icon>receipt_long</mat-icon>
+            </button>
+            <!-- Soportes de pago. Solo con UN producto: los soportes cuelgan del
+                 producto, y con varios se anexan desde cada uno (adentro). Basta
+                 'consultar' para abrir: adentro cada botón pide lo suyo (subir con
+                 'crear', compartir con 'exportar', borrar con 'eliminar'). -->
+            @if (f.renglones.length === 1) {
+              <button
+                mat-icon-button
+                [matTooltip]="
+                  f.adjuntos > 0 ? 'Soportes de pago (' + f.adjuntos + ')' : 'Anexar soporte de pago'
+                "
+                (click)="soportes(f, f.renglones[0])"
+              >
+                <span class="con-badge">
+                  <mat-icon>attach_file</mat-icon>
+                  @if (f.adjuntos > 0) {
+                    <span class="badge-adjuntos">{{ f.adjuntos }}</span>
+                  }
+                </span>
+              </button>
+            }
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:editar'"
+              matTooltip="Editar la factura"
+              [disabled]="f.estado === 'anulada'"
+              (click)="editar(f)"
+            >
+              <mat-icon>edit</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:administrar'"
+              matTooltip="Anular la factura completa"
+              [disabled]="f.estado === 'anulada'"
+              (click)="anular(f)"
+            >
+              <mat-icon>block</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              *hasPermission="'reventa:eliminar'"
+              matTooltip="Eliminar (solo sin abonos)"
+              [disabled]="f.abonado > 0"
+              (click)="eliminar(f)"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <!-- EL DETALLE: el recibo de la factura. Producto por producto con su cuenta
+             escrita y, debajo, la suma. El desglose suma EXACTO la cifra grande, y
+             por eso todo va con centavos: es un documento que el dueño cuadra a
+             mano y el PDF también los imprime. -->
+        <ng-container matColumnDef="detalle">
+          <td
+            mat-cell
+            *matCellDef="let f"
+            class="celda-detalle"
+            [attr.colspan]="columnas().length"
+          >
+            @if (abierto(f.id)) {
+              <div class="detalle">
+                @for (r of f.renglones; track r.id) {
+                  <div class="renglon-detalle" [class.anulado]="r.anulado">
+                    <span class="que">
+                      <span class="badge" [class]="'badge badge-' + r.tipo">{{ r.etiqueta }}</span>
+                      {{ r.cantidad | enUnidad: r.unidad : 2 }} × {{ r.precio | money: true }}
+                      @if (r.anulado) {
+                        <span class="badge-anulado">anulado</span>
+                      }
+                      <!-- El saldo del producto solo cuando hay VARIOS: es lo que
+                           deja ver el derrame del abono (al primero entero, al
+                           segundo lo que quedó). Con un solo producto sería repetir
+                           el saldo que ya dice la fila. -->
+                      @if (f.renglones.length > 1 && r.faltaPagar > 0 && !r.anulado) {
+                        <span class="badge-saldo">
+                          {{ esVenta() ? 'debe' : 'se le debe' }} {{ r.faltaPagar | money: true }}
+                        </span>
+                      }
+                      <!-- CUÁL fue el producto que quedó pagado de más. La nota del
+                           pie dice cuánto sobró; sin esto el dueño tiene que
+                           adivinar a cuál de los productos le pasó. -->
+                      @if (f.renglones.length > 1 && r.aFavor > 0 && !r.anulado) {
+                        <span
+                          class="badge-a-favor"
+                          [matTooltip]="
+                            esVenta()
+                              ? 'Este producto quedó pagado de más: le abonaron más de lo que vale'
+                              : 'Este producto quedó pagado de más: se le abonó más de lo que vale'
+                          "
+                        >
+                          {{ r.aFavor | money: true }} de más
+                        </span>
+                      }
+                    </span>
+                    <strong class="plata">{{ r.valorTotal | money: true }}</strong>
+                    <span class="acciones-renglon">
+                      <button
+                        mat-icon-button
+                        [matTooltip]="
+                          r.adjuntos > 0
+                            ? 'Soportes de ' + r.etiqueta + ' (' + r.adjuntos + ')'
+                            : 'Anexar soporte a ' + r.etiqueta
+                        "
+                        (click)="soportes(f, r)"
+                      >
+                        <span class="con-badge">
+                          <mat-icon>attach_file</mat-icon>
+                          @if (r.adjuntos > 0) {
+                            <span class="badge-adjuntos">{{ r.adjuntos }}</span>
+                          }
+                        </span>
+                      </button>
+                      <button
+                        mat-icon-button
+                        *hasPermission="'reventa:crear'"
+                        matTooltip="Abonar solo a este producto"
+                        [disabled]="!puedeAbonarRenglon(r)"
+                        (click)="abonarRenglon(f, r)"
+                      >
+                        <mat-icon>payments</mat-icon>
+                      </button>
+                      <button
+                        mat-icon-button
+                        *hasPermission="'reventa:editar'"
+                        matTooltip="Corregir la cantidad o el precio de este producto"
+                        [disabled]="r.anulado"
+                        (click)="editarRenglon(f, r)"
+                      >
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                      <button
+                        mat-icon-button
+                        *hasPermission="'reventa:administrar'"
+                        matTooltip="Anular solo este producto"
+                        [disabled]="r.anulado"
+                        (click)="anularRenglon(f, r)"
+                      >
+                        <mat-icon>block</mat-icon>
+                      </button>
+                      <button
+                        mat-icon-button
+                        *hasPermission="'reventa:eliminar'"
+                        matTooltip="Eliminar este producto (solo sin abonos)"
+                        [disabled]="r.abonado > 0"
+                        (click)="eliminarRenglon(f, r)"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    </span>
+                  </div>
+                  @if (r.borona > 0) {
+                    <!-- La borona que llegó con el queso NO SE PAGA: por eso va como
+                         nota del renglón y sin plata al frente. Si apareciera en la
+                         columna de la derecha, el desglose dejaría de sumar. -->
+                    <div class="nota-renglon">
+                      <span>
+                        + {{ r.borona | enUnidad: 'kg' : 2 }} de borona que llegó con el queso
+                        (no se paga)
+                      </span>
+                      <span></span>
+                    </div>
+                  }
+                }
+
+                <div class="sumas">
+                  @if (f.anulado > 0) {
+                    <!-- Con algo anulado hay que mostrar las dos cifras: la suma de
+                         TODOS los productos de arriba y lo que se anuló. Es la única
+                         forma de que la columna siga cerrando: la plata del producto
+                         anulado no desaparece de la vista. -->
+                    <div class="suma">
+                      <span>Suma de los {{ f.renglones.length }} productos</span>
+                      <span class="plata">{{ f.sumaProductos | money: true }}</span>
+                      <span></span>
+                    </div>
+                    <div class="suma">
+                      <span>Productos anulados</span>
+                      <span class="plata">&minus; {{ f.anulado | money: true }}</span>
+                      <span></span>
+                    </div>
+                  }
+                  <div class="suma fuerte">
+                    <span>{{ esVenta() ? 'Total de la venta' : 'Total a pagar' }}</span>
+                    <span class="plata">{{ f.total | money: true }}</span>
+                    <span></span>
+                  </div>
+                  @if (f.abonado > 0) {
+                    <div class="suma">
+                      <span>{{ esVenta() ? 'Abonado por el cliente' : 'Pagado al productor' }}</span>
+                      <span class="plata">&minus; {{ f.abonado | money: true }}</span>
+                      <span></span>
+                    </div>
+                  }
+                  @if (f.aFavor > 0) {
+                    <!-- EL RENGLÓN QUE HACE CERRAR LA COLUMNA. Lo que se pagó de más
+                         no cubre los otros productos, así que vuelve a la cuenta de
+                         lo que falta: total − abonado + esto = lo que falta pagar.
+                         Sin este renglón el dueño resta con la calculadora, le da
+                         otra cifra que la de abajo, y a partir de ahí no le cree a
+                         ninguna otra cifra de la pantalla. -->
+                    <div class="suma a-favor">
+                      <span>{{ rotuloPagadoDeMas() }}</span>
+                      <span class="plata">+ {{ f.aFavor | money: true }}</span>
+                      <span></span>
+                    </div>
+                  }
+                  <div class="suma">
+                    <span>{{ esVenta() ? 'Saldo por cobrar' : 'Saldo por pagar' }}</span>
+                    <span class="plata">{{ f.faltaPagar | money: true }}</span>
+                    <span></span>
+                  </div>
+
+                  @if (f.gastos > 0) {
+                    <!-- Los gastos van DESPUÉS del total y separados: antes se
+                         leerían como que están incluidos en lo que paga el cliente,
+                         y no lo están. -->
+                    <div class="bloque-gastos">
+                      @for (r of f.renglones; track r.id) {
+                        @if (r.gasto > 0 && !r.anulado) {
+                          <div class="suma cuenta-gasto">
+                            <span>
+                              {{ r.conceptoGasto || 'Gasto de la venta' }} · {{ r.etiqueta }}:
+                              {{ r.cantidad | enUnidad: r.unidad : 2 }} ×
+                              {{ r.gastoUnitario | money: true }} por
+                              {{ r.unidad === 'barra' ? 'barra' : 'kilo' }}
+                            </span>
+                            <span class="plata">{{ r.gasto | money: true }}</span>
+                            <span></span>
+                          </div>
+                        }
+                      }
+                      <div class="suma">
+                        <span>Gastos de vender (los paga usted)</span>
+                        <span class="plata">&minus; {{ f.gastos | money: true }}</span>
+                        <span></span>
+                      </div>
+                      <div class="suma fuerte">
+                        <span>Le queda</span>
+                        <span class="plata">{{ f.ventaLibre | money: true }}</span>
+                        <span></span>
+                      </div>
+                    </div>
+                  }
+                </div>
+
+                <!-- LA PLATA QUE VA AL REVÉS, con su nombre y su explicación, y
+                     FUERA de la rejilla de sumas: adentro sería una tercera cifra en
+                     una columna que el dueño está sumando de arriba abajo. Mismo
+                     tratamiento que el "le queda debiendo" del detalle de la
+                     liquidación, que es de dónde salió este remedio. -->
+                @if (explicacionAFavor(f); as explicacion) {
+                  <p class="nota-a-favor">
+                    <strong>{{ rotuloAFavor() }}: {{ f.aFavor | money: true }}.</strong>
+                    {{ explicacion }}
+                  </p>
+                }
+
+                @if (f.observaciones) {
+                  <p class="nota-factura">{{ f.observaciones }}</p>
+                }
+              </div>
+            }
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="columnas(); sticky: true"></tr>
+        <tr mat-row *matRowDef="let f; columns: columnas()" class="fila-factura"></tr>
+        <tr
+          mat-row
+          *matRowDef="let f; columns: ['detalle']"
+          class="fila-detalle"
+          [class.oculta]="!abierto(f.id)"
+        ></tr>
+      </table>
+    </div>
+  }
+
+  @if (errorCarga(); as error) {
+    <div class="error-state" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <p>{{ error }}</p>
+      <p class="aclara">
+        @if (esVenta()) {
+          Esto no quiere decir que no le deban: la consulta no alcanzó a llegar.
+        } @else {
+          Esto no quiere decir que no le deba a nadie: la consulta no alcanzó a llegar.
+        }
+      </p>
+      <button mat-stroked-button type="button" (click)="cargar()">
+        <mat-icon>refresh</mat-icon> Reintentar
+      </button>
+    </div>
+  }
+
+  <!-- El estado vacío solo cuando de verdad se consultó y no había nada. -->
+  @if (!cargando() && !errorCarga() && visibles().length === 0) {
+    <div class="empty-state">
+      <mat-icon>{{ esVenta() ? 'storefront' : 'shopping_basket' }}</mat-icon>
+      <p>
+        @if (esVenta()) {
+          No hay ventas de reventa para los filtros seleccionados
+        } @else {
+          No hay compras de reventa para los filtros seleccionados
+        }
+      </p>
+    </div>
+  }
+
+  <!-- Sin consulta no hay conteo: el paginador diría "0 de 0". Cuenta FACTURAS, que
+       es lo que trae el servidor; el filtro de estado no lo puede cambiar sin
+       mentir. -->
+  @if (!errorCarga()) {
+    <mat-paginator
+      [length]="total()"
+      [pageIndex]="page() - 1"
+      [pageSize]="pageSize()"
+      [pageSizeOptions]="[10, 20, 50, 100]"
+      (page)="cambiarPagina($event)"
+      showFirstLastButtons
+    />
+  }
+</mat-card>

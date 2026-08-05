@@ -50,6 +50,16 @@ export const REVENTA_ROUTES: Routes = [
         title: 'Compra y venta de queso · Ajustes | Lactis',
         loadComponent: () => import('./ajustes.page').then((m) => m.ReventaAjustesPage),
       },
+      // El catálogo va DENTRO de la cáscara, al lado de Ajustes, porque es parte de
+      // la configuración del mismo negocio y se entra por el mismo menú. El filtro
+      // de días de arriba no aplica —un producto no tiene fecha— y eso la propia
+      // pantalla lo dice en una línea, que es más barato que sacarla de la cáscara
+      // y tener que repetirle el encabezado del negocio.
+      {
+        path: 'productos',
+        title: 'Compra y venta de queso · Productos | Lactis',
+        loadComponent: () => import('./productos.page').then((m) => m.ReventaProductosPage),
+      },
     ],
   },
 ];

@@ -1,15 +1,22 @@
 import { Component, inject } from '@angular/core';
 
-import { CompraListTab } from './compra-list.tab';
+import { DocumentoReventaListTab } from './documento-list.tab';
 import { ReventaFiltroService } from './reventa-filtro.service';
 
-/** Sub-página: compras de queso a productores (usa el filtro de fechas compartido). */
+/**
+ * Sub-página: facturas de compra a productores (usa el filtro de fechas
+ * compartido).
+ */
 @Component({
   selector: 'app-reventa-compras',
-  imports: [CompraListTab],
+  imports: [DocumentoReventaListTab],
   template: `
     <div class="panel">
-      <app-compra-list-tab [desde]="filtro.desdeIso()" [hasta]="filtro.hastaIso()" />
+      <app-documento-reventa-list
+        tipo="compra"
+        [desde]="filtro.desdeIso()"
+        [hasta]="filtro.hastaIso()"
+      />
     </div>
   `,
   styles: `.panel { display: block; padding-top: 8px; }`,

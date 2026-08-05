@@ -18,14 +18,30 @@ import { dateToIso, hoyDate } from '../../shared/date-utils';
 import { ReventaService } from './reventa.service';
 
 export interface AbonoDialogData {
-  /** A qué registro se abona: compra a productor o venta a cliente. */
+  /** A qué lado pertenece: compra a productor o venta a cliente. */
   tipo: 'compra' | 'venta';
+  /** Id de la FACTURA si `documento` es true; si no, del producto (renglón). */
   id: string;
   titulo: string;
   saldo: Monto;
+  /**
+   * `true` = el abono es a la FACTURA ENTERA y se derrama sobre sus productos.
+   *
+   * Se derrama, NO se divide: entra a los productos en su orden y a cada uno le toca
+   * `min(lo que queda, su saldo)`. Sin división no hay redondeo, así que la suma de
+   * los abonos da el abono exacto y cada uno queda siendo una cifra entera que el
+   * dueño puede señalar. Un reparto proporcional sería la forma más fácil de
+   * descuadrar la cartera.
+   */
+  documento?: boolean;
+  /** Cuántos productos tiene la factura, para explicar el reparto cuando hay varios. */
+  cuantosProductos?: number;
 }
 
-/** Registra un abono (pago parcial) a una compra o a una venta de queso. */
+/**
+ * Registra un abono (pago parcial) a una factura de reventa o a uno solo de sus
+ * productos.
+ */
 @Component({
   selector: 'app-abono-form',
   imports: [
@@ -55,6 +71,15 @@ export interface AbonoDialogData {
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
         </mat-form-field>
       </form>
+      @if (reparteEntreProductos) {
+        <!-- Se dice cómo se reparte ANTES de registrarlo: el dueño va a ver el abono
+             partido en varias cifras cuando abra los abonos, y tiene que reconocerlas. -->
+        <p class="aviso-derrame">
+          Este abono se le aplica a los {{ data.cuantosProductos }} productos de la
+          factura <strong>en orden</strong>: se le abona al primero hasta donde
+          alcance, después al segundo, y así. No se parte en pedacitos iguales.
+        </p>
+      }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close type="button">Cancelar</button>
@@ -72,6 +97,17 @@ export interface AbonoDialogData {
       </button>
     </mat-dialog-actions>
   `,
+  styles: `
+    .aviso-derrame {
+      margin: 12px 0 0;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: var(--mat-sys-surface-container);
+      color: var(--mat-sys-on-surface-variant);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+  `,
 })
 export class AbonoFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
@@ -81,6 +117,9 @@ export class AbonoFormDialog {
 
   readonly data = inject<AbonoDialogData>(MAT_DIALOG_DATA);
   readonly guardando = signal(false);
+
+  /** El abono va a una factura DE VARIOS productos, así que hay que explicar el reparto. */
+  readonly reparteEntreProductos = !!this.data.documento && (this.data.cuantosProductos ?? 1) > 1;
 
   readonly form = this.fb.group({
     fecha: [hoyDate(), Validators.required],
@@ -105,7 +144,10 @@ export class AbonoFormDialog {
         valor: Number(valores.valor),
         observaciones: valores.observaciones || null,
       };
-      if (this.data.tipo === 'compra') {
+      if (this.data.documento) {
+        // A la factura entera: el backend lo derrama sobre sus productos, en orden.
+        await firstValueFrom(this.servicio.abonarDocumento(this.data.id, payload));
+      } else if (this.data.tipo === 'compra') {
         await firstValueFrom(this.servicio.abonarCompra(this.data.id, payload));
       } else {
         await firstValueFrom(this.servicio.abonarVenta(this.data.id, payload));

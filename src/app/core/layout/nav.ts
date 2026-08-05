@@ -172,6 +172,9 @@ export const NEGOCIOS: Negocio[] = [
           { label: 'Compras', icon: 'agriculture', route: '/reventa/compras', modulo: 'reventa' },
           { label: 'Ventas', icon: 'point_of_sale', route: '/reventa/ventas', modulo: 'reventa' },
           { label: 'Ajustes de inventario', icon: 'recycling', route: '/reventa/ajustes', modulo: 'reventa' },
+          // El catálogo de lo que se compra y se revende. Va al lado de Ajustes
+          // porque las dos son configuración del mismo negocio, no operación diaria.
+          { label: 'Productos', icon: 'category', route: '/reventa/productos', modulo: 'reventa' },
           { label: 'Ganancia por lote', icon: 'inventory_2', route: '/reventa/lotes', modulo: 'reventa' },
           { label: 'Temporadas', icon: 'event_repeat', route: '/reventa/temporadas', modulo: 'reventa' },
           { label: 'Libro anterior', icon: 'menu_book', route: '/reventa/libro-anterior', modulo: 'reventa' },

@@ -139,15 +139,28 @@ export class BarrasPipe implements PipeTransform {
  *
  * Cuál de los dos números mirar lo decide quien llama (`fila.unidad === 'barra' ?
  * fila.barras : fila.kilos`), porque el campo cambia de nombre en cada tabla.
+ *
+ * `decimales` es opt-in y por omisión sigue en 1, o sea que todas las pantallas
+ * que ya lo usan se ven igual que siempre. Se sube a 2 donde la cantidad ES PARTE
+ * DE UNA CUENTA que tiene que cuadrar —el recibo de una factura de reventa, donde
+ * debajo de "99,11 kg × $15.777" va el resultado de multiplicar esas dos cifras—:
+ * si ahí se leyera "99,1 kg", el dueño multiplicaría a mano y le saldría otra
+ * plata. A las BARRAS no les aplica: no tienen decimales nunca (ver BarrasPipe).
+ *
+ *     {{ renglon.kilos | enUnidad: 'kg' : 2 }}
  */
 @Pipe({ name: 'enUnidad' })
 export class EnUnidadPipe implements PipeTransform {
   private readonly barras = new BarrasPipe();
   private readonly cantidad = new CantidadPipe();
 
-  transform(value: Monto | null | undefined, unidad: string | null | undefined): string {
+  transform(
+    value: Monto | null | undefined,
+    unidad: string | null | undefined,
+    decimales = 1,
+  ): string {
     return unidad === 'barra'
       ? this.barras.transform(value)
-      : this.cantidad.transform(value, 'kg');
+      : this.cantidad.transform(value, 'kg', decimales);
   }
 }
