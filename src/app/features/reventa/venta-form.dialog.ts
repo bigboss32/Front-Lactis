@@ -88,9 +88,13 @@ const PRECIO_VENTA_SUGERIDO = 19500;
             <span matTextSuffix>barras</span>
             <mat-hint>Barras completas: no acepta medias barras</mat-hint>
           </mat-form-field>
+          <!-- CON DECIMALES los cuatro campos de este diálogo (precio y gasto, por
+               barra y por kilo): ninguno es un total, todos son POR UNIDAD y de
+               ellos salen la venta, el gasto y la ganancia. -->
           <mat-form-field>
             <mat-label>Precio por barra</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_barra" required />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="precio_barra" required />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
           <mat-form-field>
@@ -100,7 +104,8 @@ const PRECIO_VENTA_SUGERIDO = 19500;
           </mat-form-field>
           <mat-form-field>
             <mat-label>Gasto por barra</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_barra" />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="gasto_por_barra" />
             <span matTextPrefix>$&nbsp;</span>
             <span matTextSuffix>/barra</span>
             <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
@@ -114,7 +119,8 @@ const PRECIO_VENTA_SUGERIDO = 19500;
           </mat-form-field>
           <mat-form-field>
             <mat-label>Precio por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="precio_kilo" required />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
           <mat-form-field>
@@ -124,7 +130,8 @@ const PRECIO_VENTA_SUGERIDO = 19500;
           </mat-form-field>
           <mat-form-field>
             <mat-label>Gasto por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="gasto_por_kilo" />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="gasto_por_kilo" />
             <span matTextPrefix>$&nbsp;</span>
             <span matTextSuffix>/kg</span>
             <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>

@@ -46,10 +46,17 @@ import { protegerCambios } from '../../shared/proteger-cambios';
           <input matInput type="number" min="0" formControlName="stock_minimo" required />
           <mat-hint>Genera alerta cuando el stock cae por debajo</mat-hint>
         </mat-form-field>
+        <!--
+          CON DECIMALES: es el costo de UNA unidad (un kilo de sal, un litro de
+          cuajo…), y con eso se valoriza todo el inventario. Un insumo que sale a
+          $87,50 el kilo redondeado a $88 desajusta el total de la bodega.
+        -->
         <mat-form-field>
           <mat-label>Costo unitario</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="costo_unitario" required />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="costo_unitario" required />
           <span matTextPrefix>$&nbsp;</span>
+          <mat-hint>Por unidad. Se admite coma: 87,50</mat-hint>
         </mat-form-field>
       </form>
     </mat-dialog-content>

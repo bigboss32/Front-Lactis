@@ -104,17 +104,29 @@ export interface ViajeServicioFormData {
           }
         </mat-form-field>
         @if (porKilo()) {
+          <!-- CON DECIMALES: es la TARIFA por kilo del flete, la que se hereda del
+               vehículo, y de ella sale el valor del servicio. -->
           <mat-form-field>
             <mat-label>Tarifa por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="tarifa_kilo" />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="tarifa_kilo" />
             <span matTextPrefix>$&nbsp;</span>
             <span matTextSuffix>/kg</span>
-            <mat-hint>Se sugiere la tarifa del vehículo</mat-hint>
+            <mat-hint>Se sugiere la tarifa del vehículo. Se admite coma</mat-hint>
           </mat-form-field>
         }
+        <!--
+          El VALOR TOTAL también lleva decimales, aunque sea un total: cobrando por
+          kilo lo calcula recalcularValor y queda con centavos (100,5 kg a $242,76
+          son $24.397,38), igual que lo calcula el backend con quantize a dos. En
+          pesos enteros la caja mostraba $24.397 y se guardaba $24.397,38. A precio
+          fijo, que es cuando se escribe a mano, no cambia nada: un valor entero se
+          sigue viendo sin ",00".
+        -->
         <mat-form-field>
           <mat-label>Valor total</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="valor_total" />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="valor_total" />
           <span matTextPrefix>$&nbsp;</span>
           @if (form.controls.valor_total.disabled) {
             <mat-hint>Calculado: kilos × tarifa</mat-hint>

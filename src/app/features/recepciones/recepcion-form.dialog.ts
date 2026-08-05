@@ -88,11 +88,20 @@ export interface RecepcionDialogData {
           <input matInput type="number" min="0" formControlName="cantidad_litros" required cdkFocusInitial />
           <span matTextSuffix>L</span>
         </mat-form-field>
+        <!--
+          CON DECIMALES ([decimales]="2"): el precio del día se pacta por litro y hay
+          días a $1.800,50. Esta cifra alimenta el comprobante que el productor
+          revisa a mano, así que la caja tiene que mostrar exactamente el precio que
+          se guarda: el backend lo redondea a dos decimales (BeforeValidator
+          a_dos_decimales), ni uno más. Bonificaciones y descuentos se quedan en
+          pesos enteros a propósito: son totales del día, no un precio por litro.
+        -->
         <mat-form-field>
           <mat-label>Precio por litro</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_litro" />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="precio_litro" />
           <span matTextPrefix>$&nbsp;</span>
-          <mat-hint>Vacío = precio del proveedor</mat-hint>
+          <mat-hint>Vacío = precio del proveedor. Se admite coma: 1.800,50</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Bonificaciones</mat-label>

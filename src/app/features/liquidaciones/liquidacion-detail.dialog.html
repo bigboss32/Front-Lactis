@@ -200,69 +200,83 @@
     (utils/export.py usa el mismo `pesos()` para los dos), y una quincena de
     81,99 L a $1.750 da $143.482,50 exactos.
   -->
+  <!--
+    EL RESUMEN, EN EL ORDEN EN QUE SE RESTA. Los renglones los arma
+    `renglonesResumen` en el componente y acá solo se pintan: son distintos en la del
+    proveedor y en la del transportador —y el nuevo de "lo que quedó debiendo de la
+    quincena pasada" solo sale cuando hay algo cobrado—, y escritos a mano acá la
+    columna terminaba con cifras que no entran en la cuenta. Ver ese `computed`: ahí
+    está el porqué de cada renglón y de cada signo.
+
+    Sigue siendo una rejilla de PARES rótulo + cifra: se lee de dos en dos y un
+    elemento suelto la correría una casilla entera.
+  -->
   <h3>Resumen</h3>
   <div class="resumen">
-    <span>Total litros</span>
-    <span class="num">{{ liq().total_litros | cantidad: 'L' : 2 }}</span>
-
-    <span>Precio promedio</span>
-    <span class="num">{{ liq().precio_promedio | money: true }}</span>
-
-    <span>Valor bruto</span>
-    <span class="num">{{ liq().valor_bruto | money: true }}</span>
-
-    <span>Bonificaciones</span>
-    <span class="num">{{ liq().bonificaciones | money: true }}</span>
-
-    <span>Descuentos</span>
-    <span class="num">{{ liq().descuentos | money: true }}</span>
-
-    <span>Valor transporte</span>
-    <span class="num">{{ liq().valor_transporte | money: true }}</span>
-
-    <span>Anticipos aplicados</span>
-    <span class="num">{{ liq().anticipos | money: true }}</span>
-
-    <!--
-      El renglón "Pagado" solo aparece cuando de verdad se abonó algo, igual que
-      en el comprobante en PDF. Sin él, una liquidación a medio pagar mostraría
-      un "Saldo a pagar" más chico que Valor total menos anticipos sin explicar
-      por qué, y el dueño cuadra estas cifras a mano.
-    -->
-    @if (tienePagos()) {
-      <span>Pagado</span>
-      <span class="num">{{ liq().pagado | money: true }}</span>
-    }
-
-    <span class="destacado">Valor total</span>
-    <span class="num destacado">{{ liq().valor_total | money: true }}</span>
-
-    <!--
-      EL ÚLTIMO RENGLÓN CAMBIA DE RÓTULO CUANDO EL SALDO QUEDA POR DEBAJO DE CERO.
-      Con "Saldo a pagar  -$120.000,00" la pantalla dice, en el renglón destacado,
-      que hay que pagar una cifra negativa; lo que de verdad pasó es que los
-      anticipos ya entregados suman más que la quincena, o sea que el tercero le
-      quedó debiendo AL NEGOCIO. Se dice con esas palabras y la cifra va en
-      POSITIVO (`le_queda_debiendo`, calculada por el backend, la misma que imprime
-      el PDF bajo "LE QUEDA DEBIENDO"): un menos pegado a un total se lee mal.
-
-      Sigue siendo UN par rótulo + cifra, como los demás renglones: la rejilla se
-      lee de dos en dos y un elemento suelto la descuadraría.
-    -->
-    @if (leQuedaDebiendo()) {
-      <span class="destacado al-reves">Le queda debiendo</span>
-      <span class="num destacado al-reves">{{ liq().le_queda_debiendo | money: true }}</span>
-    } @else {
-      <span class="destacado">Saldo a pagar</span>
-      <span class="num destacado">{{ liq().saldo | money: true }}</span>
+    @for (renglon of renglonesResumen(); track renglon.clave) {
+      <span [class.destacado]="renglon.destacado" [class.al-reves]="renglon.alReves">
+        {{ renglon.etiqueta }}
+      </span>
+      <!--
+        `data-clave` y `data-cuenta` no son adorno: por ahí la prueba del cuadre
+        recorre los renglones que entran en la cuenta y comprueba que la resta caiga
+        EXACTA en el valor total y en el saldo, leyendo lo que lee el dueño.
+      -->
+      <span
+        class="num"
+        [class.destacado]="renglon.destacado"
+        [class.al-reves]="renglon.alReves"
+        [attr.data-clave]="renglon.clave"
+        [attr.data-cuenta]="renglon.cuenta ? '1' : null"
+      >
+        {{ renglon.texto }}
+      </span>
     }
   </div>
 
-  <!-- La frase completa, con el nombre y el motivo: "Henri le queda debiendo
-       $4.955,77: los anticipos aplicados … suman más que el valor total …". Va
-       fuera de la rejilla porque no es un par rótulo + cifra. -->
+  <!--
+    DE DÓNDE SALIÓ EL DESCUENTO DE LA QUINCENA PASADA, en la que se lo cobra. Un
+    renglón que le quita plata al proveedor sin decir de dónde viene es lo que hace
+    que el dueño desconfíe del sistema: esa plata no sale de ninguna recepción de
+    esta quincena. Cuando fueron varias las quincenas que quedaron debiendo, van una
+    por renglón y sus cifras suman el renglón del resumen.
+  -->
+  @if (explicacionSaldoAnterior(); as nota) {
+    <p class="nota-saldo-anterior">{{ nota }}</p>
+    @if (origenesSaldoAnterior().length > 1) {
+      <ul class="origenes-deuda">
+        @for (origen of origenesSaldoAnterior(); track origen.id) {
+          <li>
+            Liquidación del {{ origen.periodo }}: <strong>{{ origen.valor }}</strong>
+          </li>
+        }
+      </ul>
+    }
+  }
+
+  <!-- La frase completa, con el nombre, el motivo y —lo nuevo— DÓNDE se le cobró esa
+       deuda o que todavía está pendiente. Va fuera de la rejilla porque no es un par
+       rótulo + cifra. -->
   @if (explicacionLeQuedaDebiendo(); as nota) {
     <p class="nota-le-debe">{{ nota }}</p>
+  }
+
+  <!--
+    "SALDO A PAGAR $ 0" TAMPOCO SE EXPLICA SOLO, y menos cuando el cero lo hizo la deuda
+    arrastrada: el dueño lee ese renglón para saber cuánto entregar, ve cero y se queda
+    sin saber qué pasó con la plata de la quincena. La nota nombra los renglones que de
+    verdad la cubrieron —los mismos del resumen, en el mismo orden— y por eso siempre
+    cuadra con la columna de arriba. Solo sale mientras la quincena está saldada y sin
+    cerrar: en una pagada el cero es lo normal y no hay nada que aclarar.
+  -->
+  @if (explicacionSaldoEnCero(); as nota) {
+    <p class="nota-saldo-cero">{{ nota }}</p>
+  }
+
+  <!-- El flete de la leche del proveedor: es un dato, no un descuento suyo. Estaba
+       dentro de la columna del resumen y la descuadraba. -->
+  @if (notaFlete(); as nota) {
+    <p class="nota-flete">{{ nota }}</p>
   }
 
   @if (tienePagos()) {
@@ -392,15 +406,20 @@
     </span>
   }
 
-  @if (liq().estado === 'borrador' || liq().estado === 'aprobada') {
-    <button
-      mat-stroked-button
-      *hasPermission="'liquidaciones:administrar'"
-      [disabled]="procesando()"
-      (click)="anular()"
-    >
+  <!--
+    ANULAR desaparece cuando la deuda de esta liquidación YA SE COBRÓ en otra: el
+    servidor lo rebota, porque anularla dejaría a ese otro comprobante descontando la
+    deuda de un documento anulado. En su lugar queda el candado, que NOMBRA la
+    liquidación que hay que anular primero: sin eso el dueño queda atascado.
+  -->
+  @if (puedeAnular()) {
+    <button mat-stroked-button [disabled]="procesando()" (click)="anular()">
       <mat-icon>block</mat-icon> Anular
     </button>
+  } @else if (motivoNoAnular(); as motivo) {
+    <span class="nota-recalcular" [matTooltip]="motivo">
+      <mat-icon>lock</mat-icon> No se puede anular
+    </span>
   }
 
   @if (liq().estado === 'borrador') {
@@ -418,11 +437,15 @@
     También en 'parcial': a una liquidación a medio pagar se le sigue abonando
     hasta saldarla. El diálogo llega con el saldo pendiente prellenado, así que
     pagar todo de una vez sigue siendo Pagar → Enter, como antes.
+
+    Y NO APARECE CUANDO NO HAY NADA QUE PAGAR. Cuando el tercero quedó debiendo, el
+    saldo es una cifra negativa: el servidor rebota el pago y el diálogo abriría con
+    un valor negativo prellenado. Antes este botón marcaba la liquidación PAGADA sin
+    que saliera un peso y eso trababa los días de la quincena para siempre.
   -->
-  @if (liq().estado === 'aprobada' || liq().estado === 'parcial') {
+  @if (puedePagar()) {
     <button
       mat-flat-button
-      *hasPermission="'liquidaciones:administrar'"
       [disabled]="procesando()"
       [matTooltip]="
         liq().estado === 'parcial'
@@ -433,5 +456,25 @@
     >
       <mat-icon>payments</mat-icon> Pagar
     </button>
+  } @else if (puedeCerrarSinPago()) {
+    <!--
+      EL SALDO QUEDÓ EN CERO EXACTO: no hay plata por entregar, pero la quincena TIENE
+      QUE PODER CERRARSE. Antes acá no había botón —el de Pagar exigía saldo > 0— y esa
+      liquidación se quedaba en 'aprobada' para siempre, con sus días abiertos a que
+      alguien les cambiara las cifras meses después. El botón NO dice "Pagar" porque no
+      se paga nada: marca pagada y cierra (el servidor lo acepta; ver `saldoEnCero`).
+    -->
+    <button
+      mat-flat-button
+      [disabled]="procesando()"
+      [matTooltip]="tooltipCerrarSinPago()"
+      (click)="cerrarSinPago()"
+    >
+      <mat-icon>task_alt</mat-icon> Marcar pagada
+    </button>
+  } @else if (motivoNoPagar(); as motivo) {
+    <span class="nota-recalcular" [matTooltip]="motivo">
+      <mat-icon>lock</mat-icon> No hay nada que pagar
+    </span>
   }
 </mat-dialog-actions>

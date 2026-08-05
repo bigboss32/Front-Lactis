@@ -63,9 +63,12 @@ export interface ConversionDialogData {
           <mat-hint>Disponible: {{ data.disponible | cantidad: 'kg' }}</mat-hint>
         </mat-form-field>
         @if (!esMerma) {
+          <!-- CON DECIMALES: precio de UN kilo de borona; el valor de la conversión
+               sale de multiplicarlo por los kilos (se ve en la ayuda de abajo). -->
           <mat-form-field>
             <mat-label>Precio por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="precio_kilo" />
             <span matTextPrefix>$&nbsp;</span>
             <mat-hint>Valor de la borona: {{ valor() | money }}</mat-hint>
           </mat-form-field>

@@ -56,15 +56,27 @@ import { SpinnerBoton } from '../../shared/spinner-boton';
               <input matInput type="number" min="0" step="0.1" formControlName="cantidad" />
               <mat-hint>Se cobra por kilo</mat-hint>
             </mat-form-field>
+            <!-- CON DECIMALES: es el precio de UN kilo del flete, y el valor del gasto
+                 sale de multiplicarlo por los kilos. -->
             <mat-form-field>
               <mat-label>Precio por kilo</mat-label>
-              <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_unitario" />
+              <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                     formControlName="precio_unitario" />
               <span matTextPrefix>$&nbsp;</span>
             </mat-form-field>
           }
+          <!--
+            El VALOR también lleva decimales, aunque sea un total: cuando lo calcula
+            el flete por kilo (ver recalcularValor) queda con centavos —100,5 kg a
+            $242,76 son $24.397,38— y el backend lo guarda en Numeric(14,2). En
+            pesos enteros la caja mostraba $24.397 mientras se guardaba $24.397,38,
+            o sea una cifra en pantalla y otra en la base. Cuando se escribe a mano
+            no cambia nada: un valor entero se sigue viendo sin ",00".
+          -->
           <mat-form-field class="full">
             <mat-label>Valor</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="valor" required />
             <span matTextPrefix>$&nbsp;</span>
             @if (form.controls.valor.disabled) {
               <mat-hint>Calculado: cantidad × precio por kilo</mat-hint>

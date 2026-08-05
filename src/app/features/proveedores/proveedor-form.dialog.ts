@@ -45,10 +45,19 @@ import { ProveedoresService } from './proveedores.service';
           <mat-label>Teléfono</mat-label>
           <input matInput formControlName="telefono" />
         </mat-form-field>
+        <!--
+          CON DECIMALES ([decimales]="2"): este es el precio con el que se le PAGA la
+          leche al productor, y se paga por litro, así que el centavo se multiplica
+          por los miles de litros del mes; hay precios de $1.800,50. Es el gemelo de
+          la tarifa del transportador. inputmode="decimal" saca la coma en el
+          teclado del celular. El backend guarda dos decimales y rechaza un tercero.
+        -->
         <mat-form-field>
           <mat-label>Precio por litro</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_litro" required />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="precio_litro" required />
           <span matTextPrefix>$&nbsp;</span>
+          <mat-hint>Se admite coma: 1.800,50</mat-hint>
         </mat-form-field>
         <app-select-buscable formControlName="ruta_id" [opciones]="rutas()" label="Ruta" />
         <mat-form-field class="full">

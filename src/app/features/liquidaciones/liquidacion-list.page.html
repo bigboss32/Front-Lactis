@@ -41,7 +41,14 @@
           <span class="cifra">{{ r.aprobadas }}</span>
           <span class="titulo">Aprobadas por pagar</span>
           @if (r.aprobadas > 0) {
-            <span class="detalle">{{ r.saldoAprobadas | money }} en saldos</span>
+            <!--
+              "por pagar" y no "en saldos": son las MISMAS palabras del tablero
+              ("Liquidaciones por pagar"), porque el dueño compara las dos pantallas y
+              con dos rótulos distintos no sabía si tenía que dar la misma cifra. Y la
+              cifra es solo lo POSITIVO —la plata que tiene que sacar—: lo que a él le
+              deben va en su propia tarjeta, más abajo (ver `saldoPorPagar`).
+            -->
+            <span class="detalle">{{ r.saldoAprobadas | money }} por pagar</span>
           }
         </span>
       </button>
@@ -85,6 +92,44 @@
           <span class="titulo">Pagadas en el período</span>
         </span>
       </button>
+
+      <!--
+        LA PLATA QUE VA AL REVÉS, APARTE Y CON SU NOMBRE.
+
+        Sumada con los saldos por pagar, esta cifra los BAJABA: una liquidación de
+        $130.000 por entregar y una deuda del proveedor de $120.000 mostraban "$ 10.000"
+        cuando hay que sacar $130.000. Son dos preguntas distintas —"¿cuánto tengo que
+        sacar?" y "¿quién me quedó debiendo?"— y cada una tiene su tarjeta.
+
+        NO ES UN BOTÓN, al contrario de las otras cuatro: las demás filtran por estado y
+        esto no es un estado —una deuda del tercero vive en un borrador, en una aprobada
+        o en una pagada—, así que no hay filtro que aplicar. Cada deuda se ve en su fila,
+        con su marca, en la columna Saldo.
+
+        Solo sale cuando hay alguna: una tarjeta en $0 le quitaría el espacio a las que
+        el dueño mira todos los días.
+      -->
+      @if (r.leQuedaronDebiendo > 0) {
+        <div
+          class="tarjeta rojo pasiva"
+          [matTooltip]="tooltipLeQuedaronDebiendo(r.leQuedaronDebiendo, r.liquidacionesQueDeben)"
+        >
+          <span class="icono"><mat-icon aria-hidden="true">call_received</mat-icon></span>
+          <span class="textos">
+            <span class="cifra">{{ r.leQuedaronDebiendo | money }}</span>
+            <span class="titulo">Le quedaron debiendo a la quesera</span>
+            <span class="detalle">
+              en
+              {{
+                r.liquidacionesQueDeben === 1
+                  ? '1 liquidación'
+                  : r.liquidacionesQueDeben + ' liquidaciones'
+              }}
+              · se cobra en la próxima quincena
+            </span>
+          </span>
+        </div>
+      }
     </div>
   }
 
@@ -173,17 +218,48 @@
           <ng-container matColumnDef="saldo">
             <th mat-header-cell *matHeaderCellDef class="num" mat-sort-header>Saldo</th>
             <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Saldo'">
-              {{ fila.saldo | money }}
-              @if (esPorPagar(fila)) {
-                <span
-                  class="badge-por-pagar"
-                  [matTooltip]="
-                    fila.estado === 'parcial'
-                      ? 'Ya se le abonó una parte; esto es lo que todavía se le debe'
-                      : 'Liquidación aprobada con saldo pendiente de pago'
-                  "
-                >
-                  por pagar
+              <!--
+                LA COLUMNA SALDO MOSTRABA EL NEGATIVO PELADO: "-$ 120.000" bajo el
+                rótulo "Saldo", que se lee como si hubiera que pagarlo. Cuando el
+                tercero es el que quedó debiendo, la cifra va en POSITIVO y con su
+                marca —la misma cifra `le_queda_debiendo` que muestran el detalle y el
+                PDF—, para que de un vistazo se distinga de las que sí hay que pagar.
+              -->
+              @if (leQuedaDebiendo(fila)) {
+                <span class="al-reves">{{ fila.le_queda_debiendo | money }}</span>
+                <!--
+                  La marca dice QUÉ VA A PASAR con esa plata: pendiente (la cobra la
+                  próxima quincena), cobrada (ya está descontada en otra) o —el caso en
+                  que la promesa era falsa— anulada, que no se cobra en ninguna parte.
+                  El texto lo arma `marcaLeQuedaDebiendo`.
+                -->
+                <span class="badge-le-debe" [matTooltip]="tooltipLeQuedaDebiendo(fila)">
+                  {{ marcaLeQuedaDebiendo(fila) }}
+                </span>
+              } @else {
+                {{ fila.saldo | money }}
+                @if (esPorPagar(fila)) {
+                  <span
+                    class="badge-por-pagar"
+                    [matTooltip]="
+                      fila.estado === 'parcial'
+                        ? 'Ya se le abonó una parte; esto es lo que todavía se le debe'
+                        : 'Liquidación aprobada con saldo pendiente de pago'
+                    "
+                  >
+                    por pagar
+                  </span>
+                }
+              }
+              <!--
+                Y LA OTRA PUNTA: esta liquidación se COBRÓ una deuda de una quincena
+                pasada. Sin la marca, el saldo de esta fila no cuadra con Valor total
+                menos Anticipos y el dueño —que suma la lista de izquierda a derecha—
+                no tiene de dónde sacar la diferencia.
+              -->
+              @if (cobraSaldoAnterior(fila)) {
+                <span class="badge-saldo-anterior" [matTooltip]="tooltipSaldoAnterior(fila)">
+                  cobra lo anterior
                 </span>
               }
             </td>
@@ -207,7 +283,12 @@
           <tr
             mat-row
             *matRowDef="let fila; columns: columnas"
-            [class]="'fila-' + fila.estado + (esPorPagar(fila) ? ' fila-alerta' : '')"
+            [class]="
+              'fila-' +
+              fila.estado +
+              (esPorPagar(fila) ? ' fila-alerta' : '') +
+              (leQuedaDebiendo(fila) ? ' fila-le-debe' : '')
+            "
           ></tr>
         </table>
       </div>

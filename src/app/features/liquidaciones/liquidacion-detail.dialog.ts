@@ -11,7 +11,13 @@ import { Observable, firstValueFrom } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Liquidacion, LiquidacionDetalle, Monto, PagoLiquidacion } from '../../core/models';
+import {
+  DeudaCobrada,
+  Liquidacion,
+  LiquidacionDetalle,
+  Monto,
+  PagoLiquidacion,
+} from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
@@ -19,6 +25,7 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
+import { comoFecha, periodoDe } from './periodo-liquidacion';
 import { LiquidacionesService } from './liquidaciones.service';
 import { PagoLiquidacionFormDialog } from './pago-form.dialog';
 
@@ -50,6 +57,53 @@ function precioTecleado(texto: string): number | null {
  * encarga de preguntar ANTES de oprimir. Todo eso ya está escrito y probado.
  */
 const ESTADOS_QUE_ACEPTAN_RECALCULO: readonly string[] = ['borrador'];
+
+/**
+ * EL RÓTULO DEL RENGLÓN NUEVO, dicho como lo diría el dueño y escrito UNA sola vez.
+ *
+ * Es el MISMO texto que imprime el comprobante en PDF. Vive en una constante porque se
+ * usa en tres lados —el resumen, la nota que explica de dónde salió el descuento y el
+ * aviso del recálculo—: si en alguno dijera otra cosa, la pantalla y el papel se
+ * estarían contradiciendo sobre una plata que se le quita al proveedor, y esa discusión
+ * la pierde el dueño.
+ */
+export const ROTULO_SALDO_ANTERIOR = 'Lo que quedó debiendo de la quincena pasada';
+
+/**
+ * El menos de los renglones que restan: U+2212 (signo de resta), NO el guion del
+ * teclado.
+ *
+ * No es un capricho tipográfico. Estas cifras se leen y se copian, y un guion pegado a
+ * la plata ("- $ 24.600") se confunde con una cifra NEGATIVA —que es justo lo que este
+ * trabajo vino a evitar en el renglón del saldo—. El signo de resta se lee como una
+ * operación: "al total le quito esto".
+ */
+const MENOS = '−';
+
+/**
+ * UN RENGLÓN DEL RESUMEN, ya formateado como se lee en pantalla.
+ *
+ * El resumen se arma acá y no en la plantilla por una razón concreta: TIENE QUE SUMAR
+ * DE ARRIBA ABAJO y los renglones no son los mismos en las dos clases de comprobante
+ * (en la del transportador el valor bruto y los descuentos son cero, y en la del
+ * proveedor el flete NO se le descuenta a él). Con los renglones escritos a mano en la
+ * plantilla, la columna incluía cifras que no entran en la cuenta y el dueño sumaba y
+ * no le cuadraba. Armándolo en una lista, el orden y los signos son UNA sola cosa que
+ * la plantilla solo pinta, y una prueba puede recorrerla y comprobar la resta.
+ */
+export interface RenglonResumen {
+  /** Cuál cifra es. La plantilla y las pruebas señalan el renglón por acá. */
+  clave: string;
+  etiqueta: string;
+  /** La cifra formateada CON su signo cuando lo lleva: "− $ 49.462,09". */
+  texto: string;
+  signo: '' | '+' | '−';
+  /** Entra en la columna que suma de arriba abajo (los litros y el promedio no). */
+  cuenta: boolean;
+  destacado: boolean;
+  /** La plata va al revés: la debe el tercero, no la quesera. */
+  alReves: boolean;
+}
 
 /** Un renglón del resumen que el recálculo movió, ya formateado como se lee. */
 export interface CambioDeCifra {
@@ -128,7 +182,20 @@ interface RenglonComparable {
       gap: 4px 32px;
       max-width: 420px;
     }
+    /* Las cifras NO se parten nunca: "− $ 120.000" cortado entre el signo y la plata se
+       lee como dos cosas distintas. El rótulo sí puede envolver —"Lo que quedó debiendo
+       de la quincena pasada" no cabe en una línea en un celular— y para eso está el
+       1fr de la primera columna. */
+    .resumen .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
     .resumen .destacado { font-weight: 600; }
+    /* En celular el diálogo va a lo ancho de la pantalla: 32px entre el rótulo y la
+       cifra le roban el espacio al rótulo largo y lo parten en cuatro líneas. */
+    @media (max-width: 560px) {
+      .resumen {
+        gap: 4px 12px;
+        max-width: none;
+      }
+    }
     /* El renglón "Le queda debiendo": la plata va al revés de lo normal (la debe el
        tercero, no la quesera), así que se marca en el color de error del tema. No es
        una alarma de sistema; es que el dueño no puede confundirlo con algo por pagar. */
@@ -145,6 +212,41 @@ interface RenglonComparable {
       font-size: 0.8125rem;
       line-height: 1.35;
       color: var(--mat-sys-error);
+    }
+    /*
+     * DE DÓNDE VINO EL DESCUENTO DE LA QUINCENA PASADA, y —con el mismo aire— por qué el
+     * saldo quedó en cero.
+     *
+     * En el color normal del texto y NO en el rojo de .nota-le-debe: acá no hay nada
+     * mal ni nadie debiendo, es la explicación de un renglón que sí se cobró. Pintarla
+     * de rojo la haría leer como una alarma sobre un descuento correcto.
+     */
+    .nota-saldo-anterior,
+    .nota-saldo-cero {
+      max-width: 420px;
+      margin: 10px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* Las quincenas que dejaron la deuda, cuando fueron varias: sus cifras suman el
+       renglón del resumen y el dueño las cuadra a mano, así que van una por línea. */
+    .origenes-deuda {
+      max-width: 420px;
+      margin: 4px 0 0;
+      padding-left: 20px;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* El flete de la leche del proveedor: un dato, no un descuento suyo. Mismo tono
+       discreto que la nota de arriba, porque tampoco es una alerta. */
+    .nota-flete {
+      max-width: 420px;
+      margin: 10px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
     }
 
     .ayuda-precio {
@@ -377,6 +479,136 @@ export class LiquidacionDetailDialog {
   readonly leQuedaDebiendo = computed(() => Number(this.liq().le_queda_debiendo ?? 0) > 0);
 
   /**
+   * LO QUE SE LE COBRA EN ESTA QUINCENA DE LO QUE QUEDÓ DEBIENDO EN LAS PASADAS.
+   *
+   * Cero (y el renglón no sale) en la inmensa mayoría de los comprobantes: quedar
+   * debiendo es la excepción. Mientras el backend no mande el campo llega en
+   * `undefined` y esto da cero, así que la pantalla se ve igual que hoy.
+   */
+  readonly saldoAnterior = computed(() => Number(this.liq().saldo_anterior ?? 0));
+  readonly cobraSaldoAnterior = computed(() => this.saldoAnterior() > 0);
+
+  /**
+   * EL RESUMEN COMPLETO, EN EL ORDEN EN QUE SE RESTA Y CON LOS MISMOS RENGLONES DEL PDF.
+   *
+   * Lo que arregla, y que el dueño reclamó con estas palabras —"suma y resta de arriba
+   * abajo y no me cuadra"—:
+   *
+   *  · "Anticipos aplicados" y "Pagado" estaban ARRIBA de VALOR TOTAL. Son descuentos
+   *    del total: leídos antes que él no hay nada de dónde restarlos. Ahora el orden es
+   *    el de la cuenta: bruto, + bonificaciones, − descuentos, VALOR TOTAL, − anticipos,
+   *    − lo que quedó debiendo de la quincena pasada, − pagado, y el saldo al final;
+   *  · en la del PROVEEDOR sobraba "Valor transporte". Ese flete no se le descuenta a él
+   *    —se le paga al transportador, y tiene su propio comprobante—, así que metido en
+   *    la columna la descuadraba. Se dice aparte y con esas palabras (ver `notaFlete`);
+   *  · en la del TRANSPORTADOR sobraban "Valor bruto", "Bonificaciones" y "Descuentos",
+   *    que en su comprobante son siempre cero: tres renglones en $0 entre los que sí
+   *    cuentan. Su PDF nunca los imprimió.
+   *
+   * La invariante que esta lista tiene que cumplir SIEMPRE, y que hay una prueba que la
+   * mide leyendo la pantalla: los renglones con `cuenta` puestos, aplicados con su
+   * signo, caen EXACTO en VALOR TOTAL primero y en el saldo del final después.
+   */
+  readonly renglonesResumen = computed<RenglonResumen[]>(() => {
+    const l = this.liq();
+    const esProveedor = l.tipo === 'proveedor';
+    const filas: RenglonResumen[] = [];
+
+    const plata = (
+      clave: string,
+      etiqueta: string,
+      valor: Monto | null | undefined,
+      signo: '' | '+' | '−' = '',
+      extra: Partial<RenglonResumen> = {},
+    ): void => {
+      const cifra = this.enPesos(valor);
+      filas.push({
+        clave,
+        etiqueta,
+        texto: signo ? `${signo} ${cifra}` : cifra,
+        signo,
+        cuenta: true,
+        destacado: false,
+        alReves: false,
+        ...extra,
+      });
+    };
+
+    // Los litros y el promedio encabezan el resumen como en el PDF, pero NO entran en
+    // la columna de plata: son la medida de la quincena, no una cifra que se sume.
+    filas.push({
+      clave: 'litros',
+      etiqueta: 'Total litros',
+      texto: this.enLitros(l.total_litros),
+      signo: '',
+      cuenta: false,
+      destacado: false,
+      alReves: false,
+    });
+    if (esProveedor) {
+      filas.push({
+        clave: 'precio_promedio',
+        etiqueta: 'Precio promedio',
+        texto: this.enPesos(l.precio_promedio),
+        signo: '',
+        cuenta: false,
+        destacado: false,
+        alReves: false,
+      });
+      plata('valor_bruto', 'Valor bruto', l.valor_bruto);
+      plata('bonificaciones', 'Bonificaciones', l.bonificaciones, '+');
+      plata('descuentos', 'Descuentos', l.descuentos, MENOS);
+    } else {
+      // En su comprobante el flete ES el bruto: de ahí arranca la cuenta.
+      plata('valor_transporte', 'Valor transporte', l.valor_transporte);
+    }
+
+    plata('valor_total', 'Valor total', l.valor_total, '', { destacado: true });
+    plata('anticipos', 'Anticipos aplicados', l.anticipos, MENOS);
+    // El renglón NUEVO, y solo cuando de verdad se le cobró algo de atrás. Con el mismo
+    // rótulo del PDF: el dueño pone los dos documentos uno al lado del otro.
+    if (this.cobraSaldoAnterior()) {
+      plata('saldo_anterior', ROTULO_SALDO_ANTERIOR, l.saldo_anterior, MENOS);
+    }
+    // "Pagado" solo cuando de verdad se abonó algo, igual que en el PDF.
+    if (this.tienePagos()) plata('pagado', 'Pagado', l.pagado, MENOS);
+
+    // EL RENGLÓN DE CIERRE cambia de rótulo cuando la cuenta queda por debajo de cero:
+    // ahí la plata la debe el tercero y la cifra va en POSITIVO. Un menos pegado a un
+    // total destacado se lee como "hay que pagar una cifra negativa".
+    if (this.leQuedaDebiendo()) {
+      plata('le_queda_debiendo', 'Le queda debiendo', l.le_queda_debiendo, '', {
+        destacado: true,
+        alReves: true,
+      });
+    } else {
+      plata('saldo', 'Saldo a pagar', l.saldo, '', { destacado: true });
+    }
+    return filas;
+  });
+
+  /**
+   * EL FLETE DE LA LECHE DEL PROVEEDOR, dicho aparte y explicando por qué no se resta.
+   *
+   * Esta cifra estaba dentro de la columna del resumen y la descuadraba: el dueño la
+   * restaba del valor total y le sobraba plata. No se le descuenta al proveedor —el
+   * flete se le paga al transportador, que tiene su propio comprobante—, así que se
+   * queda como dato, fuera de la cuenta y con la razón escrita al lado.
+   *
+   * Null cuando no hay flete o cuando es la del transportador (ahí el flete ES la
+   * cuenta, y ya va como primer renglón).
+   */
+  readonly notaFlete = computed<string | null>(() => {
+    const l = this.liq();
+    if (l.tipo !== 'proveedor' || Number(l.valor_transporte ?? 0) <= 0) return null;
+    return (
+      `El flete de esta leche costó ${this.enPesos(l.valor_transporte)}. No se le ` +
+      `descuenta a ${this.tercero()}: eso se le paga al transportador, que tiene su ` +
+      `propio comprobante. Por eso no entra en la cuenta de arriba.`
+    );
+  });
+
+  /**
    * La frase completa, como la diría el dueño: "Henri le queda debiendo $4.955,77".
    *
    * Va aparte del renglón del resumen y no en lugar de él: el renglón es una celda de
@@ -390,13 +622,134 @@ export class LiquidacionDetailDialog {
   readonly explicacionLeQuedaDebiendo = computed<string | null>(() => {
     if (!this.leQuedaDebiendo()) return null;
     const l = this.liq();
+    // LA CAUSA. Cuando esta misma quincena ya venía cargando una deuda vieja, hay que
+    // nombrarla: sin ella la frase acusa a los anticipos de una diferencia que no es
+    // toda suya, y el dueño suma "anticipos contra valor total" y no le da.
+    const causa = this.cobraSaldoAnterior()
+      ? `los anticipos aplicados (${this.enPesos(l.anticipos)}) más lo que ya venía ` +
+        `debiendo de antes (${this.enPesos(l.saldo_anterior)}) suman más que el valor ` +
+        `total de esta liquidación (${this.enPesos(l.valor_total)})`
+      : `los anticipos aplicados (${this.enPesos(l.anticipos)}) suman más que el valor ` +
+        `total de esta liquidación (${this.enPesos(l.valor_total)})`;
+    // Y LA CADENA, cuando esta quincena cobró una deuda y volvió a quedar debiendo: lo
+    // que viaja a la siguiente YA INCLUYE la vieja. Decirlo evita la pregunta que
+    // seguiría —"¿entonces se le está cobrando dos veces?"— con plata de por medio.
+    const cadena = this.cobraSaldoAnterior()
+      ? ` En esos ${this.enPesos(l.le_queda_debiendo)} ya está incluido lo que traía ` +
+        `debiendo de antes, así que no se le cobra dos veces.`
+      : '';
     return (
       `${this.tercero()} le queda debiendo ${this.enPesos(l.le_queda_debiendo)}: ` +
-      `los anticipos aplicados (${this.enPesos(l.anticipos)}) suman más que el valor ` +
-      `total de esta liquidación (${this.enPesos(l.valor_total)}). No hay nada que ` +
-      `pagarle; esa diferencia se le cobra o se le descuenta en la próxima quincena.`
+      `${causa}. No hay nada que pagarle. ${this.queSigueConLaDeuda()}${cadena}`
     );
   });
+
+  /**
+   * DÓNDE SE LE COBRÓ ESA DEUDA — o que todavía está pendiente, o que ya no se cobra.
+   *
+   * Es la punta que faltaba. Antes esta liquidación decía "esa diferencia se le cobra o
+   * se le descuenta en la próxima quincena": una PROMESA que nadie cumplía, porque
+   * ningún documento la cobraba. Ahora sí se cobra, así que este texto tiene que decir
+   * qué pasó DE VERDAD, y son tres situaciones que el dueño necesita distinguir:
+   *
+   *  · YA SE COBRÓ: se nombra la liquidación que la cobró CON SU PERÍODO, que es cómo él
+   *    identifica un comprobante (un id no le dice nada). También es lo que tiene que
+   *    saber si algún día quiere anular esta: primero hay que anular esa;
+   *  · ANULADA: acá la promesa era FALSA y hay que decirlo. El servidor no le cobra la
+   *    deuda de una liquidación anulada a nadie (la busca entre las que no están
+   *    anuladas ni borradas: ver `deudas_sin_cobrar` en el backend), así que si esta
+   *    quincena se anuló, esos pesos no los va a recoger ninguna liquidación futura. Lo
+   *    que hay que hacer es volver a generarla;
+   *  · TODAVÍA NO: se dice PENDIENTE y con qué rótulo va a aparecer allá, para que
+   *    cuando vea el descuento en la próxima quincena lo reconozca. Con el "después de
+   *    esta" porque es literal lo que hace el servidor: solo se cobra en una liquidación
+   *    cuyo período empiece DESPUÉS de que este termine, así que liquidar una quincena
+   *    vieja no se la cobra. Y VIAJA IGUAL SI ESTA SIGUE EN BORRADOR —eso es la regla
+   *    nueva del servidor, y antes se perdía la deuda de los borradores—, así que se dice
+   *    con esas palabras: quien ve un borrador en negativo asume que "todavía no cuenta".
+   *
+   * Si el backend manda el enlace pero no las fechas, se dice sin el período en vez de
+   * callarse: "ya se cobró" sin fecha sigue siendo mejor que una promesa falsa.
+   */
+  private queSigueConLaDeuda(): string {
+    if (this.deudaYaCobrada()) {
+      const periodo = this.periodoDondeSeCobro();
+      return periodo
+        ? `Esa diferencia YA se le cobró en la liquidación del ${periodo}.`
+        : 'Esa diferencia YA se le cobró en una liquidación posterior.';
+    }
+    if (this.liq().estado === 'anulada') {
+      return (
+        'Esta liquidación está ANULADA, así que esa diferencia no se le cobra en ninguna ' +
+        'parte: vuelva a generar la quincena si hay que cobrársela.'
+      );
+    }
+    // El borrador se nombra aparte porque es la sorpresa: sus cifras todavía se pueden
+    // corregir y aun así su deuda ya viaja a la próxima quincena que se liquide.
+    const aunqueBorrador =
+      this.liq().estado === 'borrador'
+        ? ' Se le cobra aunque esta liquidación siga en borrador.'
+        : '';
+    return (
+      'Esa diferencia queda PENDIENTE: se le cobra en la próxima quincena que se le ' +
+      `liquide después de esta, donde va a aparecer como «${ROTULO_SALDO_ANTERIOR}».` +
+      aunqueBorrador
+    );
+  }
+
+  /**
+   * DE DÓNDE SALIÓ EL DESCUENTO, en la liquidación que SE LO COBRA.
+   *
+   * La otra punta. Un renglón que le quita $120.000 al proveedor sin decir de dónde
+   * viene es lo que hace que el dueño desconfíe del sistema —y con razón: es plata que
+   * no sale de ninguna recepción de esta quincena—. Acá se nombra la quincena que la
+   * dejó y se dice que se cobra UNA sola vez.
+   *
+   * Null cuando no se cobró nada, que es el caso de casi todos los comprobantes.
+   */
+  readonly explicacionSaldoAnterior = computed<string | null>(() => {
+    if (!this.cobraSaldoAnterior()) return null;
+    const l = this.liq();
+    const cifra = this.enPesos(l.saldo_anterior);
+    const origenes = this.origenesSaldoAnterior();
+    const deDonde =
+      origenes.length === 1
+        ? `en la liquidación del ${origenes[0].periodo}`
+        : origenes.length > 1
+          ? `en ${origenes.length} liquidaciones pasadas`
+          : // Sin el detalle (el backend manda la cifra pero no las quincenas) se dice
+            // lo que se sabe. Callar el renglón sería peor: el descuento ya está hecho.
+            'en una quincena pasada';
+    return (
+      `Los ${cifra} de «${ROTULO_SALDO_ANTERIOR}» son lo que ${this.tercero()} quedó ` +
+      `debiendo ${deDonde}, cuando los anticipos que se le habían entregado sumaron más ` +
+      `que su quincena. Se le cobran acá, una sola vez.`
+    );
+  });
+
+  /**
+   * Las quincenas que dejaron la deuda, una por renglón: período y cuánto puso cada una.
+   *
+   * En lista y no dentro de la frase porque pueden ser varias —dos quincenas seguidas en
+   * negativo se cobran juntas— y sus cifras tienen que SUMAR el renglón del resumen: así
+   * el dueño comprueba el descuento como comprueba el desglose diario.
+   */
+  readonly origenesSaldoAnterior = computed<{ id: string; periodo: string; valor: string }[]>(() =>
+    (this.liq().deudas_cobradas ?? []).map((origen: DeudaCobrada) => ({
+      id: origen.id,
+      periodo: periodoDe(origen),
+      valor: this.enPesos(origen.le_queda_debiendo),
+    })),
+  );
+
+  /** ¿La deuda que ESTA dejó ya se la cobró otra liquidación? Entonces está congelada. */
+  readonly deudaYaCobrada = computed(() => !!this.liq().deuda_trasladada_a_id);
+
+  /** El período de la liquidación que se cobró la deuda, o null si no vino nombrada. */
+  private periodoDondeSeCobro(): string | null {
+    const otra = this.liq().deuda_trasladada_a;
+    return otra ? periodoDe(otra) : null;
+  }
 
   constructor() {
     // Recarga la liquidación para asegurar que los detalles estén completos.
@@ -513,6 +866,11 @@ export class LiquidacionDetailDialog {
   readonly motivoNoRecalcular = computed(() => {
     if (this.puedeRecalcular() || !this.auth.hasPermission('liquidaciones', 'editar')) return null;
     const liq = this.liq();
+    // VA PRIMERO, y no es un detalle de orden: con la deuda ya cobrada en otro
+    // comprobante, el consejo de más abajo ("anúlela y vuelva a generarla") es
+    // exactamente lo que el servidor también rebota. Dejar ese texto acá mandaría al
+    // dueño a dar vueltas entre dos botones que los dos le dicen que no.
+    if (this.deudaYaCobrada()) return this.avisoDeudaCongelada('recalcular');
     if (liq.estado === 'pagada') {
       return (
         `Este comprobante ya está pagado (${this.enPesos(liq.pagado)}): sus cifras quedan ` +
@@ -537,6 +895,173 @@ export class LiquidacionDetailDialog {
         'todavía no se le ha pagado nada.'
       );
     }
+    return null;
+  });
+
+  /**
+   * "NO SE PUEDE, Y PRIMERO HAY QUE ANULAR ESA OTRA": el aviso de la deuda congelada.
+   *
+   * En cuanto la deuda de esta liquidación se cobró en otra, el servidor rebota anular y
+   * recalcular: cambiarle el total le cambiaría el descuento a un comprobante ya
+   * emitido, y el dueño terminaría con dos papeles que no cuadran. Lo importante del
+   * mensaje no es el "no": es NOMBRAR la liquidación que hay que anular primero, porque
+   * sin eso el usuario queda atascado sin saber por dónde salir. Está redactado con las
+   * mismas palabras que el error del backend, a propósito: si el usuario alcanza a
+   * oprimir el botón desde otra pantalla, el mensaje que recibe es el mismo.
+   */
+  private avisoDeudaCongelada(verbo: 'anular' | 'recalcular'): string {
+    const periodo = this.periodoDondeSeCobro();
+    const donde = periodo ? `la liquidación del ${periodo}` : 'otra liquidación';
+    return (
+      `No se puede ${verbo} esta liquidación: lo que ${this.tercero()} quedó debiendo ` +
+      `(${this.enPesos(this.liq().le_queda_debiendo)}) ya se le cobró en ${donde}. Anule ` +
+      'primero esa liquidación —así esta deuda vuelve a quedar libre— y vuelva a intentarlo.'
+    );
+  }
+
+  /**
+   * ANULAR: el servidor lo rebota cuando la deuda de esta ya se cobró en otra.
+   *
+   * Es la mitad de pantalla del candado nuevo. Sin esto el botón seguía ahí, el usuario
+   * lo oprimía, confirmaba "¿anular esta liquidación?" —una confirmación que da miedo— y
+   * recibía un error después de haber dicho sí.
+   */
+  readonly puedeAnular = computed(
+    () =>
+      (this.liq().estado === 'borrador' || this.liq().estado === 'aprobada') &&
+      !this.deudaYaCobrada() &&
+      this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /** Por qué no se puede anular. Null cuando se puede o cuando el botón nunca estuvo. */
+  readonly motivoNoAnular = computed(() => {
+    const estado = this.liq().estado;
+    if (estado !== 'borrador' && estado !== 'aprobada') return null;
+    if (!this.auth.hasPermission('liquidaciones', 'administrar')) return null;
+    return this.deudaYaCobrada() ? this.avisoDeudaCongelada('anular') : null;
+  });
+
+  /**
+   * PAGAR: no se le paga a quien QUEDÓ DEBIENDO. El servidor lo rebota.
+   *
+   * Antes el botón aparecía igual —el estado seguía siendo 'aprobada'— y el diálogo de
+   * pago abría con el saldo prellenado, que en este caso es una cifra NEGATIVA. El
+   * dueño oprimía "Pagar" sobre un comprobante donde no hay nada que entregar.
+   *
+   * Y ojo con lo que este botón hacía antes de este trabajo: marcaba la liquidación
+   * PAGADA sin que saliera un peso, y eso trababa los días de esa quincena en Recepción
+   * diaria para siempre. Ahora el backend lo rebota y la quincena se queda en 'aprobada'
+   * —que es lo que es— hasta que su deuda se cobre en la siguiente.
+   */
+  readonly puedePagar = computed(
+    () =>
+      (this.liq().estado === 'aprobada' || this.liq().estado === 'parcial') &&
+      Number(this.liq().saldo ?? 0) > 0 &&
+      this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * EL SALDO QUEDÓ EXACTO EN CERO: no hay plata por entregar, y nadie quedó debiendo.
+   *
+   * Es el caso que dejaba una liquidación IMPOSIBLE DE CERRAR. `puedePagar` exigía
+   * saldo > 0, así que una quincena de $180.000 con $180.000 de anticipo —o una donde el
+   * anticipo más la deuda arrastrada cubren justo el total— perdía el botón y se quedaba
+   * en 'aprobada' para siempre, con sus días abiertos a que alguien les cambiara las
+   * cifras meses después.
+   *
+   * Y ACÁ EL SERVIDOR SÍ ACEPTA, que es lo que decide si la pantalla lo ofrece: el
+   * `marcar_pagada` del backend rebota únicamente cuando el tercero quedó DEBIENDO
+   * (`le_queda_debiendo > 0`); con el saldo en cero pasa por su rama de "no hay pago que
+   * registrar" y la deja PAGADA. Lo que no acepta es un ABONO (`registrar_pago` rebota
+   * con saldo <= 0), así que este camino NO puede pasar por el diálogo de pago —abriría
+   * con $0 prellenado, el formulario inválido y el botón muerto—: va derecho al
+   * `POST /pagar`. Ver `cerrarSinPago`.
+   */
+  readonly saldoEnCero = computed(() => Number(this.liq().saldo ?? 0) === 0);
+
+  /**
+   * LA QUINCENA ESTÁ SALDADA Y TODAVÍA ABIERTA: es la situación, sin mirar permisos.
+   *
+   * El estado importa: TODA liquidación pagada tiene el saldo en cero, y ahí no hay nada
+   * que decidir ni que explicar. Lo que este trabajo destrabó es la que quedó en cero
+   * SIN cerrarse —'aprobada' (o 'parcial', que el servidor acepta igual)—, que era la que
+   * se quedaba abierta para siempre.
+   */
+  readonly quincenaSaldadaSinCerrar = computed(
+    () =>
+      (this.liq().estado === 'aprobada' || this.liq().estado === 'parcial') &&
+      this.saldoEnCero(),
+  );
+
+  /** Cerrar la quincena que no hay que pagar: la misma situación más el permiso de Pagar. */
+  readonly puedeCerrarSinPago = computed(
+    () =>
+      this.quincenaSaldadaSinCerrar() && this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * POR QUÉ ESTA QUINCENA NO HAY QUE PAGARLA, nombrando TODO lo que hizo el cero.
+   *
+   * El texto viejo decía siempre "los anticipos ya entregados cubren exactamente la
+   * quincena", y eso ERA MENTIRA cuando el cero lo hacía la deuda arrastrada: en una
+   * quincena de $144.482 con $139.526,23 de anticipo y $4.955,77 de deuda vieja, el
+   * dueño leía que los anticipos la cubrían, iba a buscarlos y le faltaban casi cinco
+   * mil pesos. La frase se arma con los renglones que DE VERDAD suman el valor total
+   * —los mismos del resumen y del PDF, en el mismo orden—, así que siempre cuadra.
+   */
+  readonly explicacionSaldoEnCero = computed<string | null>(() => {
+    if (!this.quincenaSaldadaSinCerrar()) return null;
+    const l = this.liq();
+    const partes: string[] = [];
+    if (Number(l.anticipos ?? 0) > 0) {
+      partes.push(`los anticipos aplicados (${this.enPesos(l.anticipos)})`);
+    }
+    if (this.cobraSaldoAnterior()) {
+      partes.push(`lo que ya venía debiendo de antes (${this.enPesos(l.saldo_anterior)})`);
+    }
+    if (this.tienePagos()) partes.push(`lo que ya se le pagó (${this.enPesos(l.pagado)})`);
+    if (partes.length === 0) {
+      return (
+        `No hay nada que entregarle a ${this.tercero()}: el valor total de esta quincena ` +
+        `es ${this.enPesos(l.valor_total)}.`
+      );
+    }
+    const cuenta =
+      partes.length === 1
+        ? partes[0]
+        : `${partes.slice(0, -1).join(', ')} y ${partes[partes.length - 1]}`;
+    // El verbo concuerda con lo que se está nombrando, no con cuántas cosas son: "los
+    // anticipos aplicados … CUBREN" aunque sean el único renglón, y "lo que ya venía
+    // debiendo … CUBRE". Una concordancia mala en la pantalla del dueño se lee como
+    // descuido, y esta frase habla de plata que no se le entregó a nadie.
+    const plural = partes.length > 1 || Number(l.anticipos ?? 0) > 0;
+    return (
+      `No hay nada que entregarle a ${this.tercero()}: ${cuenta} ` +
+      `${plural ? 'cubren' : 'cubre'} EXACTO el valor total de la quincena ` +
+      `(${this.enPesos(l.valor_total)}), así que el saldo quedó en ${this.enPesos('0')}.`
+    );
+  });
+
+  /** Por qué no se puede pagar, cuando el botón se esperaría y no está. */
+  readonly motivoNoPagar = computed(() => {
+    const liq = this.liq();
+    if (this.puedePagar() || this.puedeCerrarSinPago()) return null;
+    if (!this.auth.hasPermission('liquidaciones', 'administrar')) return null;
+    if (liq.estado !== 'aprobada' && liq.estado !== 'parcial') return null;
+    if (this.leQuedaDebiendo()) {
+      const cierre = this.deudaYaCobrada()
+        ? 'Esa deuda ya se le cobró en otra liquidación.'
+        : 'Esa deuda se le cobra en la próxima quincena que se le liquide.';
+      return (
+        `No hay nada que pagarle: ${this.tercero()} quedó debiendo ` +
+        `${this.enPesos(liq.le_queda_debiendo)} porque los anticipos que se le entregaron ` +
+        `suman más que esta quincena. ${cierre}`
+      );
+    }
+    // Ya no queda ningún caso por explicar: con saldo en cero hay botón (ver
+    // `puedeCerrarSinPago`) y con saldo por pagar también. Se devuelve null en vez de un
+    // texto de relleno, que es lo que dejaría a la pantalla diciendo "no hay nada que
+    // pagar" al lado de un botón para cerrarla.
     return null;
   });
 
@@ -646,6 +1171,18 @@ export class LiquidacionDetailDialog {
       frase: 'Los anticipos aplicados pasaron',
       leer: (liq) => liq.anticipos,
     };
+    /*
+     * EL SALDO ANTERIOR NO LO RECALCULA NADIE: no sale de las recepciones, es plata que
+     * se arrastra de una quincena pasada y ya quedó cobrada acá. Se compara igual, y a
+     * propósito: si algún día se moviera, el dueño tiene que verlo en la cara —es un
+     * descuento sobre su comprobante—, no descubrirlo cuadrando el papel a mano. Si no se
+     * mueve (lo normal), el renglón no aparece en el aviso.
+     */
+    const saldoAnterior: RenglonComparable = {
+      etiqueta: ROTULO_SALDO_ANTERIOR,
+      frase: 'Lo que quedó debiendo de la quincena pasada pasó',
+      leer: (liq) => liq.saldo_anterior ?? '0',
+    };
     const saldo: RenglonComparable = {
       etiqueta: 'Saldo a pagar',
       frase: 'El saldo a pagar pasó',
@@ -660,6 +1197,7 @@ export class LiquidacionDetailDialog {
         },
         litros,
         anticipos,
+        saldoAnterior,
         saldo,
       ];
     }
@@ -667,12 +1205,16 @@ export class LiquidacionDetailDialog {
       { etiqueta: 'Valor bruto', frase: 'El valor bruto pasó', leer: (liq) => liq.valor_bruto },
       litros,
       {
-        etiqueta: 'Valor transporte',
-        frase: 'El transporte descontado pasó',
+        // El rótulo es el de la NOTA de abajo y no "Valor transporte", que era el del
+        // renglón que este trabajo le quitó al resumen del proveedor: a él el flete no
+        // se le descuenta, y el aviso no puede nombrar un renglón que ya no está.
+        etiqueta: 'Flete de esta leche',
+        frase: 'El flete de esta leche pasó',
         leer: (liq) => liq.valor_transporte,
       },
       anticipos,
       { etiqueta: 'Valor total', frase: 'El valor total pasó', leer: (liq) => liq.valor_total },
+      saldoAnterior,
       saldo,
     ];
   }
@@ -782,6 +1324,59 @@ export class LiquidacionDetailDialog {
           { duration: 5000 },
         );
       });
+  }
+
+  /**
+   * El tooltip del botón que cierra la quincena sin plata: por qué, y qué va a pasar.
+   *
+   * Las dos mitades importan. El "por qué" sale de `explicacionSaldoEnCero`, que nombra
+   * los renglones que hicieron el cero (y no solo los anticipos, que era la mentira). El
+   * "qué va a pasar" es que los días quedan trabados: es la consecuencia que el dueño
+   * reclamó por los dos lados —"un día no debería quedar trabado si no salió plata", pero
+   * "tampoco se puede dejar una quincena cerrada abierta a que le cambien las cifras"—.
+   */
+  readonly tooltipCerrarSinPago = computed(
+    () =>
+      `${this.explicacionSaldoEnCero() ?? ''} Márquela pagada para cerrarla: queda en el ` +
+      'historial y sus días dejan de poder corregirse.',
+  );
+
+  /**
+   * CIERRA LA QUINCENA QUE NO HAY QUE PAGAR: la marca pagada sin registrar ningún pago.
+   *
+   * NO PASA POR EL DIÁLOGO DE PAGO a propósito. Ese diálogo registra un abono y el
+   * servidor rebota los abonos cuando el saldo no es positivo; además abriría con $0
+   * prellenado, un formulario inválido y el botón muerto: un callejón sin salida. Este
+   * camino es el `POST /pagar` (el `marcar_pagada` del backend), que con el saldo en cero
+   * pasa por su rama de "no hay pago que registrar" y la deja PAGADA.
+   *
+   * Se pregunta ANTES porque cerrarla traba los días de la quincena en Recepción diaria y
+   * de 'pagada' no se puede anular: enterarse después es enterarse tarde.
+   */
+  async cerrarSinPago(): Promise<void> {
+    const confirmado = await firstValueFrom(
+      this.dialog
+        .open(ConfirmDialog, {
+          data: {
+            titulo: 'Esta quincena no hay que pagarla',
+            mensaje:
+              `${this.explicacionSaldoEnCero()} Marcarla PAGADA la cierra sin registrar ` +
+              'ningún pago —por acá no sale plata— y desde ese momento sus días ya no se ' +
+              'pueden corregir en Recepción diaria. Si todavía hay algo por revisar, ' +
+              'déjela aprobada.',
+            accion: 'Marcar pagada',
+            // Explícito: cerrar una quincena saldada no destruye nada, y el rojo del
+            // diálogo está reservado para lo que borra o anula datos.
+            peligro: false,
+          },
+        })
+        .afterClosed(),
+    );
+    if (confirmado !== true) return;
+    await this.ejecutar(
+      () => this.servicio.pagar(this.liq().id),
+      'Liquidación cerrada: quedó pagada y no había plata por entregar',
+    );
   }
 
   /**
@@ -896,26 +1491,27 @@ export class LiquidacionDetailDialog {
   /**
    * Abre WhatsApp con un resumen en texto de la liquidación.
    *
-   * Las cifras salen por los MISMOS formateadores de la pantalla y del PDF: este
-   * mensaje se lo reenvían al transportador y no puede decir "$ 44.506" donde el
-   * comprobante dice "$ 44.506,32".
+   * SALE DEL MISMO RESUMEN QUE PINTA LA PANTALLA (`renglonesResumen`), renglón por
+   * renglón y en el mismo orden. Antes este mensaje traía cuatro cifras escogidas a
+   * mano —litros, valor total y el saldo— y le faltaban los descuentos del medio: el
+   * tercero recibía un "Valor total: $44.506,32 / Le queda debiendo: $4.955,77" que no
+   * se puede cuadrar, porque los anticipos que explican la diferencia no estaban.
+   * Ahora el chat, la pantalla y el papel dicen lo mismo y en el mismo orden; el
+   * renglón nuevo de lo que quedó debiendo de la quincena pasada entra solo.
    *
-   * Y el último renglón cambia igual que en la pantalla y en el PDF cuando el saldo
+   * Y el último renglón cambia igual que en la pantalla y en el PDF cuando la cuenta
    * queda por debajo de cero: acá el mensaje llega SUELTO, sin la tabla alrededor, así
    * que un "Saldo a pagar: -$120.000,00" reenviado al proveedor es peor todavía.
    */
   enviarWhatsApp(): void {
     const l = this.liq();
-    const fecha = (iso: string) => iso.split('-').reverse().join('/');
-    const cierre = this.leQuedaDebiendo()
-      ? `Le queda debiendo: ${this.enPesos(l.le_queda_debiendo)}`
-      : `Saldo a pagar: ${this.enPesos(l.saldo)}`;
+    const renglones = this.renglonesResumen()
+      .map((renglon) => `${renglon.etiqueta}: ${renglon.texto}`)
+      .join('\n');
     const texto =
       `*Liquidación de ${this.tercero()}*\n` +
-      `Período: ${fecha(l.periodo_inicio)} al ${fecha(l.periodo_fin)}\n` +
-      `Total litros: ${this.enLitros(l.total_litros)}\n` +
-      `Valor total: ${this.enPesos(l.valor_total)}\n` +
-      cierre;
+      `Período: ${comoFecha(l.periodo_inicio)} al ${comoFecha(l.periodo_fin)}\n` +
+      renglones;
     compartirWhatsApp(texto);
   }
 

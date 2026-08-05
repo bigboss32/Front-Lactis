@@ -516,6 +516,43 @@ export interface PagoLiquidacion {
   observaciones: string | null;
 }
 
+/**
+ * OTRA LIQUIDACIÓN, NOMBRADA DESDE ESTA: el id y su período, nada más.
+ *
+ * Viaja plana y no como una liquidación completa —eso se llamaría a sí mismo sin fin—
+ * porque lo único que la pantalla necesita para decir "se le cobró en la del 16/06/2026
+ * al 30/06/2026" es el período y el id para poder abrirla.
+ *
+ * `periodo_texto` viene YA ARMADO del backend a propósito: si cada pantalla lo
+ * formateara, alguna mostraría "2026-06-16" y el dueño no lee fechas así.
+ */
+export interface LiquidacionReferencia {
+  id: string;
+  periodo_inicio: string;
+  periodo_fin: string;
+  /** "16/06/2026 al 30/06/2026", como lo escribe el comprobante en PDF. */
+  periodo_texto: string;
+}
+
+/**
+ * UNA DE LAS QUINCENAS DE DONDE VINO EL `saldo_anterior` que esta liquidación cobra.
+ *
+ * Es la otra punta del enlace: la liquidación que quedó en negativo apunta a la que se
+ * lo cobró (`deuda_trasladada_a`) y la que se lo cobró tiene que poder decir DE DÓNDE
+ * salió ese descuento. Sin esto la pantalla muestra un renglón que le quita plata al
+ * proveedor sin explicar por qué, y eso es exactamente lo que hace que el dueño
+ * desconfíe del sistema entero.
+ *
+ * Puede haber MÁS DE UNA: si dos quincenas seguidas quedaron en negativo y ninguna se
+ * había cobrado, las dos se cobran juntas en la siguiente. LA SUMA DE ESTOS
+ * `le_queda_debiendo` DA EXACTO el `saldo_anterior` del resumen: es el desglose de ese
+ * renglón, y todo desglose de este proyecto suma la cifra grande al centavo.
+ */
+export interface DeudaCobrada extends LiquidacionReferencia {
+  /** Lo que ESA quincena dejó debiendo, en positivo. */
+  le_queda_debiendo: Monto;
+}
+
 export interface Liquidacion extends TenantFields {
   tipo: 'proveedor' | 'transportador' | string;
   proveedor_id: string | null;
@@ -532,7 +569,55 @@ export interface Liquidacion extends TenantFields {
   valor_transporte: Monto;
   anticipos: Monto;
   valor_total: Monto;
-  /** Lo que hay que entregarle al tercero: valor_total - anticipos. */
+  /**
+   * LO QUE EL TERCERO QUEDÓ DEBIENDO DE QUINCENAS PASADAS Y SE LE COBRA EN ESTA.
+   *
+   * Es un descuento del neto, igual que los anticipos: cuando los anticipos que se le
+   * entregaron sumaron más que su quincena, el proveedor le quedó debiendo a la
+   * quesera, y esa plata se cobra en la siguiente liquidación que se le genere. Antes
+   * de esto la pantalla decía "le queda debiendo $X" y ahí moría: era un rótulo, nadie
+   * la cobraba.
+   *
+   * La cuenta queda: neto_a_pagar = valor_total − anticipos − saldo_anterior.
+   *
+   * OPCIONAL en el tipo aunque el backend ya lo manda siempre: así una respuesta vieja
+   * —o un comprobante cacheado— no deja la pantalla mostrando "$ NaN". Es el mismo
+   * trato que `ruta_borrada`. El renglón solo sale cuando hay algo que cobrar.
+   */
+  saldo_anterior?: Monto;
+  /**
+   * EN LA LIQUIDACIÓN QUE DEJÓ LA DEUDA: el id de la que se la cobró.
+   *
+   * Null (o ausente) = todavía nadie se la cobró, así que la deuda está PENDIENTE y
+   * viaja a la próxima quincena que se le genere. Con id = ya se cobró y no se le
+   * vuelve a cobrar; es la marca que hace imposible cobrar dos veces la misma plata,
+   * el mismo idioma que ya usan las recepciones (`liquidacion_id` marca el documento
+   * que las consumió).
+   *
+   * Y ES UN CANDADO, no solo una seña: mientras esté puesta, el servidor REBOTA anular
+   * y recalcular esta liquidación —cambiarle el total le cambiaría el descuento a un
+   * comprobante ya emitido—. La pantalla no puede ofrecer esos botones acá: ver
+   * `motivoNoAnular` en liquidacion-detail.dialog.ts.
+   */
+  deuda_trasladada_a_id?: string | null;
+  /**
+   * ESA MISMA LIQUIDACIÓN, con su período, para poder nombrarla sin ir a buscarla.
+   *
+   * Un id no le dice nada al dueño: lo que él necesita leer es "ya se le cobró en la
+   * del 16/06/2026 al 30/06/2026", y eso es también lo que tiene que saber si algún día
+   * quiere anular esta (primero hay que anular esa). Va al lado del id como
+   * `proveedor_nombre` va al lado de `proveedor_id` en todo el proyecto.
+   */
+  deuda_trasladada_a?: LiquidacionReferencia | null;
+  /**
+   * DE DÓNDE SALIÓ EL `saldo_anterior`: las quincenas que dejaron esa deuda.
+   *
+   * Sus `le_queda_debiendo` suman EXACTO el `saldo_anterior`; es lo que le permite a la
+   * pantalla explicar el descuento renglón por renglón. Vacía cuando no se cobró nada,
+   * que es el caso de casi todos los comprobantes.
+   */
+  deudas_cobradas?: DeudaCobrada[];
+  /** Lo que hay que entregarle al tercero: valor_total − anticipos − saldo_anterior. */
   neto_a_pagar: Monto;
   /** Lo que ya se le entregó, sumando los pagos parciales. */
   pagado: Monto;
@@ -546,6 +631,12 @@ export interface Liquidacion extends TenantFields {
    * Viene calculada del backend a propósito: así la pantalla dice "Henri le queda
    * debiendo $4.955,77" sin voltearle el signo a mano, y el comprobante en PDF —que
    * cambia el rótulo por "LE QUEDA DEBIENDO"— dice exactamente lo mismo.
+   *
+   * Y ESTA CIFRA YA NO ES SOLO UN RÓTULO: se cobra. Cuando se le genere la próxima
+   * quincena, esta plata baja como `saldo_anterior` de la nueva y esta liquidación
+   * queda marcada con `deuda_trasladada_a_id` apuntando a la que se la cobró. Mientras
+   * esa marca esté vacía la deuda está pendiente, y la pantalla lo tiene que decir con
+   * esas palabras: una promesa sin fecha es lo que había antes.
    */
   le_queda_debiendo: Monto;
   observaciones: string | null;
@@ -874,7 +965,21 @@ export interface Balance {
   saldo_cajas: Monto;
   saldo_bancos: Monto;
   cartera_por_cobrar: Monto;
+  /** Cuánta plata hay que SACAR por liquidaciones: solo los saldos positivos. */
   liquidaciones_por_pagar: Monto;
+  /**
+   * LO QUE LOS TERCEROS LE QUEDARON DEBIENDO A LA QUESERA, en positivo y aparte.
+   *
+   * Es la otra mitad de la pregunta, y va separada porque revuelta con la de arriba
+   * RESTABA: $130.000 por pagarle a uno y $120.000 que otro quedó debiendo mostraban
+   * "$10.000 por pagar" cuando de la caja tienen que salir $130.000. Y no es plata que el
+   * dueño tenga que sacar: se cobra descontándola de la próxima quincena de cada tercero.
+   *
+   * Opcional porque una respuesta vieja del servidor no la trae, y así la pantalla no
+   * muestra "$ NaN" mientras el despliegue se pone al día. Cero en la enorme mayoría de
+   * las queseras.
+   */
+  terceros_le_quedan_debiendo?: Monto;
   total_disponible: Monto;
 }
 
@@ -902,7 +1007,23 @@ export interface Dashboard {
   ventas_mes_anterior: Monto;
   gastos_mes_anterior: Monto;
   cartera_pendiente: Monto;
+  /**
+   * CUÁNTA PLATA TIENE QUE SACAR EL DUEÑO por liquidaciones: solo los saldos positivos.
+   *
+   * Es la MISMA cuenta que la tarjeta "Aprobadas por pagar" de la lista de liquidaciones
+   * (ver `saldoPorPagar` allá): son la misma pregunta y no pueden contestarse distinto en
+   * dos pantallas. Antes esta sumaba los negativos con los positivos y las dos decían
+   * cifras distintas —$10.000 acá contra $130.000 allá—.
+   */
   liquidaciones_por_pagar: Monto;
+  /**
+   * LO QUE LOS TERCEROS LE QUEDARON DEBIENDO A ÉL, en positivo y en su propia tarjeta.
+   *
+   * No es plata por pagar: se cobra descontándola de la próxima quincena de cada tercero.
+   * Opcional porque una respuesta vieja del servidor no la trae; ausente se lee como cero
+   * y la tarjeta no sale, en vez de mostrar "$ NaN".
+   */
+  terceros_le_quedan_debiendo?: Monto;
   alertas_no_leidas: number;
   litros_por_dia: SerieDia[];
   ventas_por_dia: SerieDia[];

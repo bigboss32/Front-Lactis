@@ -18,6 +18,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { ProveedoresService } from '../proveedores/proveedores.service';
 import { TransportadoresService } from '../transportadores/transportadores.service';
+import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
@@ -25,6 +26,22 @@ import { OpcionSelect, SelectBuscable } from '../../shared/select-buscable';
 import { LiquidacionesService, PreLiquidacion } from './liquidaciones.service';
 
 type TipoTercero = 'proveedor' | 'transportador';
+
+/**
+ * La plata en CENTAVOS ENTEROS, para poder compararla y restarla sin desviarse.
+ *
+ * Acá se decide si un renglón cuadra con la cifra grande y cuánto va a quedar de saldo de
+ * verdad: en coma flotante 144.482,00 − 20.000,10 − 4.955,77 no da exacto 119.526,13 y la
+ * pantalla se pondría a discutir por un centavo con el papel.
+ */
+function centavos(valor: Monto | null | undefined): number {
+  return Math.round(Number(valor ?? 0) * 100);
+}
+
+/** De centavos enteros a la cifra escrita, con el mismo formateador de todo el proyecto. */
+function pesosDeCentavos(cantidad: number): string {
+  return pesosExactos(cantidad / 100);
+}
 
 /** Presets de período: [inicio, fin] como Date locales. */
 function quincenaActual(): [Date, Date] {
@@ -129,6 +146,11 @@ function esteMes(): [Date, Date] {
             Con centavos y con dos decimales en los litros, igual que el detalle de
             abajo, que el comprobante oficial y que el PDF preliminar: es el mismo
             desglose que el dueño suma a mano y tiene que dar EXACTO la cifra grande.
+
+            Y EN EL ORDEN EN QUE SE RESTA, como el comprobante oficial: "Anticipos
+            aplicados" estaba ARRIBA de "Valor total", y son un descuento del total
+            —leídos antes que él no hay nada de dónde restarlos—. El dueño suma y resta
+            de arriba abajo, así que el orden no es presentación: es la cuenta.
           -->
           <div class="resumen">
             <span>Total litros</span>
@@ -140,23 +162,70 @@ function esteMes(): [Date, Date] {
               <span>Valor bruto</span>
               <span class="num">{{ r.valor_bruto | money: true }}</span>
               <span>Bonificaciones</span>
-              <span class="num">{{ r.bonificaciones | money: true }}</span>
+              <span class="num">+ {{ r.bonificaciones | money: true }}</span>
               <span>Descuentos</span>
-              <span class="num">{{ r.descuentos | money: true }}</span>
+              <span class="num">− {{ r.descuentos | money: true }}</span>
             } @else {
               <span>Valor transporte</span>
               <span class="num">{{ r.valor_transporte | money: true }}</span>
             }
 
-            <span>Anticipos aplicados</span>
-            <span class="num">{{ r.anticipos | money: true }}</span>
-
             <span class="destacado">Valor total</span>
             <span class="num destacado">{{ r.valor_total | money: true }}</span>
+
+            <span>Anticipos aplicados</span>
+            <span class="num">− {{ r.anticipos | money: true }}</span>
+
+            <!--
+              LO QUE QUEDÓ DEBIENDO DE LA QUINCENA PASADA, con el mismo rótulo del
+              comprobante y del PDF. En el avance NO sale: el avance no genera nada y no
+              resta esa deuda —el papel del mismo avance tampoco—, así que la deuda va como
+              AVISO más abajo y no como renglón. Este renglón queda para el día en que el
+              servidor mande la cifra YA RESTADA del saldo, y aparece solo si la columna
+              cuadra con él: un "− $120.000" encima de un saldo que no lo tiene adentro
+              descuadra el desglose contra la cifra grande. Ver el computed
+              cobraSaldoAnterior.
+            -->
+            @if (cobraSaldoAnterior()) {
+              <span>Lo que quedó debiendo de la quincena pasada</span>
+              <span class="num">− {{ r.saldo_anterior | money: true }}</span>
+            }
 
             <span class="destacado">Saldo estimado</span>
             <span class="num destacado">{{ r.saldo | money: true }}</span>
           </div>
+
+          <!--
+            EL AVISO DE LA DEUDA, CON LAS MISMAS PALABRAS DEL PAPEL.
+
+            El caso medido: el avance de Henri va en $250.000 y él quedó debiendo $120.000
+            de la quincena pasada. El PDF de ESTE MISMO avance ya advertía que van a salir
+            $130.000, y la pantalla decía $250.000 y nada más. El dueño manda el papel
+            mirando la pantalla: si los dos no dicen lo mismo, la discusión con el
+            proveedor la pierde él. Así que acá va el MISMO texto del PDF, palabra por
+            palabra, con la misma cifra de "saldo de verdad" (ver el computed
+            avisoDeLaDeuda).
+
+            El avance sigue SIN restarla, igual que el papel: la deuda se cobra en el
+            momento de generar, y prometer el descuento antes sería anunciar una resta que
+            todavía no tiene dueño.
+          -->
+          @if (avisoDeLaDeuda(); as aviso) {
+            <p class="aviso-deuda">
+              <mat-icon aria-hidden="true">report_problem</mat-icon>
+              <span>{{ aviso }}</span>
+            </p>
+          } @else if (!cobraSaldoAnterior() && !servidorSabeDeLaDeuda()) {
+            <!--
+              Y CUANDO EL SERVIDOR NO DICE NADA DE DEUDAS: no se puede prometer que no hay
+              ninguna, porque esta pantalla no lo sabe. Se advierte que el saldo estimado
+              puede bajar, que es lo único cierto.
+            -->
+            <p class="aviso-estimado">
+              Es un avance: si {{ r.tercero_nombre }} quedó debiendo algo de una quincena
+              pasada, eso se le cobra al generar la liquidación y el saldo baja.
+            </p>
+          }
 
           @if (r.detalles.length) {
             <h4>Detalle diario</h4>
@@ -252,8 +321,42 @@ function esteMes(): [Date, Date] {
       gap: 4px 32px;
       max-width: 420px;
     }
-    .resumen .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .resumen .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .resumen .destacado { font-weight: 600; }
+    /* El avance no conoce las deudas de quincenas pasadas: se advierte antes de que el
+       dueño le prometa una cifra al proveedor por WhatsApp. */
+    .aviso-estimado {
+      max-width: 420px;
+      margin: 10px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* Y EL AVISO DE LA DEUDA QUE SÍ EXISTE, que es otra cosa: no es "puede que baje", es
+       "va a bajar, y a esto". Se ve como un aviso y no como letra chica porque es la cifra
+       que el dueño está a punto de prometerle al proveedor. */
+    .aviso-deuda {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      max-width: 520px;
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--mat-sys-error);
+      background: var(--mat-sys-error-container);
+      color: var(--mat-sys-on-error-container);
+      font-size: 0.8125rem;
+      line-height: 1.4;
+
+      mat-icon {
+        flex-shrink: 0;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+        color: var(--mat-sys-error);
+      }
+    }
 
     table.detalle { width: 100%; }
     table.detalle .num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -264,7 +367,12 @@ function esteMes(): [Date, Date] {
       white-space: nowrap;
     }
 
-    @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 560px) {
+      .form-grid { grid-template-columns: 1fr; }
+      /* Con 32px de separación el rótulo largo del renglón nuevo se parte en cuatro
+         líneas en un celular. */
+      .resumen { gap: 4px 12px; max-width: none; }
+    }
   `,
 })
 export class PreLiquidacionDialog {
@@ -310,6 +418,80 @@ export class PreLiquidacionDialog {
   });
 
   readonly esProveedor = computed(() => this.resultado()?.tipo === 'proveedor');
+
+  /**
+   * ¿Sale el renglón "Lo que quedó debiendo de la quincena pasada" en el resumen?
+   *
+   * SOLO SI LA COLUMNA CUADRA CON ÉL: valor total − anticipos − saldo anterior tiene que
+   * dar EXACTO el saldo estimado que se está mostrando. Y no es paranoia: hoy el avance no
+   * resta esa deuda (la resta la hace el generar, y el papel del avance tampoco la hace),
+   * así que si algún día llega `saldo_anterior` en el avance SIN estar restado del saldo,
+   * este renglón pintaría un "− $120.000" encima de una cifra grande que no lo tiene
+   * adentro. El dueño suma la columna a mano: le sobrarían $120.000 y dejaría de creerle
+   * al desglose entero.
+   *
+   * Cuando la deuda existe pero NO está restada, no se pinta el renglón: se avisa. Ver
+   * `avisoDeLaDeuda`, que es lo que dice el papel.
+   */
+  readonly cobraSaldoAnterior = computed(() => {
+    const r = this.resultado();
+    if (!r) return false;
+    const anterior = centavos(r.saldo_anterior);
+    if (anterior <= 0) return false;
+    return centavos(r.valor_total) - centavos(r.anticipos) - anterior === centavos(r.saldo);
+  });
+
+  /** ¿El servidor dijo algo sobre deudas viejas en este avance (aunque haya dicho cero)? */
+  readonly servidorSabeDeLaDeuda = computed(() => {
+    const r = this.resultado();
+    return !!r && r.deuda_pendiente !== undefined && r.deuda_pendiente !== null;
+  });
+
+  /**
+   * LA DEUDA QUE EL SALDO ESTIMADO TODAVÍA NO TIENE RESTADA, en centavos enteros.
+   *
+   * Sale de `deuda_pendiente`, que es como la manda el servidor. Y de respaldo, de un
+   * `saldo_anterior` que llegó sin estar restado del saldo: es la misma plata con otro
+   * nombre, y callarla porque el campo se llama distinto sería dejar al dueño prometiendo
+   * una cifra que no va a pagar.
+   */
+  readonly deudaSinDescontar = computed(() => {
+    const r = this.resultado();
+    if (!r) return 0;
+    const pendiente = centavos(r.deuda_pendiente);
+    if (pendiente > 0) return pendiente;
+    const anterior = centavos(r.saldo_anterior);
+    return anterior > 0 && !this.cobraSaldoAnterior() ? anterior : 0;
+  });
+
+  /**
+   * EL AVISO DE LA DEUDA, PALABRA POR PALABRA COMO LO IMPRIME EL PDF DEL AVANCE.
+   *
+   * El texto no se inventa acá: es el del papel (`_aviso_de_la_deuda_que_falta_por_cobrar`
+   * en el backend), con la misma cifra de deuda y el mismo "saldo de verdad". El dueño
+   * manda el PDF mirando esta pantalla y el proveedor recibe el PDF: si la pantalla dice
+   * $250.000 y el papel dice que van a salir $130.000, el que queda mal es el dueño.
+   *
+   * Las dos ramas son las del papel: cuando después de la deuda todavía queda algo por
+   * pagarle, y cuando la deuda se come el saldo y el tercero sigue debiendo.
+   */
+  readonly avisoDeLaDeuda = computed(() => {
+    const r = this.resultado();
+    const deuda = this.deudaSinDescontar();
+    if (!r || deuda <= 0) return '';
+    const queda = centavos(r.saldo) - deuda;
+    const remate =
+      queda >= 0
+        ? `así que el saldo de verdad va a quedar en ${pesosDeCentavos(queda)} y no en el ` +
+          'SALDO ESTIMADO de arriba'
+        : 'así que no va a quedar saldo por pagarle: le seguiría quedando debiendo ' +
+          pesosDeCentavos(-queda);
+    return (
+      `AVISO: este avance TODAVÍA NO DESCUENTA lo que ${r.tercero_nombre} quedó debiendo ` +
+      `de quincenas anteriores (${pesosDeCentavos(deuda)}). Ese saldo se le cobra en el ` +
+      `momento de generar la liquidación oficial, ${remate}.`
+    );
+  });
 
   tipoLabel(): string {
     return this.form.controls.tipo.value === 'transportador' ? 'Transportador' : 'Proveedor';
@@ -411,14 +593,27 @@ export class PreLiquidacionDialog {
     const valorLinea = this.esProveedor()
       ? `Valor total: ${pesosExactos(r.valor_total)}`
       : `Transporte: ${pesosExactos(r.valor_transporte)}`;
+    // El renglón del saldo anterior solo si el avance lo trae RESTADO, y en el mismo lugar
+    // en que lo pinta la pantalla: entre los anticipos y el saldo. El mensaje se lo
+    // reenvían al tercero y tiene que poder cuadrarse igual que el papel, así que se guía
+    // por la misma condición que el renglón de la pantalla (que la columna cuadre).
+    const saldoAnterior = this.cobraSaldoAnterior()
+      ? `Lo que quedó debiendo de la quincena pasada: − ${pesosExactos(r.saldo_anterior)}\n`
+      : '';
+    // Y EL AVISO DE LA DEUDA VA TAMBIÉN EN EL MENSAJE, con las mismas palabras del papel.
+    // Este texto llega al MISMO proveedor que después recibe el PDF: si el mensaje promete
+    // $250.000 y el papel avisa $130.000, el dueño ya prometió de más por escrito.
+    const aviso = this.avisoDeLaDeuda() ? `\n\n${this.avisoDeLaDeuda()}` : '';
     const texto =
       `*Pre-liquidación de ${r.tercero_nombre}*\n` +
       `(avance preliminar, no oficial)\n` +
       `Período: ${fecha(r.periodo_inicio)} al ${fecha(r.periodo_fin)}\n` +
       `Total litros: ${litros.transform(r.total_litros, 'L', 2)}\n` +
       `${valorLinea}\n` +
-      `Anticipos: ${pesosExactos(r.anticipos)}\n` +
-      `Saldo estimado: ${pesosExactos(r.saldo)}`;
+      `Anticipos: − ${pesosExactos(r.anticipos)}\n` +
+      saldoAnterior +
+      `Saldo estimado: ${pesosExactos(r.saldo)}` +
+      aviso;
     compartirWhatsApp(texto);
   }
 

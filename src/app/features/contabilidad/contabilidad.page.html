@@ -303,6 +303,23 @@
                 <p class="valor negativo">{{ bal.liquidaciones_por_pagar | money }}</p>
               </mat-card-content>
             </mat-card>
+            <!--
+              LO QUE LOS TERCEROS LE QUEDARON DEBIENDO A LA QUESERA: aparte de la tarjeta
+              de arriba, y en el color de lo que ENTRA y no de lo que sale. Revuelta con
+              ella restaba —$130.000 por pagarle a uno y $120.000 que otro quedó debiendo
+              mostraban "$ 10.000 por pagar"— y son dos preguntas distintas. Esta plata no
+              hay que sacarla: se cobra descontándola de la próxima quincena del tercero.
+
+              Solo sale cuando hay alguna: en la mayoría de las queseras es cero.
+            -->
+            @if (n(bal.terceros_le_quedan_debiendo) > 0) {
+              <mat-card class="tarjeta-saldo">
+                <mat-card-content>
+                  <p class="etiqueta">Le quedaron debiendo</p>
+                  <p class="valor positivo">{{ bal.terceros_le_quedan_debiendo | money }}</p>
+                </mat-card-content>
+              </mat-card>
+            }
             <mat-card class="tarjeta-saldo">
               <mat-card-content>
                 <p class="etiqueta">Total disponible</p>

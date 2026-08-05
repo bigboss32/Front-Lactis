@@ -31,10 +31,17 @@ import { protegerCambios } from '../../shared/proteger-cambios';
           <mat-label>Descripción</mat-label>
           <textarea matInput formControlName="descripcion" rows="2"></textarea>
         </mat-form-field>
+        <!--
+          CON DECIMALES: el precio de referencia es POR KILO de queso, no un total,
+          y de ahí sale el valor de cada lote que se produce; el centavo se
+          multiplica por los kilos. El backend lo guarda en Numeric(12,2).
+        -->
         <mat-form-field class="full">
           <mat-label>Precio de referencia</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_referencia" required />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="precio_referencia" required />
           <span matTextPrefix>$&nbsp;</span>
+          <mat-hint>Por kilo. Se admite coma: 12.500,50</mat-hint>
         </mat-form-field>
       </form>
     </mat-dialog-content>

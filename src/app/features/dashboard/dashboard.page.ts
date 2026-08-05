@@ -105,6 +105,31 @@ export class DashboardPage implements OnInit {
         titulo: 'Liquidaciones por pagar', icono: 'request_quote', color: CHART_COLORS[7],
         valor: d.liquidaciones_por_pagar, tipo: 'money', link: '/liquidaciones',
       },
+      /*
+       * LO QUE LOS TERCEROS LE QUEDARON DEBIENDO A ÉL, en su propia tarjeta.
+       *
+       * Va aparte de la de arriba porque revuelta con ella RESTABA: $130.000 por pagarle
+       * a uno y $120.000 que otro quedó debiendo mostraban "$ 10.000 por pagar" cuando de
+       * la caja tienen que salir $130.000. Son dos preguntas y cada una tiene su cifra;
+       * la de arriba ahora suma solo los saldos positivos, igual que la tarjeta
+       * "Aprobadas por pagar" de la lista de liquidaciones.
+       *
+       * SOLO SALE CUANDO HAY ALGO: en la enorme mayoría de las queseras esta cifra es
+       * cero, y una tarjeta en $ 0 fija en el tablero le quita espacio a las que el dueño
+       * mira todos los días.
+       *
+       * En el mismo tono rojo que "Cartera pendiente" y no por casualidad: las dos son
+       * plata por COBRAR, no por pagar.
+       */
+      ...(Number(d.terceros_le_quedan_debiendo ?? 0) > 0
+        ? [
+            {
+              titulo: 'Le quedaron debiendo', icono: 'call_received', color: CHART_COLORS[3],
+              valor: d.terceros_le_quedan_debiendo as Monto, tipo: 'money' as const,
+              link: '/liquidaciones',
+            },
+          ]
+        : []),
       {
         titulo: 'Alertas no leídas', icono: 'notifications_active', color: CHART_COLORS[2],
         valor: d.alertas_no_leidas, tipo: 'numero', link: '/notificaciones',

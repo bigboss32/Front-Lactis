@@ -50,9 +50,12 @@ import { MovimientosInventarioService, TIPOS_MOVIMIENTO } from './inventario.ser
           <input matInput type="number" formControlName="cantidad" required />
           <mat-hint>En ajustes la cantidad puede ser negativa</mat-hint>
         </mat-form-field>
+        <!-- CON DECIMALES: mismo caso que el costo del producto, es el precio de UNA
+             unidad y de ahí sale el valor del movimiento. -->
         <mat-form-field>
           <mat-label>Costo unitario</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="costo_unitario" />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="costo_unitario" />
           <span matTextPrefix>$&nbsp;</span>
           <mat-hint>Si se deja en 0 se usa el costo del producto</mat-hint>
         </mat-form-field>

@@ -90,9 +90,12 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
             <span matTextSuffix>barras</span>
             <mat-hint>Barras completas: no acepta medias barras</mat-hint>
           </mat-form-field>
+          <!-- CON DECIMALES: es el precio de UNA barra y es lo que se le paga al
+               productor; el total a pagar sale de multiplicarlo. -->
           <mat-form-field>
             <mat-label>Precio por barra</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_barra" required />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="precio_barra" required />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
         } @else {
@@ -102,9 +105,12 @@ import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './r
             <span matTextSuffix>kg</span>
             <mat-hint>Lo que compras y pagas al productor</mat-hint>
           </mat-form-field>
+          <!-- CON DECIMALES: mismo caso, el precio de UN kilo de lo que se le compra
+               al productor. -->
           <mat-form-field>
             <mat-label>Precio por kilo</mat-label>
-            <input matInput type="text" inputmode="numeric" appMiles formControlName="precio_kilo" required />
+            <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                   formControlName="precio_kilo" required />
             <span matTextPrefix>$&nbsp;</span>
           </mat-form-field>
         }

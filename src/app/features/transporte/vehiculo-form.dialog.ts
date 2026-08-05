@@ -51,12 +51,16 @@ import { VehiculosService } from './vehiculos.service';
           <input matInput type="number" min="0" step="10" formControlName="capacidad_kg" />
           <span matTextSuffix>kg</span>
         </mat-form-field>
+        <!-- CON DECIMALES: es una TARIFA por kilo, la misma naturaleza que la del
+             transportador de leche ($242,76 el litro), y de ella salen todos los
+             fletes del vehículo. -->
         <mat-form-field>
           <mat-label>Tarifa por kilo</mat-label>
-          <input matInput type="text" inputmode="numeric" appMiles formControlName="tarifa_kilo" />
+          <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
+                 formControlName="tarifa_kilo" />
           <span matTextPrefix>$&nbsp;</span>
           <span matTextSuffix>/kg</span>
-          <mat-hint>Base de los fletes; editable por servicio</mat-hint>
+          <mat-hint>Base de los fletes; editable por servicio. Se admite coma</mat-hint>
         </mat-form-field>
         <mat-form-field>
           <mat-label>Odómetro actual</mat-label>
