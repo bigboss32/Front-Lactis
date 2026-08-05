@@ -84,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // cerrar el ciclo, esa pantalla muestra queso en bodega que ya no existe.
       { label: 'Cierre de ciclo', icon: 'event_repeat', route: '/produccion/ciclos', modulo: 'produccion' },
       { label: 'Inventario', icon: 'inventory_2', route: '/inventario', modulo: 'inventario' },
+      { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
     ],
   },
   {
@@ -124,7 +125,6 @@ export const NAV_GROUPS: NavGroup[] = [
     contraste: '#fff',
     icon: 'admin_panel_settings',
     items: [
-      { label: 'Empleados', icon: 'badge', route: '/empleados', modulo: 'empleados' },
       { label: 'Empresas', icon: 'business', route: '/empresas', modulo: 'empresas' },
       { label: 'Suscripción', icon: 'card_membership', route: '/suscripcion', modulo: 'suscripcion' },
       { label: 'Sucursales', icon: 'store', route: '/sucursales', modulo: 'sucursales' },
