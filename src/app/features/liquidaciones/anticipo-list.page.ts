@@ -23,6 +23,7 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { dateToIso } from '../../shared/date-utils';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { AnticipoFormDialog } from './anticipo-form.dialog';
 import { AnticiposService } from './anticipos.service';
@@ -140,9 +141,9 @@ export class AnticipoListPage implements OnInit {
   async cargar(): Promise<void> {
     this.cargando.set(true);
     try {
-      const search = this.buscar.value;
-      const desde = this.desde.value ? this.desde.value.toLocaleDateString('en-CA') : undefined;
-      const hasta = this.hasta.value ? this.hasta.value.toLocaleDateString('en-CA') : undefined;
+      const search = this.buscar.value || undefined;
+      const desde = dateToIso(this.desde.value) ?? undefined;
+      const hasta = dateToIso(this.hasta.value) ?? undefined;
       const params = { page: this.page(), page_size: this.pageSize(), search, desde, hasta };
       
       const [respuesta, suma] = await Promise.all([
