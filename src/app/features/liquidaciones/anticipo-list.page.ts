@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -19,8 +20,10 @@ import { Anticipo } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
+import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { MoneyPipe } from '../../shared/pipes';
+import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { AnticipoFormDialog } from './anticipo-form.dialog';
 import { AnticiposService } from './anticipos.service';
 
@@ -29,6 +32,7 @@ import { AnticiposService } from './anticipos.service';
   imports: [
     DatePipe, MatCardModule, MatTableModule, MatPaginatorModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule, MatInputModule, ReactiveFormsModule,
+    MatDatepickerModule, RangoFechasRapido,
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './anticipo-list.page.html',
@@ -45,6 +49,7 @@ export class AnticipoListPage implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly estadoFiltros = inject(EstadoFiltrosService);
 
   readonly columnas = ['beneficiario', 'fecha', 'valor', 'observaciones', 'aplicado', 'acciones'];
   readonly filas = signal<Anticipo[]>([]);
@@ -55,6 +60,8 @@ export class AnticipoListPage implements OnInit {
   readonly pageSize = signal(20);
 
   readonly buscar = new FormControl('', { nonNullable: true });
+  readonly desde = new FormControl<Date | null>(null);
+  readonly hasta = new FormControl<Date | null>(null);
 
   private readonly etiquetasTipo: Record<string, string> = {
     proveedor: 'Proveedor',
@@ -66,9 +73,16 @@ export class AnticipoListPage implements OnInit {
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
+    this.desde.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    this.hasta.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
   }
 
   ngOnInit(): void {
+    this.estadoFiltros.vincular(
+      'anticipos',
+      { buscar: this.buscar, desde: this.desde, hasta: this.hasta },
+      this.destroyRef,
+    );
     this.cargar();
   }
 
@@ -127,11 +141,13 @@ export class AnticipoListPage implements OnInit {
     this.cargando.set(true);
     try {
       const search = this.buscar.value;
-      const params = { page: this.page(), page_size: this.pageSize(), search };
+      const desde = this.desde.value ? this.desde.value.toLocaleDateString('en-CA') : undefined;
+      const hasta = this.hasta.value ? this.hasta.value.toLocaleDateString('en-CA') : undefined;
+      const params = { page: this.page(), page_size: this.pageSize(), search, desde, hasta };
       
       const [respuesta, suma] = await Promise.all([
         firstValueFrom(this.servicio.list(params)),
-        firstValueFrom(this.servicio.sumaTotales(search))
+        firstValueFrom(this.servicio.sumaTotales(search, undefined, desde, hasta))
       ]);
       
       this.filas.set(respuesta.items);

@@ -25,10 +25,12 @@ export class AnticiposService extends CrudService<Anticipo, AnticipoCreatePayloa
     super('/anticipos');
   }
 
-  sumaTotales(search?: string, estado?: string) {
+  sumaTotales(search?: string, estado?: string, desde?: string, hasta?: string) {
     const params: any = {};
     if (search) params.search = search;
     if (estado) params.estado = estado;
+    if (desde) params.desde = desde;
+    if (hasta) params.hasta = hasta;
     return this.api.get<number>(`${this.base}/totales/suma`, params);
   }
 }
