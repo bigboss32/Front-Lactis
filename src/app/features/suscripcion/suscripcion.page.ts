@@ -97,7 +97,7 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
               @if (consultando()) {
                 <app-spinner-boton /> Consultando…
               } @else {
-                <mat-icon>sync</mat-icon> Ya pagué, actualizar
+                <ng-container><mat-icon>sync</mat-icon> Ya pagué, actualizar</ng-container>
               }
             </button>
           </div>
@@ -168,7 +168,7 @@ import { TarjetaFormDialog } from './tarjeta-form.dialog';
                       @if (consultando()) {
                         <app-spinner-boton /> Consultando…
                       } @else {
-                        <mat-icon>sync</mat-icon> Actualizar estado
+                        <ng-container><mat-icon>sync</mat-icon> Actualizar estado</ng-container>
                       }
                     </button>
                   }

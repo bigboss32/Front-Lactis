@@ -29,6 +29,6 @@ export class AnticiposService extends CrudService<Anticipo, AnticipoCreatePayloa
     const params: any = {};
     if (search) params.search = search;
     if (estado) params.estado = estado;
-    return this.http.get<number>(`${this.path}/totales/suma`, { params });
+    return this.api.get<number>(`${this.base}/totales/suma`, params);
   }
 }

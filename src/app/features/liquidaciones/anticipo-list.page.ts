@@ -126,7 +126,7 @@ export class AnticipoListPage implements OnInit {
   async cargar(): Promise<void> {
     this.cargando.set(true);
     try {
-      const search = this.buscar.value();
+      const search = this.buscar.value;
       const params = { page: this.page(), page_size: this.pageSize(), search };
       
       const [respuesta, suma] = await Promise.all([
@@ -136,7 +136,7 @@ export class AnticipoListPage implements OnInit {
       
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
-      this.sumaTotal.set(suma);
+      this.sumaTotal.set(suma ?? 0);
     } finally {
       this.cargando.set(false);
     }
