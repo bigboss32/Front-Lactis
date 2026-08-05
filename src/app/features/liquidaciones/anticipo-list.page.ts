@@ -1,15 +1,18 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { firstValueFrom } from 'rxjs';
+import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Anticipo } from '../../core/models';
@@ -25,7 +28,7 @@ import { AnticiposService } from './anticipos.service';
   selector: 'app-anticipo-list',
   imports: [
     DatePipe, MatCardModule, MatTableModule, MatPaginatorModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, MatInputModule, ReactiveFormsModule,
     PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
   ],
   templateUrl: './anticipo-list.page.html',
@@ -41,19 +44,29 @@ export class AnticipoListPage implements OnInit {
   private readonly servicio = inject(AnticiposService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly columnas = ['beneficiario', 'fecha', 'valor', 'observaciones', 'aplicado', 'acciones'];
   readonly filas = signal<Anticipo[]>([]);
   readonly total = signal(0);
+  readonly sumaTotal = signal(0);
   readonly cargando = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(20);
+
+  readonly buscar = new FormControl('', { nonNullable: true });
 
   private readonly etiquetasTipo: Record<string, string> = {
     proveedor: 'Proveedor',
     transportador: 'Transportador',
     empleado: 'Empleado',
   };
+
+  constructor() {
+    this.buscar.valueChanges
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.recargar());
+  }
 
   ngOnInit(): void {
     this.cargar();
@@ -105,14 +118,25 @@ export class AnticipoListPage implements OnInit {
     );
   }
 
+  recargar(): void {
+    this.page.set(1);
+    this.cargar();
+  }
+
   async cargar(): Promise<void> {
     this.cargando.set(true);
     try {
-      const respuesta = await firstValueFrom(
-        this.servicio.list({ page: this.page(), page_size: this.pageSize() }),
-      );
+      const search = this.buscar.value();
+      const params = { page: this.page(), page_size: this.pageSize(), search };
+      
+      const [respuesta, suma] = await Promise.all([
+        firstValueFrom(this.servicio.list(params)),
+        firstValueFrom(this.servicio.sumaTotales(search))
+      ]);
+      
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
+      this.sumaTotal.set(suma);
     } finally {
       this.cargando.set(false);
     }

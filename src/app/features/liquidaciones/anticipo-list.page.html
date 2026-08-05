@@ -3,10 +3,32 @@
     titulo="Anticipos"
     subtitulo="Anticipos entregados a proveedores; se descuentan en su próxima liquidación"
   >
+  </app-page-header>
+
+  <div class="page-toolbar">
+    <mat-form-field subscriptSizing="dynamic">
+      <mat-label>Buscar beneficiario</mat-label>
+      <input matInput [formControl]="buscar" placeholder="Ej. Yeferson" />
+      @if (buscar.value) {
+        <button matSuffix mat-icon-button aria-label="Limpiar" (click)="buscar.setValue('')">
+          <mat-icon>close</mat-icon>
+        </button>
+      } @else {
+        <mat-icon matSuffix>search</mat-icon>
+      }
+    </mat-form-field>
+    
+    <span class="spacer"></span>
+    
+    <div style="margin-right: 16px; display: flex; align-items: center; gap: 8px;">
+      <span style="color: var(--mat-sys-on-surface-variant)">Total anticipos:</span>
+      <span class="num" style="font-weight: 500">{{ sumaTotal() | money }}</span>
+    </div>
+
     <button mat-flat-button *hasPermission="'liquidaciones:crear'" (click)="abrirFormulario()">
       <mat-icon>add</mat-icon> Nuevo anticipo
     </button>
-  </app-page-header>
+  </div>
 
   <mat-card class="table-card tarjetas">
     @if (cargando()) {
