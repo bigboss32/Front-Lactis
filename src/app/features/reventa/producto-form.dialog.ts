@@ -125,16 +125,28 @@ interface OpcionPadre {
             </span>
           </p>
         } @else {
+          <!--
+            LA PREGUNTA NO DICE "SUBPRODUCTO", y no es cosmética: el dueño marcó un
+            queso costeño —que él COMPRA y PAGA— como "subproducto de Queso", y con
+            eso el reparto de costos lo habría tratado como llegado de regalo, con
+            costo cero, mostrándole una ganancia inflada al venderlo. "Subproducto" es
+            jerga; lo único que él puede contestar sin equivocarse es si pagó por eso
+            o si le llegó encima de otra cosa. La explicación que sí lo aclaraba
+            estaba en el mat-hint, o sea en la letra chica que nadie lee.
+          -->
           <mat-form-field class="ancho">
-            <mat-label>¿Es un subproducto de otro?</mat-label>
+            <mat-label>¿Usted paga por este producto?</mat-label>
             <mat-select formControlName="subproducto_de_id">
-              <mat-option [value]="null">No, es un producto por su cuenta</mat-option>
+              <mat-option [value]="null">Sí, este lo compro y lo pago</mat-option>
               @for (padre of padres(); track padre.id) {
-                <mat-option [value]="padre.id">Sí, de {{ padre.nombre }}</mat-option>
+                <mat-option [value]="padre.id">
+                  No, me llega junto con {{ padre.nombre }} y no lo pago aparte
+                </mat-option>
               }
             </mat-select>
             <mat-hint>
-              Como la borona, que sale del queso: hereda su costo y no se paga aparte.
+              Es el caso de la borona: llega con el queso, no se paga, y su costo sale
+              del queso. Si usted le paga al productor por este producto, escoja «Sí».
             </mat-hint>
           </mat-form-field>
         }

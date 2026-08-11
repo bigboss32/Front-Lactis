@@ -171,13 +171,18 @@ describe('ReventaProductoFormDialog: tres preguntas', () => {
   };
 
   // ------------------------------------------------------- las tres preguntas
-  it('pregunta el nombre, cómo se mide y de quién es subproducto: nada más', async () => {
+  it('pregunta el nombre, cómo se mide y si lo paga: nada más', async () => {
     await armar(undefined, [QUESO, BORONA, MOZZARELLA]);
 
     // DOS campos y un par de botones. Ni clave, ni decimales, ni "admite ajustes":
     // los deduce el servidor de estas respuestas.
     expect(fixture.nativeElement.querySelectorAll('mat-form-field').length).toBe(2);
-    expect(rotulos()).toEqual(['¿Cómo se llama?', '¿Es un subproducto de otro?']);
+    // La tercera pregunta NO dice "subproducto": el dueño marcó un queso que él
+    // compra como "subproducto de Queso" y eso lo habría dejado con costo cero y
+    // una ganancia inflada. Se pregunta lo único que él puede contestar sin
+    // equivocarse: si paga por eso o si le llega encima de otra cosa.
+    expect(rotulos()).toEqual(['¿Cómo se llama?', '¿Usted paga por este producto?']);
+    expect(textoPantalla()).not.toContain('¿Es un subproducto de otro?');
     expect(textoPantalla()).toContain('¿Cómo lo mide?');
     expect(opcionesDeUnidad().length).toBe(2);
     const texto = textoPantalla();
@@ -221,8 +226,8 @@ describe('ReventaProductoFormDialog: tres preguntas', () => {
     await estabilizar();
 
     expect(opcionesDelSelector()).toEqual([
-      'No, es un producto por su cuenta',
-      'Sí, de Queso',
+      'Sí, este lo compro y lo pago',
+      'No, me llega junto con Queso y no lo pago aparte',
     ]);
   });
 
@@ -234,7 +239,7 @@ describe('ReventaProductoFormDialog: tres preguntas', () => {
     fixture.nativeElement.querySelector('.mat-mdc-select-trigger').click();
     await estabilizar();
 
-    expect(opcionesDelSelector()).toEqual(['No, es un producto por su cuenta']);
+    expect(opcionesDelSelector()).toEqual(['Sí, este lo compro y lo pago']);
   });
 
   it('el padre que YA tiene se sigue viendo aunque esté desactivado', async () => {
@@ -247,8 +252,8 @@ describe('ReventaProductoFormDialog: tres preguntas', () => {
     await estabilizar();
 
     expect(opcionesDelSelector()).toEqual([
-      'No, es un producto por su cuenta',
-      'Sí, de Queso',
+      'Sí, este lo compro y lo pago',
+      'No, me llega junto con Queso y no lo pago aparte',
     ]);
     expect(dialogo.form.getRawValue().subproducto_de_id).toBe('p-1');
   });
