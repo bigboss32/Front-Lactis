@@ -8,12 +8,32 @@ import { AuthService } from '../../core/auth/auth.service';
 import { Page } from '../../core/models';
 import { DocumentoReventaListTab } from './documento-list.tab';
 import {
+  CatalogoReventaService,
   CompraQueso,
   DocumentoCompra,
   DocumentoVenta,
+  ProductoReventa,
   ReventaService,
   VentaQueso,
 } from './reventa.service';
+
+/**
+ * EL CATÁLOGO, DE MENTIRAS PERO CON LA FORMA DE VERDAD: la lista rotula cada renglón
+ * con el NOMBRE que el dueño le puso, no con la clave interna. Un producto que no
+ * esté aquí sale con su clave, que es lo único cierto que se sabe de él.
+ */
+const CATALOGO: ProductoReventa[] = [
+  { nombre: 'Queso', clave: 'queso', unidad: 'kg', se_pesa: true },
+  { nombre: 'Borona', clave: 'borona', unidad: 'kg', se_pesa: true },
+  { nombre: 'Mozzarella', clave: 'mozzarella', unidad: 'unidad', se_pesa: false },
+].map((p, i) => ({ ...p, id: `p-${i}`, estado: 'activo' }) as ProductoReventa);
+
+class CatalogoFalso {
+  catalogo(): Observable<readonly ProductoReventa[]> {
+    return of(CATALOGO);
+  }
+  refrescar(): void {}
+}
 
 /**
  * LA LISTA DE FACTURAS: UNA FACTURA ES UNA FILA.
@@ -274,6 +294,7 @@ describe('DocumentoReventaListTab: una factura es una fila', () => {
       imports: [DocumentoReventaListTab, NoopAnimationsModule],
       providers: [
         { provide: ReventaService, useValue: servicio },
+        { provide: CatalogoReventaService, useValue: new CatalogoFalso() },
         { provide: MatSnackBar, useValue: { open: () => ({ onAction: () => EMPTY }) } },
         { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(null) }) } },
         {

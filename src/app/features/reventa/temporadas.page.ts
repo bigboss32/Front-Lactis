@@ -126,9 +126,13 @@ function n(valor: Monto | null | undefined): number {
             <div class="total">
               <span class="rotulo">Vendido</span>
               <span class="cifra chica">{{ p.total_ventas | money }}</span>
-              <span class="detalle">
-                {{ barrasVendidas() > 0 ? 'queso, borona y mozzarella' : 'queso y borona' }}
-              </span>
+              <!-- QUÉ HAY ADENTRO DE ESTA PLATA: todo lo vendido, de todos los
+                   productos y de las dos clases de unidad, porque los pesos son
+                   pesos. El texto ya no los enumera: la lista de productos es del
+                   dueño y puede crecer, y una enumeración escrita aquí dejaría por
+                   fuera —callándolo— lo que él agregue. El desglose producto por
+                   producto está en el Resumen. -->
+              <span class="detalle">todos sus productos</span>
             </div>
             @if (p.mejor && p.temporadas.length > 1) {
               <div class="total">
@@ -268,7 +272,9 @@ function n(valor: Monto | null | undefined): number {
                       <dd>{{ t.kilos_comprados | cantidad: 'kg' }}</dd>
                     </div>
                     <div>
-                      <dt>Vendido como queso</dt>
+                      <!-- "Vendido" y ya no "Vendido como queso": suma lo vendido de
+                           todos los productos que se pesan y no son subproducto. -->
+                      <dt>Vendido</dt>
                       <dd>{{ t.kilos_vendidos | cantidad: 'kg' }}</dd>
                     </div>
                     @if (n(t.kilos_borona_vendidos) > 0) {

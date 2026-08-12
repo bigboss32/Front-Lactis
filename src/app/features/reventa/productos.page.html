@@ -28,10 +28,11 @@
        regla que decide qué se puede hacer con cada producto; el segundo, que el
        calendario de la cáscara no tiene nada que ver con esta lista. -->
   <p class="ayuda">
-    Esta es la lista de lo que usted compra y revende. El nombre se puede cambiar
-    cuando quiera. Un producto que ya tenga compras o ventas no se puede quitar: se
-    <strong>desactiva</strong>, deja de ofrecerse al registrar y su historia se queda
-    completa.
+    Esta es la lista de lo que usted compra y revende, y es <strong>la misma que se
+    ofrece al registrar</strong> una compra o una venta: lo que agregue aquí aparece
+    allá de una vez. El nombre se puede cambiar cuando quiera. Un producto que ya
+    tenga compras o ventas no se puede quitar: se <strong>desactiva</strong>, deja de
+    ofrecerse al registrar y su historia se queda completa.
   </p>
   <p class="ayuda fina">
     Los días marcados arriba no recortan esta lista: el catálogo no tiene fechas.
@@ -79,7 +80,7 @@
         </ng-container>
 
         <!-- NO es la cuenta de movimientos (el servidor no la da en el listado):
-             es si el producto ya se ofrece al registrar. Ver el comentario del
+             es si el producto se ofrece al registrar. Ver el comentario del
              componente. -->
         <ng-container matColumnDef="registro">
           <th mat-header-cell *matHeaderCellDef>¿Ya se registra?</th>
@@ -89,7 +90,7 @@
             } @else {
               <span
                 class="aun-no"
-                matTooltip="Queda guardado en la lista. Empieza a ofrecerse al registrar compras y ventas en la siguiente entrega."
+                matTooltip="Usted lo desactivó: no se ofrece al registrar compras ni ventas, y lo que ya tenga registrado sigue completo. Se vuelve a ofrecer con el botón del ojo."
               >
                 {{ registro(fila).texto }}
               </span>
@@ -180,13 +181,13 @@
     />
   </mat-card>
 
-  <!-- La verdad de este corte, y solo cuando hace falta: si el dueño todavía no ha
-       agregado nada, la nota explicaría algo que no le pasó. -->
-  @if (hayProductosNuevos()) {
+  <!-- Solo cuando hace falta: si no hay ninguno desactivado, la nota explicaría algo
+       que no le pasó. -->
+  @if (hayDesactivados()) {
     <p class="ayuda fina">
-      Los productos marcados «Todavía no» quedan guardados en la lista, pero al
-      registrar una compra o una venta se siguen ofreciendo el queso, la borona y la
-      mozzarella. Los demás empiezan a ofrecerse en la siguiente entrega.
+      Los productos marcados «No: está desactivado» no se ofrecen al registrar una
+      compra ni una venta. Lo que ya esté registrado con ellos sigue completo y sigue
+      contando en el resumen; para volver a ofrecerlos, use el botón del ojo.
     </p>
   }
 </div>

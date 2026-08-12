@@ -9,26 +9,50 @@ import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { BarrasPipe, CantidadPipe, EnUnidadPipe, MoneyPipe } from '../../shared/pipes';
 import { ReventaFiltroService } from './reventa-filtro.service';
 import {
+  ExistenciaProducto,
   GananciaProducto,
   GananciaProductor,
   ResumenReventa,
   ReventaService,
+  Unidad,
+  claveBaseDeFila,
+  esDeInventarioAnterior,
+  esFilaSinVenta,
+  piezaDe,
 } from './reventa.service';
+
+/**
+ * Los colores de las tarjetas de inventario, en ciclo.
+ *
+ * El orden es el de siempre —el queso azul, la borona ámbar, la mozzarella verde—
+ * porque las tarjetas salen en el orden del catálogo y ese es el orden en que el
+ * cliente los tiene. Un producto que él agregue toma el siguiente color; lo que no
+ * puede pasar es que dos tarjetas seguidas se vean iguales.
+ */
+const COLORES_TARJETA = ['azul', 'ambar', 'verde'];
 
 /**
  * Tablero del negocio de reventa: indicador de temporada, tarjetas y desglose.
  *
- * DOS UNIDADES EN LA MISMA PANTALLA, Y NUNCA SUMADAS. El queso y la borona se
- * miden en kilos y la mozzarella en barras; "20 kg + 8 barras" no es un número, así
- * que aquí no hay ni puede haber una tarjeta, un total ni una gráfica que las
- * junte. La mozzarella tiene su propia tarjeta, sus propios renglones del desglose
- * y su propia columna, y la dona de "¿dónde está el queso?" solo grafica kilos (ver
- * `filasDona`). La PLATA sí se suma: los pesos son pesos, vengan de kilos o de
- * barras, y por eso la ganancia del período es una sola cifra.
+ * UNA FILA POR PRODUCTO, Y NINGUNA ESCRITA EN EL CÓDIGO. El inventario, el desglose
+ * de la ganancia y los chips de "qué falta para cerrar" salen del catálogo del dueño,
+ * que es lo que manda el backend en `existencias` y en `por_producto`. Antes eran
+ * tres tarjetas y unas filas fijas con los nombres adentro (queso, borona y
+ * mozzarella), así que un producto que él agregara —ya agregó "costeño"— no aparecía
+ * en ninguna parte de esta pantalla: ni su mercancía, ni su plata, ni su ganancia.
  *
- * Todo lo de la mozzarella aparece SOLO si hay mozzarella en el negocio (ver
- * `hayMozzarella`): para el cliente que hoy trabaja puro queso, la pantalla queda
- * exactamente como estaba.
+ * DOS CLASES DE UNIDAD, Y NUNCA SUMADAS. Lo que se pesa va en kilos y lo que se
+ * cuenta va en piezas; "20 kg + 8 barras" no es un número, así que aquí no hay ni
+ * puede haber una tarjeta, un total ni una gráfica que las junte, y la dona de
+ * "¿dónde está el queso?" solo grafica kilos (ver `filasDona`). La PLATA sí se suma:
+ * los pesos son pesos, vengan de kilos o de piezas, y por eso la ganancia del período
+ * es una sola cifra.
+ *
+ * Y LA REGLA QUE MANDA SOBRE TODAS: el desglose SUMA EXACTO el encabezado. Las cuatro
+ * columnas (costo, ingreso, gastos, ganancia) suman las cuatro cifras grandes sin un
+ * centavo de diferencia —el backend lo garantiza por construcción y saca aparte, en
+ * una fila 'sin_producto', cualquier peso que no quepa—, así que esta pantalla no
+ * puede esconder una fila con plata. Ver `filasProducto`.
  */
 @Component({
   selector: 'app-reventa-resumen',
@@ -47,7 +71,8 @@ import {
           <mat-icon aria-hidden="true">check_circle</mat-icon>
           <span>
             <strong>Temporada al día.</strong>
-            Sin queso ni mozzarella pendientes, ni cobros ni pagos: puedes arrancar una nueva.
+            Sin mercancía pendiente de ningún producto, ni cobros ni pagos: puedes arrancar una
+            nueva.
           </span>
         </div>
       } @else if (soloFaltaLibroAnterior(r)) {
@@ -74,15 +99,16 @@ import {
           <mat-icon aria-hidden="true">pending_actions</mat-icon>
           <span>
             <strong>Para cerrar la temporada falta:</strong>
-            @if (esPositivo(r.kilos_disponibles)) {
-              <span class="chip">vender o pasar a merma {{ r.kilos_disponibles | cantidad: 'kg' }}</span>
-            }
-            <!-- Las barras pendientes van en SU PROPIO chip. Sin esto la pantalla
-                 decía "Temporada al día" con mozzarella todavía en la bodega, que
-                 es la clase de mentira que este trabajo tiene que evitar. Y son dos
-                 chips y no uno sumado: no se pueden juntar. -->
-            @if (esPositivo(r.barras_disponibles)) {
-              <span class="chip">vender {{ r.barras_disponibles | barras }} de mozzarella</span>
+            <!-- UN CHIP POR PRODUCTO CON MERCANCÍA, cada uno en su unidad y NUNCA
+                 sumados entre sí: "20 kg + 8 barras" no es un número. Antes eran dos
+                 chips fijos —el queso y la mozzarella—, así que un producto que el
+                 dueño agregara podía tener la bodega llena y la pantalla decía
+                 "Temporada al día. Puedes arrancar una nueva". -->
+            @for (existencia of conMercancia(); track existencia.producto) {
+              <span class="chip">
+                vender {{ existencia.disponible | enUnidad: unidadDeExistencia(existencia) }}
+                de {{ existencia.etiqueta }}
+              </span>
             }
             @if (esPositivo(r.por_cobrar_clientes)) {
               <span class="chip">
@@ -105,42 +131,31 @@ import {
       }
 
       <div class="resumen-grid">
-        <div class="tarjeta azul">
-          <span class="icono"><mat-icon aria-hidden="true">inventory_2</mat-icon></span>
-          <span class="textos">
-            <span class="cifra">{{ r.kilos_disponibles | cantidad: 'kg' }}</span>
-            <span class="titulo">Queso disponible</span>
-          </span>
-        </div>
-
-        <div class="tarjeta ambar">
-          <span class="icono"><mat-icon aria-hidden="true">grain</mat-icon></span>
-          <span class="textos">
-            <span class="cifra">{{ r.borona_disponible | cantidad: 'kg' }}</span>
-            <span class="titulo">Borona disponible</span>
-            <span class="detalle">
-              vendida en el período: {{ r.kilos_borona_vendidos | cantidad: 'kg' }} ·
-              {{ r.total_ventas_borona | money }}
+        <!-- UNA TARJETA DE INVENTARIO POR PRODUCTO, cada una en SU unidad y ninguna
+             sumada con otra: kilos con kilos y piezas con piezas. Antes eran tres
+             tarjetas fijas (queso, borona y mozzarella) y la mercancía de cualquier
+             producto que el dueño agregara no aparecía en ninguna pantalla. Salen
+             todas, aunque estén en cero, porque "no hay" es una respuesta que él
+             necesita ver. -->
+        @for (existencia of existencias(); track existencia.producto; let i = $index) {
+          <div class="tarjeta {{ colorDeTarjeta(i) }}">
+            <span class="icono">
+              <mat-icon aria-hidden="true">
+                {{ existencia.unidad === 'kg' ? 'inventory_2' : 'view_in_ar' }}
+              </mat-icon>
             </span>
-          </span>
-        </div>
-
-        <!-- LA MOZZARELLA TIENE SU PROPIA TARJETA, con su propia unidad, y NUNCA
-             entra en "Queso disponible" ni en "Borona disponible": el dueño mira
-             esas dos para saber cuántos kilos le quedan por vender, y unas barras
-             metidas ahí lo mandarían a buscar en la bodega un queso que no existe.
-             Solo aparece si hay mozzarella en el negocio: para un cliente de puro
-             queso, la pantalla queda igual que siempre. -->
-        @if (hayMozzarella(r)) {
-          <div class="tarjeta verde">
-            <span class="icono"><mat-icon aria-hidden="true">view_in_ar</mat-icon></span>
             <span class="textos">
-              <span class="cifra">{{ r.barras_disponibles | barras }}</span>
-              <span class="titulo">Mozzarella disponible</span>
-              <span class="detalle">
-                vendidas en el período: {{ r.barras_vendidas | barras }} ·
-                {{ r.total_ventas_mozzarella | money }}
+              <span class="cifra">
+                {{ existencia.disponible | enUnidad: unidadDeExistencia(existencia) }}
               </span>
+              <span class="titulo">{{ existencia.etiqueta }} disponible</span>
+              @if (vendidoDelPeriodo(existencia); as vendido) {
+                <span class="detalle">
+                  vendido en el período:
+                  {{ vendidosDe(vendido) | enUnidad: unidadDeFila(vendido) }} ·
+                  {{ vendido.ingreso | money }}
+                </span>
+              }
             </span>
           </div>
         }
@@ -195,16 +210,19 @@ import {
       </div>
 
       <div class="desglose">
-        <!-- OJO CON ESTAS DOS CIFRAS JUNTAS: la cantidad es SOLO de kilos y la
-             plata es la de TODO el período (kilos + barras). Cuando hay
-             mozzarella eso se lee mal —"211 kg · $11.016.579" invita a dividir y
-             sacar un precio por kilo que no existe—, así que la plata se parte en
-             dos renglones y cada uno queda al lado de su propia cantidad. Sin
-             mozzarella se muestra igual que siempre. -->
+        <!-- CADA CIFRA DE PLATA AL LADO DE SU PROPIA CANTIDAD, y nunca una plata que
+             lleve adentro la de otra unidad: "211 kg · $11.016.579" invita a dividir
+             y a sacar un precio por kilo que no existe.
+
+             La plata de estas dos primeras baldosas se SUMA DE LAS FILAS EN KILOS del
+             desglose de abajo (ver plataDeLosKilos). Antes era una resta —el total
+             menos el pedazo de la mozzarella—, y esa resta dejó de ser cierta el día
+             que el catálogo permitió un segundo producto por unidad: la plata de las
+             panelas se quedaba sumada dentro de una cifra rotulada "en kilos". -->
         <div class="dato">
-          <span class="etq">Comprado{{ hayMozzarella(r) ? ' (queso)' : '' }}</span>
+          <span class="etq">Comprado (en kilos)</span>
           <span class="val">
-            {{ r.kilos_comprados | cantidad: 'kg' }} · {{ compradoEnKilos(r) | money }}
+            {{ r.kilos_comprados | cantidad: 'kg' }} · {{ compradoEnKilos() | money }}
           </span>
           <span class="sub">{{ r.precio_promedio_compra | money }}/kg promedio</span>
         </div>
@@ -218,11 +236,13 @@ import {
           </div>
         }
         <div class="dato">
-          <span class="etq">Vendido (queso)</span>
+          <span class="etq">Vendido (en kilos)</span>
           <span class="val">
-            {{ r.kilos_vendidos | cantidad: 'kg' }} · {{ vendidoEnKilos(r) | money }}
+            {{ kilosVendidosTotales() | cantidad: 'kg' }} · {{ vendidoEnKilos() | money }}
           </span>
-          <span class="sub">{{ r.precio_promedio_venta | money }}/kg promedio</span>
+          <span class="sub">
+            {{ r.precio_promedio_venta | money }}/kg promedio, sin los subproductos
+          </span>
         </div>
         @if (hayMozzarella(r)) {
           <div class="dato">
@@ -321,10 +341,10 @@ import {
                         <span class="nota">{{ fila.nota }}</span>
                       </td>
                       <td>
-                        {{ cantidadDe(fila) | enUnidad: fila.unidad }}
+                        {{ cantidadDe(fila) | enUnidad: unidadDeFila(fila) }}
                         @if (vendidosDistintos(fila)) {
                           <span class="nota">
-                            vendidos: {{ vendidosDe(fila) | enUnidad: fila.unidad }}
+                            vendidos: {{ vendidosDe(fila) | enUnidad: unidadDeFila(fila) }}
                           </span>
                         }
                       </td>
@@ -782,32 +802,122 @@ export class ReventaResumenPage {
   }
 
   /**
-   * La plata de las compras EN KILOS: al total se le quita el pedazo de la
-   * mozzarella. Sirve para dejar cada cifra de plata al lado de su propia cantidad
-   * en el desglose; sin mozzarella devuelve el total de siempre.
+   * LA PLATA DE LO QUE SE PESA, sumada de las filas del desglose que están en kilos.
+   *
+   * ANTES ERA UNA RESTA —"el total menos el pedazo de la mozzarella"— y esa resta
+   * dejó de ser cierta el día que el catálogo permitió un segundo producto por
+   * unidad: la plata de las panelas no es de la mozzarella, así que se quedaba
+   * sumada dentro de una cifra rotulada "en kilos". Sumando las filas de kilos del
+   * desglose la cifra es exacta por construcción y sigue siendo la misma de siempre
+   * en un negocio de queso, borona y mozzarella.
    */
-  compradoEnKilos(r: ResumenReventa): number {
-    return this.monto(r.total_compras) - this.monto(r.total_compras_mozzarella);
+  private plataDeLosKilos(campo: 'costo' | 'ingreso'): number {
+    return (
+      (this.resumen()?.por_producto ?? [])
+        // La fila de la red de seguridad NO entra: es plata que no se pudo clasificar
+        // en ningún producto, y decir que es "en kilos" sería justamente clasificarla
+        // a dedo. Llega marcada en kilos porque el backend arma esa fila con el
+        // constructor de las de kilos, no porque se sepa que lo sea. No desaparece de
+        // ninguna parte: sale entera en su propia fila del desglose de abajo, que es
+        // el que suma el encabezado.
+        .filter((fila) => fila.unidad === 'kg' && fila.producto !== 'sin_producto')
+        .reduce((suma, fila) => suma + this.monto(fila[campo]), 0)
+    );
   }
 
-  /** Lo mismo del lado de las ventas: queso + borona, sin la mozzarella. */
-  vendidoEnKilos(r: ResumenReventa): number {
-    return this.monto(r.total_ventas) - this.monto(r.total_ventas_mozzarella);
+  compradoEnKilos(): number {
+    return this.plataDeLosKilos('costo');
+  }
+
+  vendidoEnKilos(): number {
+    return this.plataDeLosKilos('ingreso');
   }
 
   /**
-   * Temporada al día: sin mercancía pendiente EN NINGUNA DE LAS DOS UNIDADES y sin
-   * cobros ni pagos.
+   * TODOS LOS KILOS VENDIDOS del período: los de los productos que se compran más los
+   * de los subproductos.
    *
-   * Las barras son una condición aparte y no una suma con los kilos: son dos
-   * inventarios distintos. Sin la condición de las barras, la pantalla decía
-   * "Temporada al día. Puedes arrancar una nueva" con mozzarella todavía en la
-   * bodega.
+   * Va al lado de la plata de las ventas en kilos, que también los incluye a los dos.
+   * Con `kilos_vendidos` a secas —que deja por fuera los subproductos— la baldosa
+   * mostraba una cantidad más chica que la plata que tenía al lado, y dividir a mano
+   * daba un precio por kilo inflado.
+   */
+  kilosVendidosTotales(): number {
+    const r = this.resumen();
+    return r ? this.monto(r.kilos_vendidos) + this.monto(r.kilos_borona_vendidos) : 0;
+  }
+
+  /**
+   * EL INVENTARIO, PRODUCTO POR PRODUCTO Y CADA UNO EN SU UNIDAD.
+   *
+   * Es la lista `existencias` del backend, que trae una fila por producto del
+   * catálogo —aunque esté en cero, porque "no hay" es una respuesta— más cualquier
+   * producto que aparezca en los movimientos sin estar en el catálogo.
+   *
+   * SI EL BACKEND TODAVÍA NO LA MANDA se arman los tres de siempre con los tres
+   * campos de siempre, que dicen exactamente lo mismo: así esta pantalla sirve con
+   * las dos versiones del servidor y se ve igual que antes mientras llega la nueva.
+   */
+  readonly existencias = computed<ExistenciaProducto[]>(() => {
+    const r = this.resumen();
+    if (!r) return [];
+    if (r.existencias?.length) return r.existencias;
+    const deSiempre: ExistenciaProducto[] = [
+      { producto: 'queso', etiqueta: 'Queso', unidad: 'kg', disponible: r.kilos_disponibles },
+      { producto: 'borona', etiqueta: 'Borona', unidad: 'kg', disponible: r.borona_disponible },
+    ];
+    if (this.hayMozzarella(r)) {
+      deSiempre.push({
+        producto: 'mozzarella',
+        etiqueta: 'Mozzarella',
+        unidad: 'unidad',
+        disponible: r.barras_disponibles,
+      });
+    }
+    return deSiempre;
+  });
+
+  /** 'kg', 'barra' o 'unidad': cómo se rotula la cantidad de ese producto. */
+  unidadDeExistencia(fila: ExistenciaProducto): Unidad {
+    return fila.unidad === 'kg' ? 'kg' : piezaDe(fila.producto);
+  }
+
+  /** Los productos que TIENEN mercancía en bodega: los que faltan por mover. */
+  readonly conMercancia = computed<ExistenciaProducto[]>(() =>
+    this.existencias().filter((fila) => this.esPositivo(fila.disponible)),
+  );
+
+  /**
+   * Lo que se vendió de ESE producto en el período, sacado de su fila del desglose.
+   * Nulo cuando el producto no tuvo ventas: entonces la tarjeta no dice nada, en vez
+   * de estrenar un "vendido: 0" que no aporta.
+   */
+  vendidoDelPeriodo(fila: ExistenciaProducto): GananciaProducto | null {
+    const suya = (this.resumen()?.por_producto ?? []).find(
+      (f) => f.producto === fila.producto,
+    );
+    if (!suya) return null;
+    return Number(this.vendidosDe(suya)) !== 0 || Number(suya.ingreso) !== 0 ? suya : null;
+  }
+
+  /** El color de la tarjeta de inventario: los mismos tres de siempre, en ciclo. */
+  colorDeTarjeta(indice: number): string {
+    return COLORES_TARJETA[indice % COLORES_TARJETA.length];
+  }
+
+  /**
+   * Temporada al día: sin mercancía pendiente DE NINGÚN PRODUCTO y sin cobros ni
+   * pagos.
+   *
+   * MIRA TODOS LOS PRODUCTOS, uno por uno y cada uno en su unidad, y no las dos
+   * cifras de siempre. Preguntando solo por el queso y por la mozzarella, la
+   * pantalla decía "Temporada al día. Puedes arrancar una nueva" con la bodega
+   * llena de un producto que el dueño agregó él mismo — que es exactamente la
+   * mentira que ya se había arreglado una vez para la mozzarella.
    */
   temporadaAlDia(r: ResumenReventa): boolean {
     return (
-      !this.esPositivo(r.kilos_disponibles) &&
-      !this.esPositivo(r.barras_disponibles) &&
+      this.conMercancia().length === 0 &&
       !this.esPositivo(r.por_cobrar_clientes) &&
       !this.esPositivo(r.por_pagar_productores)
     );
@@ -824,9 +934,9 @@ export class ReventaResumenPage {
    */
   soloFaltaLibroAnterior(r: ResumenReventa): boolean {
     if (this.temporadaAlDia(r)) return false;
-    // Ni queso ni mozzarella por mover: si queda mercancía de cualquiera de las
-    // dos, lo pendiente NO es solo el libro anterior.
-    if (this.esPositivo(r.kilos_disponibles) || this.esPositivo(r.barras_disponibles)) return false;
+    // Nada por mover DE NINGÚN PRODUCTO: si queda mercancía de cualquiera, lo
+    // pendiente no es solo el libro anterior.
+    if (this.conMercancia().length > 0) return false;
     const cobrarDelSistema = this.monto(r.por_cobrar_clientes) - this.monto(r.por_cobrar_libro_anterior);
     const pagarDelSistema = this.monto(r.por_pagar_productores) - this.monto(r.por_pagar_libro_anterior);
     return cobrarDelSistema <= 0 && pagarDelSistema <= 0;
@@ -858,6 +968,11 @@ export class ReventaResumenPage {
    * Color de cada destino del queso en la dona: verde, ámbar, rojo y azul.
    * Solo el color: la etiqueta la manda el backend en `fila.etiqueta`, para que
    * la leyenda de la dona y la tabla nunca digan nombres distintos.
+   *
+   * LOS CINCO DE SIEMPRE CONSERVAN SU COLOR —el dueño ya sabe que la tajada roja es
+   * la merma— y a cualquier producto que él agregue se le da uno de la paleta según
+   * su lugar en la dona (ver `colorDeDestino`). Antes, todos los productos nuevos
+   * caían en el mismo color de respaldo y dos tajadas distintas se veían iguales.
    */
   private readonly COLOR_DESTINO: Record<string, string> = {
     queso: CHART_COLORS[1],
@@ -866,6 +981,10 @@ export class ReventaResumenPage {
     pendiente: CHART_COLORS[0],
     anterior: CHART_COLORS[5],
   };
+
+  private colorDeDestino(fila: GananciaProducto, indice: number): string {
+    return this.COLOR_DESTINO[fila.producto] ?? CHART_COLORS[(indice + 4) % CHART_COLORS.length];
+  }
 
   /**
    * Destinos del queso comprado en el período, tomados de por_producto (única
@@ -882,15 +1001,23 @@ export class ReventaResumenPage {
    */
   readonly filasDona = computed<GananciaProducto[]>(() =>
     (this.resumen()?.por_producto ?? []).filter(
-      (fila) => fila.unidad !== 'barra' && Number(fila.kilos) > 0,
+      (fila) => fila.unidad === 'kg' && Number(fila.kilos) > 0,
     ),
   );
 
-  /** Kilos que salieron de inventario de temporadas anteriores (0 si no hubo). */
-  readonly kilosDeAntes = computed<number>(() => {
-    const fila = (this.resumen()?.por_producto ?? []).find((f) => f.producto === 'anterior');
-    return fila ? Number(fila.kilos) : 0;
-  });
+  /**
+   * Kilos que salieron de inventario de temporadas anteriores (0 si no hubo).
+   *
+   * SE SUMAN LOS DE TODOS LOS PRODUCTOS QUE SE PESAN, no solo la fila llamada
+   * 'anterior': cada grupo de costeo tiene la suya ('anterior' la del queso,
+   * '{clave}_anterior' la de los demás), y con un segundo producto en kilos la
+   * pantalla decía "0" mientras la dona sí mostraba sus tajadas.
+   */
+  readonly kilosDeAntes = computed<number>(() =>
+    (this.resumen()?.por_producto ?? [])
+      .filter((f) => f.unidad === 'kg' && esDeInventarioAnterior(f.producto))
+      .reduce((suma, f) => suma + Number(f.kilos), 0),
+  );
 
   /** Dona: a dónde fue el queso (vendido, pasado a borona, merma o aún en inventario). */
   readonly quesoChart = computed<ChartData>(() => {
@@ -900,52 +1027,76 @@ export class ReventaResumenPage {
       datasets: [
         {
           data: filas.map((fila) => Number(fila.kilos)),
-          backgroundColor: filas.map(
-            (fila) => this.COLOR_DESTINO[fila.producto] ?? CHART_COLORS[4],
-          ),
+          backgroundColor: filas.map((fila, indice) => this.colorDeDestino(fila, indice)),
         },
       ],
     };
   });
 
   /**
-   * Filas del desglose por producto. Se esconde SOLO la que no aporta nada: sin
-   * kilos y con ganancia exactamente 0.
+   * Filas del desglose por producto. SE ESCONDE SOLO LA QUE ESTÁ COMPLETAMENTE EN
+   * CEROS: sin cantidad, sin ingreso, sin costo, sin gastos y sin ganancia.
    *
-   * El umbral de antes (|ganancia| < 1) escondía la fila del residuo justo cuando
-   * el lote del período quedaba repartido exacto (0 kilos) y esa fila se llevaba
-   * los centavos del redondeo. El pie imprime la ganancia COMPLETA del período,
-   * así que las filas visibles sumaban un centavo distinto de su propio Total y
-   * la tabla no cuadraba consigo misma. Con "ganancia exactamente 0" la fila del
-   * centavo se ve, y en el caso normal (todo en ceros) sigue sin aparecer.
+   * LA REGLA ES "NINGUNA FILA CON PLATA SE ESCONDE", y está escrita al derecho —se
+   * exige que TODO esté en cero para esconder— y no al revés. Es lo que hace que las
+   * cuatro columnas del desglose sigan sumando exacto el encabezado, que es lo que el
+   * dueño verifica con calculadora.
+   *
+   * DOS FORMAS DE ESCONDER PLATA QUE ESTE FILTRO YA NO PERMITE:
+   *  · La de antes escondía las filas sin cantidad y con ganancia 0. Pero una fila
+   *    puede tener ganancia 0 y aun así mover plata —$300.000 de ingreso contra
+   *    $300.000 de costo—, y ahí las columnas de ingreso y de costo dejaban de sumar
+   *    el encabezado sin que nada lo dijera.
+   *  · Y la fila 'sin_producto' es justamente esa: plata que el backend no pudo
+   *    acomodar en ninguna fila de producto y saca aparte para que se vea. Esconderla
+   *    sería tapar el único aviso que hay de que algo se rompió.
    */
   readonly filasProducto = computed<GananciaProducto[]>(() =>
     (this.resumen()?.por_producto ?? []).filter(
-      // Se mira la cantidad DE SU PROPIA UNIDAD: un renglón de mozzarella tiene
-      // `kilos` en cero siempre, así que preguntando solo por los kilos se
-      // esconderían las barras vendidas con ganancia exactamente 0.
-      (fila) => Number(this.cantidadDe(fila)) !== 0 || Number(fila.ganancia) !== 0,
+      (fila) =>
+        // La cantidad se mira EN SU PROPIA UNIDAD: un renglón que se cuenta tiene
+        // `kilos` en cero siempre, así que preguntando solo por los kilos se
+        // esconderían las piezas vendidas con ganancia exactamente 0.
+        Number(this.cantidadDe(fila)) !== 0 ||
+        Number(fila.ingreso) !== 0 ||
+        Number(fila.costo) !== 0 ||
+        Number(fila.gastos) !== 0 ||
+        Number(fila.ganancia) !== 0,
     ),
   );
 
-  /** La cantidad de la fila EN SU UNIDAD: kilos o barras, nunca las dos. */
+  /** La cantidad de la fila EN SU UNIDAD: kilos o piezas, nunca las dos. */
   cantidadDe(fila: GananciaProducto): Monto {
-    return fila.unidad === 'barra' ? fila.barras : fila.kilos;
+    return fila.unidad === 'kg' ? fila.kilos : fila.barras;
   }
 
   /** Lo VENDIDO de la fila, en su unidad. */
   vendidosDe(fila: GananciaProducto): Monto {
-    return fila.unidad === 'barra' ? fila.barras_vendidas : fila.kilos_vendidos;
+    return fila.unidad === 'kg' ? fila.kilos_vendidos : fila.barras_vendidas;
   }
 
-  /** 'kg' o 'barra', para el sufijo de las columnas de precio. */
+  /**
+   * La unidad con la que se rotula la fila: 'kg', 'barra' o 'unidad'.
+   *
+   * El backend manda 'barra' en TODA fila que se cuente —es la unidad con la que
+   * nació el módulo—, así que aquí se le pregunta a la clave del producto cómo se
+   * llama SU pieza: la de la mozzarella es una barra y la de cualquier otro producto
+   * por unidad es una unidad. Poner "/barra" debajo del precio de una panela sería
+   * inventarle al dueño una unidad que él no usa.
+   */
+  unidadDeFila(fila: GananciaProducto): Unidad {
+    return fila.unidad === 'kg' ? 'kg' : piezaDe(claveBaseDeFila(fila.producto));
+  }
+
+  /** La palabra suelta para el sufijo de las columnas de precio. */
   rotuloUnidad(fila: GananciaProducto): string {
-    return fila.unidad === 'barra' ? 'barra' : 'kg';
+    const unidad = this.unidadDeFila(fila);
+    return unidad === 'kg' ? 'kg' : unidad;
   }
 
   /** El precio de venta unitario de la fila, en su unidad. */
   precioVenta(fila: GananciaProducto): Monto {
-    return fila.unidad === 'barra' ? fila.precio_venta_barra : fila.precio_venta_kilo;
+    return fila.unidad === 'kg' ? fila.precio_venta_kilo : fila.precio_venta_barra;
   }
 
   /**
@@ -1014,28 +1165,31 @@ export class ReventaResumenPage {
   });
 
   /**
-   * En merma, los residuos y los renglones sin venta no hay ingreso ni gastos: se
-   * muestra un guion en vez de $ 0.
+   * En la merma, los residuos y la red de seguridad no hay venta: un $0 ahí se
+   * muestra con un guion, porque significa "aquí no hubo venta" y no "se vendió en
+   * cero".
    *
-   * Se listan los renglones QUE SÍ SE VENDEN en vez de excluir los que no, para que
-   * un producto nuevo no herede por descuido el trato de "aquí no hubo venta". La
-   * mozzarella se vende, así que va en la lista.
+   * SE PREGUNTA POR LA CLASE DE FILA (`esFilaSinVenta`) y no contra una lista de
+   * productos que sí se venden. La lista de antes tenía escritos los tres de siempre,
+   * así que un producto que el dueño agregara caía por descuido en el trato de "aquí
+   * no hubo venta" y su fila mostraba guiones donde tenía cifras.
    */
-  private readonly SE_VENDEN = new Set(['queso', 'borona', 'mozzarella']);
-
   sinVenta(fila: GananciaProducto, valor: Monto): boolean {
-    return Number(valor) === 0 && !this.SE_VENDEN.has(fila.producto);
+    return Number(valor) === 0 && esFilaSinVenta(fila.producto);
   }
 
   /**
-   * Costo unitario de la fila, EN SU UNIDAD. En los residuos "anterior" el costo
-   * total es un crédito (se pagó en otro período), así que mostrar el precio de
-   * compra en positivo haría que Cantidad × $/unidad no cuadrara con la ganancia:
-   * ahí se muestra un guion.
+   * Costo unitario de la fila, EN SU UNIDAD. En los residuos que vienen de un
+   * inventario anterior el costo total es un crédito (se pagó en otro período), así
+   * que mostrar el precio de compra en positivo haría que Cantidad × $/unidad no
+   * cuadrara con la ganancia: ahí se muestra un guion.
+   *
+   * Se pregunta por la CLASE de fila y no por sus dos nombres viejos: cada producto
+   * del catálogo tiene su propia fila de inventario anterior.
    */
   costoUnitario(fila: GananciaProducto): Monto | null {
-    if (fila.producto === 'anterior' || fila.producto === 'mozzarella_anterior') return null;
-    return fila.unidad === 'barra' ? fila.costo_barra : fila.costo_kilo;
+    if (esDeInventarioAnterior(fila.producto)) return null;
+    return fila.unidad === 'kg' ? fila.costo_kilo : fila.costo_barra;
   }
 
   /** Lo vendido de esa fila difiere de lo comprado que fue a ese destino (borona). */

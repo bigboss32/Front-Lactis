@@ -47,12 +47,13 @@ interface OpcionPadre {
  *    clave, que no se mueve al renombrar, así que ninguna compra ni venta ya
  *    registrada se entera. Es la razón de que la clave exista aparte.
  *
- * POR AHORA SOLO SE PUEDEN AGREGAR PRODUCTOS POR KILO. El servidor rechaza los que
- * se cuentan por unidad —exigen antes que las compras y las ventas dejen de
- * guardar las barras en columnas aparte de los kilos—, así que la opción se ve
- * APAGADA con la nota de que llega después. Se deja a la vista y no se quita
- * porque la mozzarella, que ya se cuenta por unidad, está en la lista: si la
- * opción no existiera, esa fila no tendría cómo explicarse.
+ * "POR UNIDAD" YA SE PUEDE ESCOGER, y antes no. Estaba apagada con una nota que
+ * decía que llegaba después: el servidor rechazaba los productos que se cuentan
+ * porque las compras y las ventas guardaban las piezas en columnas aparte de los
+ * kilos y decidían por el NOMBRE del producto —solo la mozzarella se contaba—. Eso
+ * quedó cerrado: hoy manda el catálogo, y un producto por unidad se compra, se vende,
+ * tiene su propio inventario y su propia fila en el resumen igual que uno por kilo.
+ * La nota de "llega en la siguiente entrega" dejó de ser cierta y por eso se quitó.
  */
 @Component({
   selector: 'app-reventa-producto-form',
@@ -84,21 +85,20 @@ interface OpcionPadre {
             aria-labelledby="rotulo-unidad"
           >
             <mat-button-toggle value="kg">Por kilo</mat-button-toggle>
-            <!-- Apagada al agregar (el servidor la rechaza en este corte) y a la
-                 vista al corregir, que es donde explica a la mozzarella. -->
-            <mat-button-toggle value="unidad" [disabled]="esNuevo()">
-              Por unidad
-            </mat-button-toggle>
+            <mat-button-toggle value="unidad">Por unidad</mat-button-toggle>
           </mat-button-toggle-group>
 
           @if (esNuevo()) {
+            <!-- La consecuencia de escoger, dicha en lo que el dueño va a teclear
+                 mañana: en un producto por kilo la cantidad lleva decimales y en uno
+                 por unidad no los acepta. Y que esto NO se puede corregir después,
+                 antes de escoger y no cuando ya no haya vuelta atrás. -->
             <p class="nota" role="note">
-              <mat-icon aria-hidden="true">schedule</mat-icon>
+              <mat-icon aria-hidden="true">straighten</mat-icon>
               <span>
-                <strong>Por unidad llega en la siguiente entrega.</strong> Primero las
-                compras y las ventas tienen que dejar de guardar las barras en columnas
-                aparte de los kilos. La mozzarella, que ya se cuenta por unidad, sigue
-                funcionando igual.
+                <strong>Por kilo</strong> la cantidad se escribe con decimales (12,45
+                kg). <strong>Por unidad</strong> va en piezas completas, sin decimales.
+                Escoja bien: esto no se puede cambiar después.
               </span>
             </p>
           } @else {
@@ -256,7 +256,7 @@ export class ReventaProductoFormDialog {
       this.data.item?.nombre ?? '',
       [Validators.required, Validators.minLength(2), Validators.maxLength(80)],
     ],
-    // Por kilo por omisión: es lo único que este corte deja agregar.
+    // Por kilo por omisión: es lo que maneja la quesera casi siempre.
     unidad: [(this.data.item?.unidad ?? 'kg') as UnidadProducto],
     subproducto_de_id: [this.data.item?.subproducto_de_id ?? null as string | null],
   });

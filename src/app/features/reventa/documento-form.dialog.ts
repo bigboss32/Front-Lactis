@@ -28,10 +28,12 @@ import { EnUnidadPipe, MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import {
+  CatalogoReventaService,
   DocumentoReventa,
   DocumentoReventaPayload,
   DocumentoReventaUpdatePayload,
   MAX_RENGLONES,
+  ProductoReventa,
   RenglonCompraPayload,
   RenglonVentaPayload,
   ReventaService,
@@ -39,6 +41,8 @@ import {
   TipoDocumento,
   TipoVenta,
   Unidad,
+  seCuenta,
+  unidadDelProducto,
 } from './reventa.service';
 
 /** Precio de venta de queso sugerido por kilo (del cuaderno del dueño). */
@@ -62,49 +66,69 @@ function aCentavos(valor: number): number {
  *
  * La unidad no la elige el usuario en un campo aparte: viene con el producto, que
  * es como funciona el negocio (la mozzarella entra y sale por barra, el queso se
- * pesa). Es la misma regla que el backend tiene en `unidad_de`, escrita una sola
- * vez de este lado.
+ * pesa). Es la misma regla que el backend tiene en el catálogo, leída de ahí y no
+ * escrita otra vez de este lado.
  */
 interface ProductoDeRenglon {
-  /** El `tipo` que viaja al backend. */
+  /** La CLAVE del producto: es el `tipo` que viaja al backend. */
   tipo: TipoVenta;
   etiqueta: string;
+  /** 'kg', 'barra' o 'unidad'. Decide el sufijo, el rótulo y si acepta decimales. */
   unidad: Unidad;
   /** Precio por unidad que se propone al escogerlo. null = no se propone nada. */
   sugerido: number | null;
 }
 
 /**
- * Qué se puede vender. El queso sugiere su precio de siempre; la borona y la
- * mozzarella NO sugieren ninguno: el precio de una barra no tiene nada que ver con
- * el de un kilo de queso, y dejar 19.500 puesto en un campo "por barra" invitaría a
- * guardarlo sin pensar.
+ * QUÉ SE PUEDE COMPRAR Y QUÉ SE PUEDE VENDER, sacado del catálogo del dueño.
+ *
+ * Se vende cualquier producto ACTIVO. Se compra cualquiera menos los SUBPRODUCTOS:
+ * un subproducto llega gratis con su padre (la borona con el queso) y no se le compra
+ * a nadie —ofrecerlo sería ofrecer una compra que el backend rechaza—. Quién es
+ * subproducto lo dice `subproducto_de_id`, no el nombre.
+ *
+ * LOS INACTIVOS NO SE OFRECEN: desactivar un producto es justamente decir "ya no
+ * manejo esto", y su historia se queda completa. Pero al EDITAR una factura vieja, el
+ * producto que ese renglón ya tiene se ofrece igual aunque esté inactivo (ver
+ * `opcionesPara`): si no, el desplegable se vería vacío en su propio renglón y
+ * guardar le cambiaría el producto a la factura.
  */
-const PRODUCTOS_VENTA: ProductoDeRenglon[] = [
-  { tipo: 'queso', etiqueta: 'Queso', unidad: 'kg', sugerido: PRECIO_VENTA_SUGERIDO },
-  { tipo: 'borona', etiqueta: 'Borona', unidad: 'kg', sugerido: null },
-  { tipo: 'mozzarella', etiqueta: 'Mozzarella', unidad: 'barra', sugerido: null },
-];
+function productosDelCatalogo(
+  catalogo: readonly ProductoReventa[],
+  { paraVender }: { paraVender: boolean },
+): ProductoDeRenglon[] {
+  return catalogo
+    .filter((p) => p.estado === 'activo')
+    .filter((p) => paraVender || p.subproducto_de_id === null)
+    .map((p) => aProductoDeRenglon(p, { paraVender }));
+}
 
-/** Qué se le compra al productor. La borona no se compra: llega con el queso. */
-const PRODUCTOS_COMPRA: ProductoDeRenglon[] = [
-  { tipo: 'queso', etiqueta: 'Queso', unidad: 'kg', sugerido: null },
-  { tipo: 'mozzarella', etiqueta: 'Mozzarella', unidad: 'barra', sugerido: null },
-];
-
-/** En qué se mide un producto. Una sola función para la pregunta. */
-function unidadDe(tipo: string | null | undefined): Unidad {
-  return tipo === 'mozzarella' ? 'barra' : 'kg';
+function aProductoDeRenglon(
+  producto: ProductoReventa,
+  { paraVender }: { paraVender: boolean },
+): ProductoDeRenglon {
+  return {
+    tipo: producto.clave,
+    etiqueta: producto.nombre,
+    unidad: unidadDelProducto(producto),
+    // EL ÚNICO PRECIO QUE SE PROPONE es el del queso al vender, que es el del
+    // cuaderno del dueño y él confirma de un vistazo. A ningún otro producto se le
+    // propone nada: el precio de una barra no tiene que ver con el de un kilo, y
+    // dejar $19.500 puesto en un campo de otro producto invita a guardarlo sin
+    // pensar. Se mira la CLAVE y no el nombre, para que renombrar el queso no le
+    // quite su sugerencia.
+    sugerido: paraVender && producto.clave === 'queso' ? PRECIO_VENTA_SUGERIDO : null,
+  };
 }
 
 /**
  * La cantidad tiene que caber en la unidad DEL PRODUCTO DE SU MISMO RENGLÓN.
  *
- * Las barras se cuentan por unidades completas y el backend RECHAZA "8,5 barras"
- * (no las redondea), así que el formulario no puede ofrecer algo que se va a
- * devolver con error. Se valida contra el hermano `producto` del renglón, no contra
- * un estado del componente: así el renglón 2 puede ser de barras mientras el 1 es
- * de kilos, que es todo el punto de esta pantalla.
+ * Lo que se cuenta va en piezas completas y el backend RECHAZA "8,5 barras" (no las
+ * redondea), así que el formulario no puede ofrecer algo que se va a devolver con
+ * error. Se valida contra el hermano `unidad` del renglón —que se llena al escoger el
+ * producto— y no contra un estado del componente: así el renglón 2 puede ser de
+ * piezas mientras el 1 es de kilos, que es todo el punto de esta pantalla.
  */
 function cantidadDeLaUnidad(control: AbstractControl): ValidationErrors | null {
   const grupo = control.parent;
@@ -112,7 +136,7 @@ function cantidadDeLaUnidad(control: AbstractControl): ValidationErrors | null {
   const valor = Number(control.value);
   // Vacío o no numérico ya lo dicen `required` y `min`: aquí no se repite.
   if (control.value === null || control.value === '' || !Number.isFinite(valor)) return null;
-  if (unidadDe(grupo.get('producto')?.value) !== 'barra') return null;
+  if (!seCuenta(grupo.get('unidad')?.value)) return null;
   return Number.isInteger(valor) ? null : { barrasEnteras: true };
 }
 
@@ -394,6 +418,7 @@ export interface DocumentoFormData {
 export class DocumentoReventaFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly servicio = inject(ReventaService);
+  private readonly catalogoServicio = inject(CatalogoReventaService);
   private readonly dialogRef = inject(MatDialogRef<DocumentoReventaFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
@@ -412,7 +437,23 @@ export class DocumentoReventaFormDialog {
   readonly conAbonos = Number(this.data.item?.abonado ?? 0) > 0;
   readonly abonado: Monto = this.data.item?.abonado ?? 0;
 
-  readonly catalogo = this.esVenta ? PRODUCTOS_VENTA : PRODUCTOS_COMPRA;
+  /**
+   * LOS PRODUCTOS QUE OFRECE EL DESPLEGABLE: los del catálogo del dueño.
+   *
+   * Antes era una lista escrita aquí con tres renglones (queso, borona, mozzarella),
+   * y ese era el defecto que el dueño reportó: creó "costeño" en la pestaña de
+   * Productos y al registrar una compra no le aparecía por ninguna parte.
+   *
+   * Arranca VACÍO y se llena cuando llega el catálogo. Mientras tanto el botón de
+   * guardar está apagado (ver `catalogoListo`): con la lista vacía no se puede
+   * escoger producto, y un formulario que deja registrar sin producto es plata
+   * anotada a nadie.
+   */
+  readonly catalogo = signal<ProductoDeRenglon[]>([]);
+  /** El catálogo llegó (aunque venga vacío: eso también es una respuesta). */
+  readonly catalogoListo = signal(false);
+  /** La consulta del catálogo falló: se dice y no se deja registrar a ciegas. */
+  readonly errorCatalogo = signal(false);
   readonly guardando = signal(false);
   readonly gastosAbiertos = signal(false);
   /** Nombres ya usados (clientes o productores), para autocompletar. */
@@ -448,7 +489,59 @@ export class DocumentoReventaFormDialog {
       .catch(() => undefined);
 
     if (this.data.item) this.cargar(this.data.item);
+    void this.cargarCatalogo();
     protegerCambios(this.dialogRef, () => this.form);
+  }
+
+  /**
+   * Trae el catálogo y llena el renglón que está esperando producto.
+   *
+   * EL RENGLÓN NUEVO NACE SIN PRODUCTO y se le pone el primero del catálogo cuando
+   * llega. Ponerle uno antes —"queso", por decir— sería adivinar: si el dueño quitó
+   * el queso de su catálogo, la factura saldría con un producto que él ya no maneja.
+   *
+   * Al EDITAR no se toca nada: los renglones ya traen el producto que la factura
+   * tiene guardado, y pisárselo con el primero del catálogo le cambiaría la factura
+   * al abrirla.
+   */
+  private async cargarCatalogo(): Promise<void> {
+    try {
+      const productos = await firstValueFrom(this.catalogoServicio.catalogo());
+      this.catalogo.set(productosDelCatalogo(productos, { paraVender: this.esVenta }));
+      this.completarProductosDeLaFactura(productos);
+      this.catalogoListo.set(true);
+      this.renglones.controls.forEach((fila, indice) => {
+        if (!fila.controls.producto.value) this.ponerProducto(indice, this.catalogo()[0]);
+      });
+    } catch {
+      this.errorCatalogo.set(true);
+    }
+  }
+
+  /**
+   * Los productos de una factura que se está editando se ofrecen SIEMPRE, aunque
+   * estén inactivos o ya no estén en el catálogo.
+   *
+   * Sin esto, editar una factura de un producto desactivado dejaría su desplegable en
+   * blanco y guardar le cambiaría el producto —o sea, le movería la plata de un
+   * inventario a otro— sin que el dueño lo pidiera.
+   */
+  private completarProductosDeLaFactura(catalogo: readonly ProductoReventa[]): void {
+    const ofrecidos = new Set(this.catalogo().map((p) => p.tipo));
+    const faltantes: ProductoDeRenglon[] = [];
+    for (const fila of this.renglones.controls) {
+      const clave = fila.controls.producto.value;
+      if (!clave || ofrecidos.has(clave) || faltantes.some((p) => p.tipo === clave)) continue;
+      const delCatalogo = catalogo.find((p) => p.clave === clave);
+      faltantes.push(
+        delCatalogo
+          ? aProductoDeRenglon(delCatalogo, { paraVender: this.esVenta })
+          : // Ni en el catálogo está: se muestra con su clave, que es lo único que
+            // se sabe de él. Inventarle un nombre sería peor.
+            { tipo: clave, etiqueta: clave, unidad: fila.controls.unidad.value, sugerido: null },
+      );
+    }
+    if (faltantes.length) this.catalogo.update((lista) => [...lista, ...faltantes]);
   }
 
   // --------------------------------------------------------------- renglones
@@ -464,14 +557,23 @@ export class DocumentoReventaFormDialog {
    */
   private nuevoRenglon(datos?: {
     producto?: TipoVenta;
+    unidad?: Unidad;
     cantidad?: number | null;
     precio?: number | null;
     gasto?: number | null;
     borona?: number;
   }) {
-    const producto = datos?.producto ?? this.catalogoInicial();
+    const producto = datos?.producto ?? '';
     return this.fb.group({
       producto: [producto, Validators.required],
+      /**
+       * LA UNIDAD DEL RENGLÓN, guardada con él y no deducida del nombre del
+       * producto. Es lo que deja que cada renglón tenga la suya (uno en kilos y el
+       * siguiente en piezas), que el validador de la cantidad la consulte sin saber
+       * nada del catálogo, y —lo que importa— que al editar una factura se respete
+       * la que el backend ya decidió para esa fila.
+       */
+      unidad: [datos?.unidad ?? 'kg'],
       cantidad: [
         datos?.cantidad ?? null,
         [Validators.required, Validators.min(0.01), cantidadDeLaUnidad],
@@ -492,13 +594,29 @@ export class DocumentoReventaFormDialog {
     });
   }
 
-  /** El producto que trae puesto un renglón nuevo: el primero del catálogo. */
-  private catalogoInicial(): TipoVenta {
-    return this.catalogo[0].tipo;
+  private sugeridoDe(tipo: TipoVenta): number | null {
+    return this.productoDe(tipo)?.sugerido ?? null;
   }
 
-  private sugeridoDe(tipo: TipoVenta): number | null {
-    return this.catalogo.find((p) => p.tipo === tipo)?.sugerido ?? null;
+  private productoDe(tipo: TipoVenta | null | undefined): ProductoDeRenglon | undefined {
+    return this.catalogo().find((p) => p.tipo === tipo);
+  }
+
+  /**
+   * Le pone a un renglón un producto CON SU UNIDAD Y SU PRECIO SUGERIDO, los tres
+   * juntos y en un solo sitio.
+   *
+   * Van juntos porque separarlos es exactamente el defecto: un renglón con el
+   * producto de piezas y la unidad en kilos aceptaría "2,5" y mandaría al backend una
+   * cantidad que va a rebotar, o peor, la guardaría en la columna equivocada.
+   */
+  private ponerProducto(indice: number, producto: ProductoDeRenglon | undefined): void {
+    if (!producto || indice < 0 || indice >= this.renglones.length) return;
+    const fila = this.renglones.at(indice);
+    fila.controls.producto.setValue(producto.tipo);
+    fila.controls.unidad.setValue(producto.unidad);
+    fila.controls.precio.setValue(producto.sugerido);
+    fila.controls.cantidad.updateValueAndValidity();
   }
 
   /**
@@ -511,6 +629,10 @@ export class DocumentoReventaFormDialog {
   agregarRenglon(): void {
     if (this.renglones.length >= MAX_RENGLONES) return;
     this.renglones.push(this.nuevoRenglon());
+    // Con el catálogo ya cargado, el renglón nuevo nace con el primer producto
+    // puesto (que es lo que el dueño espera al darle "Agregar otro producto"). Sin
+    // catálogo nace vacío y lo llena `cargarCatalogo` cuando llegue.
+    this.ponerProducto(this.renglones.length - 1, this.catalogo()[0]);
     this.renglones.markAsDirty();
   }
 
@@ -534,21 +656,45 @@ export class DocumentoReventaFormDialog {
    * "$700 por kilo" cobrado sobre barras no significa nada.
    */
   productoCambio(indice: number, tipo: TipoVenta): void {
-    const fila = this.renglones.at(indice);
-    fila.controls.precio.setValue(this.sugeridoDe(tipo));
-    fila.controls.gasto.setValue(null);
-    // La cantidad se revalida contra la unidad nueva: un "2,5" que era válido en
-    // kilos deja de serlo en barras, y hay que decirlo en el momento.
-    fila.controls.cantidad.updateValueAndValidity();
+    // La unidad, el precio sugerido y la revalidación de la cantidad van juntos: un
+    // "2,5" que era válido en kilos deja de serlo en piezas, y hay que decirlo en el
+    // momento.
+    this.ponerProducto(indice, this.productoDe(tipo));
+    this.renglones.at(indice).controls.gasto.setValue(null);
   }
 
+  /** Este renglón se cuenta por piezas enteras (no se pesa). */
   esDeBarras(indice: number): boolean {
-    return unidadDe(this.renglones.at(indice).controls.producto.value) === 'barra';
+    return seCuenta(this.renglones.at(indice).controls.unidad.value);
+  }
+
+  /**
+   * La palabra con la que se rotula UNA pieza de esa unidad: "kilo", "barra" o
+   * "unidad". Va en el rótulo del precio y en el del gasto ("Precio por barra",
+   * "$700 por kilo"), que son cifras POR UNIDAD y tienen que decir por cuál.
+   */
+  palabraUnidad(unidad: Unidad): string {
+    if (unidad === 'barra') return 'barra';
+    return unidad === 'unidad' ? 'unidad' : 'kilo';
+  }
+
+  /** El plural, para el sufijo de la cantidad: "kg", "barras", "unidades". */
+  palabraCantidad(unidad: Unidad): string {
+    if (unidad === 'barra') return 'barras';
+    return unidad === 'unidad' ? 'unidades' : 'kg';
+  }
+
+  rotuloUnidad(indice: number): string {
+    return this.palabraUnidad(this.renglones.at(indice).controls.unidad.value);
+  }
+
+  rotuloCantidad(indice: number): string {
+    return this.palabraCantidad(this.renglones.at(indice).controls.unidad.value);
   }
 
   etiquetaDe(indice: number): string {
     const tipo = this.renglones.at(indice).controls.producto.value;
-    return this.catalogo.find((p) => p.tipo === tipo)?.etiqueta ?? 'Producto';
+    return this.productoDe(tipo)?.etiqueta ?? 'Producto';
   }
 
   alternarGastos(): void {
@@ -572,10 +718,10 @@ export class DocumentoReventaFormDialog {
    * se multiplicara por 10,005 y allá por 10,01, el recibo mostraría una plata y
    * la base guardaría otra.
    */
-  private cantidadReal(producto: TipoVenta, cantidad: number | null): number {
+  private cantidadReal(unidad: Unidad, cantidad: number | null): number {
     const valor = Number(cantidad || 0);
     if (!Number.isFinite(valor)) return 0;
-    return unidadDe(producto) === 'barra' ? valor : aCentavos(valor);
+    return seCuenta(unidad) ? valor : aCentavos(valor);
   }
 
   /**
@@ -592,7 +738,7 @@ export class DocumentoReventaFormDialog {
     return this.renglones.controls.map((fila) => {
       if (fila.controls.cantidad.invalid) return 0;
       const v = fila.getRawValue();
-      return aCentavos(this.cantidadReal(v.producto, v.cantidad) * Number(v.precio || 0));
+      return aCentavos(this.cantidadReal(v.unidad, v.cantidad) * Number(v.precio || 0));
     });
   });
 
@@ -609,7 +755,7 @@ export class DocumentoReventaFormDialog {
       // Mismo criterio que en `subtotales`: sin una cantidad posible no hay cuenta.
       if (fila.controls.cantidad.invalid) return 0;
       const v = fila.getRawValue();
-      return aCentavos(this.cantidadReal(v.producto, v.cantidad) * Number(v.gasto || 0));
+      return aCentavos(this.cantidadReal(v.unidad, v.cantidad) * Number(v.gasto || 0));
     });
   });
 
@@ -655,9 +801,9 @@ export class DocumentoReventaFormDialog {
       .map((fila, indice) => {
         const v = fila.getRawValue();
         return {
-          etiqueta: this.catalogo.find((p) => p.tipo === v.producto)?.etiqueta ?? 'Producto',
-          unidad: unidadDe(v.producto),
-          cantidad: this.cantidadReal(v.producto, v.cantidad),
+          etiqueta: this.productoDe(v.producto)?.etiqueta ?? 'Producto',
+          unidad: v.unidad,
+          cantidad: this.cantidadReal(v.unidad, v.cantidad),
           precio: Number(v.precio || 0),
           total: totales[indice],
         };
@@ -672,9 +818,9 @@ export class DocumentoReventaFormDialog {
       .map((fila, indice) => {
         const v = fila.getRawValue();
         return {
-          etiqueta: this.catalogo.find((p) => p.tipo === v.producto)?.etiqueta ?? 'Producto',
-          unidad: unidadDe(v.producto),
-          cantidad: this.cantidadReal(v.producto, v.cantidad),
+          etiqueta: this.productoDe(v.producto)?.etiqueta ?? 'Producto',
+          unidad: v.unidad,
+          cantidad: this.cantidadReal(v.unidad, v.cantidad),
           porUnidad: Number(v.gasto || 0),
           total: totales[indice],
         };
@@ -703,10 +849,16 @@ export class DocumentoReventaFormDialog {
     this.renglones.clear();
     if (documento.tipo === 'venta') {
       for (const r of documento.renglones) {
-        const deBarras = r.unidad === 'barra';
+        // `seCuenta` y no `unidad === 'barra'`: la barra es la pieza de la
+        // mozzarella, pero un renglón de otro producto por unidad llega con
+        // `unidad: 'unidad'` y sus cifras también viven en los campos de piezas.
+        // Preguntando por 'barra' se leerían sus kilos, que son cero de verdad, y la
+        // factura se abriría con la cantidad y el precio en blanco.
+        const deBarras = seCuenta(r.unidad);
         this.renglones.push(
           this.nuevoRenglon({
             producto: r.tipo,
+            unidad: r.unidad,
             cantidad: Number(deBarras ? r.barras : r.kilos),
             precio: Number(deBarras ? r.precio_barra : r.precio_kilo),
             gasto: Number(deBarras ? r.gasto_por_barra : r.gasto_por_kilo) || null,
@@ -725,10 +877,11 @@ export class DocumentoReventaFormDialog {
       if (this.gastoTotal() > 0) this.gastosAbiertos.set(true);
     } else {
       for (const r of documento.renglones) {
-        const deBarras = r.unidad === 'barra';
+        const deBarras = seCuenta(r.unidad);
         this.renglones.push(
           this.nuevoRenglon({
             producto: r.tipo,
+            unidad: r.unidad,
             cantidad: Number(deBarras ? r.barras : r.kilos_brutos),
             precio: Number(deBarras ? r.precio_barra : r.precio_kilo),
             borona: Number(r.borona_kilos || 0),
@@ -759,10 +912,10 @@ export class DocumentoReventaFormDialog {
     const filas = this.renglones.getRawValue();
     const notaDelRenglon = this.notaDelUnico(filas.length, nota);
     return filas.map((v) => {
-      const cantidad = this.cantidadReal(v.producto, v.cantidad);
+      const cantidad = this.cantidadReal(v.unidad, v.cantidad);
       const precio = Number(v.precio || 0);
       const gasto = Number(v.gasto || 0);
-      return unidadDe(v.producto) === 'barra'
+      return seCuenta(v.unidad)
         ? {
             tipo: v.producto,
             barras: cantidad,
@@ -786,12 +939,11 @@ export class DocumentoReventaFormDialog {
     const filas = this.renglones.getRawValue();
     const notaDelRenglon = this.notaDelUnico(filas.length, nota);
     return filas.map((v) => {
-      const cantidad = this.cantidadReal(v.producto, v.cantidad);
+      const cantidad = this.cantidadReal(v.unidad, v.cantidad);
       const precio = Number(v.precio || 0);
-      // El catálogo de compra solo ofrece queso y mozzarella, así que el producto
-      // de un renglón de compra siempre es un `TipoCompra`.
+      // La clave del producto, que es lo que el backend espera en `tipo`.
       const tipo = v.producto as TipoCompra;
-      return unidadDe(tipo) === 'barra'
+      return seCuenta(v.unidad)
         ? { tipo, barras: cantidad, precio_barra: precio, observaciones: notaDelRenglon }
         : {
             tipo,

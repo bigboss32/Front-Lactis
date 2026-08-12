@@ -17,7 +17,13 @@ import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { MoneyPipe } from '../../shared/pipes';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SpinnerBoton } from '../../shared/spinner-boton';
-import { CompraQueso, CompraQuesoPayload, ReventaService, TipoCompra } from './reventa.service';
+import {
+  CatalogoReventaService,
+  CompraQueso,
+  CompraQuesoPayload,
+  ReventaService,
+  seCuenta,
+} from './reventa.service';
 
 /** Lo que se le puede corregir a un renglón de compra: todo menos el `tipo`. */
 type RenglonCompraUpdate = Partial<Omit<CompraQuesoPayload, 'tipo'>>;
@@ -33,9 +39,10 @@ export interface CompraFormData {
 }
 
 /**
- * Corrige UN PRODUCTO de una factura de compra: QUESO en kilos o MOZZARELLA en
- * barras. Al comprar se paga por todo lo recibido (no hay merma: la merma real se
- * ve al vender). Muestra en vivo el total a pagar mientras se escribe.
+ * Corrige UN PRODUCTO de una factura de compra, EN LA UNIDAD QUE ESE PRODUCTO TENGA:
+ * kilos si se pesa, piezas si se cuenta. Al comprar se paga por todo lo recibido (no
+ * hay merma: la merma real se ve al vender). Muestra en vivo el total a pagar
+ * mientras se escribe.
  *
  * SOLO CORRIGE, NO REGISTRA. Las compras se registran en
  * `DocumentoReventaFormDialog`, que es la factura de varios productos. Este diálogo
@@ -85,7 +92,7 @@ export interface CompraFormData {
       <form [formGroup]="form" class="form-grid" id="form-compra" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>Producto</mat-label>
-          <input matInput [value]="tipoLabel(tipo)" readonly />
+          <input matInput [value]="tipoLabel()" readonly />
           <mat-hint>El producto no se cambia: anule y registre de nuevo</mat-hint>
         </mat-form-field>
         <mat-form-field>
@@ -111,19 +118,22 @@ export interface CompraFormData {
         </mat-form-field>
 
         @if (esMozzarella) {
-          <!-- step="1" y sin decimales: una barra es una barra. El backend RECHAZA
+          <!-- step="1" y sin decimales: una pieza es una pieza. El backend RECHAZA
                "8,5 barras" (no las redondea), así que el formulario no puede
                ofrecer algo que se va a devolver con error. -->
           <mat-form-field>
-            <mat-label>Barras</mat-label>
+            <mat-label>{{ palabraUnidad() === 'barra' ? 'Barras' : 'Unidades' }}</mat-label>
             <input matInput type="number" min="1" step="1" formControlName="barras" required />
-            <span matTextSuffix>barras</span>
-            <mat-hint>Barras completas: no acepta medias barras</mat-hint>
+            <span matTextSuffix>{{ palabraUnidad() }}s</span>
+            <mat-hint>
+              {{ palabraUnidad() === 'barra' ? 'Barras completas' : 'Piezas completas' }}: no
+              acepta media {{ palabraUnidad() }}
+            </mat-hint>
           </mat-form-field>
-          <!-- CON DECIMALES: es el precio de UNA barra y es lo que se le paga al
+          <!-- CON DECIMALES: es el precio de UNA pieza y es lo que se le paga al
                productor; el total a pagar sale de multiplicarlo. -->
           <mat-form-field>
-            <mat-label>Precio por barra</mat-label>
+            <mat-label>Precio por {{ palabraUnidad() }}</mat-label>
             <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
                    formControlName="precio_barra" required />
             <span matTextPrefix>$&nbsp;</span>
@@ -216,12 +226,28 @@ export class CompraFormDialog {
   private readonly dialogRef = inject(MatDialogRef<CompraFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
+  private readonly catalogoServicio = inject(CatalogoReventaService);
+
   readonly data = inject<CompraFormData>(MAT_DIALOG_DATA);
   readonly guardando = signal(false);
 
-  /** El tipo de la fila guardada. No cambia nunca: ver el comentario del componente. */
-  readonly tipo: TipoCompra = this.data.item.tipo;
-  readonly esMozzarella = this.tipo === 'mozzarella';
+  /** La clave del producto de la fila. No cambia nunca: ver el comentario del componente. */
+  readonly tipo = this.data.item.tipo;
+  /**
+   * ESTA COMPRA SE CUENTA POR PIEZAS, y se decide con la UNIDAD QUE MANDA EL BACKEND
+   * y no preguntando si el producto se llama 'mozzarella'.
+   *
+   * Es el mismo defecto que el backend acabó de cerrar, de este lado: con la pregunta
+   * por el nombre, corregir la compra de un producto por unidad que no fuera la
+   * mozzarella abría el formulario en la rama de los kilos —o sea con la cantidad y
+   * el precio en cero, porque en una compra por unidad los kilos son cero de verdad—
+   * y al guardar mandaba `kilos_brutos` a una fila que se cuenta. El servidor la
+   * rechaza, pero el dueño ya habría visto su compra de 100 panelas como si estuviera
+   * en blanco.
+   */
+  readonly esMozzarella = seCuenta(this.data.item.unidad);
+  /** El nombre del producto, para los rótulos. Llega con el catálogo. */
+  readonly nombreDelProducto = signal<string>('');
 
   /**
    * Este renglón COMPARTE FACTURA con otros, así que la fecha y el productor se
@@ -267,10 +293,19 @@ export class CompraFormDialog {
     this.cambios();
     const valores = this.form.getRawValue();
     const cantidad = Math.round(Number(valores.barras || 0));
-    const unidad = Math.abs(cantidad) === 1 ? 'barra' : 'barras';
+    const singular = this.palabraUnidad();
+    const unidad = Math.abs(cantidad) === 1 ? singular : `${singular}s`;
     const precio = Number(valores.precio_barra || 0).toLocaleString('es-CO');
-    return `${cantidad} ${unidad} × $${precio} por barra`;
+    return `${cantidad} ${unidad} × $${precio} por ${singular}`;
   });
+
+  /**
+   * La palabra de la pieza de ESTE producto: "barra" la de la mozzarella y "unidad"
+   * la de cualquier otro que se cuente. La manda el backend en la unidad de la fila.
+   */
+  palabraUnidad(): string {
+    return this.data.item.unidad === 'barra' ? 'barra' : 'unidad';
+  }
 
   /** Productores ya registrados, para autocompletar el nombre. */
   readonly productores = signal<string[]>([]);
@@ -282,12 +317,20 @@ export class CompraFormDialog {
     return filtrados.slice(0, 20);
   });
 
-  tipoLabel(tipo: TipoCompra): string {
-    return tipo === 'mozzarella' ? 'Mozzarella (por barra)' : 'Queso (por kilo)';
+  /**
+   * "Costeño (por kilo)" — el nombre del catálogo con su unidad al lado.
+   *
+   * Mientras el catálogo no llegue se muestra la CLAVE de la fila, que es lo único
+   * que se sabe con certeza del producto: inventarle un nombre sería peor, y dejar el
+   * campo en blanco haría dudar de qué se está corrigiendo.
+   */
+  tipoLabel(): string {
+    const nombre = this.nombreDelProducto() || this.tipo;
+    return `${nombre} (por ${this.esMozzarella ? this.palabraUnidad() : 'kilo'})`;
   }
 
   nombreProducto(): string {
-    return this.esMozzarella ? 'la mozzarella' : 'el queso';
+    return this.nombreDelProducto() || this.tipo;
   }
 
   /**
@@ -318,6 +361,13 @@ export class CompraFormDialog {
   constructor() {
     firstValueFrom(this.servicio.sugerencias())
       .then((s) => this.productores.set(s.productores))
+      .catch(() => undefined);
+    firstValueFrom(this.catalogoServicio.catalogo())
+      .then((catalogo) =>
+        this.nombreDelProducto.set(
+          catalogo.find((p) => p.clave === this.tipo)?.nombre ?? '',
+        ),
+      )
       .catch(() => undefined);
     this._sincronizarUnidad();
     if (this.conHermanos) {

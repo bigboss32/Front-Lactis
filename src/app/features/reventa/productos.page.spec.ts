@@ -10,7 +10,7 @@ import { Page } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { ReventaProductoFormDialog } from './producto-form.dialog';
 import { ReventaProductosPage } from './productos.page';
-import { ProductoReventa, ReventaService } from './reventa.service';
+import { CatalogoReventaService, ProductoReventa, ReventaService } from './reventa.service';
 
 /**
  * LA PESTAÑA DE PRODUCTOS.
@@ -20,9 +20,13 @@ import { ProductoReventa, ReventaService } from './reventa.service';
  *    registra y su estado — y que la clave interna ('queso') no se le muestre al
  *    dueño en ninguna parte, porque renombrar es justamente lo que la clave permite
  *    sin que nadie se entere;
- *  · que la columna "¿Ya se registra?" diga la verdad de este corte producto por
- *    producto, y que la nota que lo explica salga SOLO cuando hay un producto que
- *    todavía no se ofrece;
+ *  · que la columna "¿Ya se registra?" diga LA VERDAD DE HOY: lo que está en esta
+ *    lista es lo que se ofrece al registrar, así que un producto activo se ofrece
+ *    siempre —el "Todavía no" de antes dejó de ser cierto y no puede seguir en
+ *    pantalla— y el único que no es el que el dueño desactivó;
+ *  · que al cambiar la lista se le BOTE EL CACHÉ al catálogo compartido, que es de
+ *    donde el desplegable de compras y ventas saca sus productos: sin eso, agregar
+ *    "Costeño" no lo hace aparecer al registrar, que es el defecto reportado;
  *  · que quitar un producto con movimientos muestre EL MENSAJE DEL SERVIDOR —el que
  *    trae la cuenta exacta de compras y ventas y la salida— en una caja que no
  *    desaparece sola;
@@ -109,6 +113,20 @@ class ServicioFalso {
   }
 }
 
+/**
+ * El catálogo compartido, de mentiras. Lo que se le mira es `refrescos`: la pestaña
+ * tiene que BOTARLE EL CACHÉ cada vez que la lista cambia, porque de ese mismo
+ * catálogo sale el desplegable de las compras y las ventas. Sin eso, el dueño agrega
+ * "Costeño", va a registrar una compra y no le aparece — que es exactamente el
+ * defecto que este corte vino a arreglar.
+ */
+class CatalogoFalso {
+  refrescos = 0;
+  refrescar(): void {
+    this.refrescos += 1;
+  }
+}
+
 /** Un MatDialog de mentiras: guarda con qué se abrió y devuelve lo que se le diga. */
 class DialogoFalso {
   abiertos: { componente: unknown; datos: unknown }[] = [];
@@ -128,6 +146,7 @@ describe('ReventaProductosPage: la lista de lo que se compra y se revende', () =
   let fixture: ComponentFixture<ReventaProductosPage>;
   let pagina: ReventaProductosPage;
   let servicio: ServicioFalso;
+  let catalogo: CatalogoFalso;
   let dialogo: DialogoFalso;
   let avisos: string[];
 
@@ -138,12 +157,14 @@ describe('ReventaProductosPage: la lista de lo que se compra y se revende', () =
     TestBed.resetTestingModule();
     servicio = new ServicioFalso();
     servicio.productos = productos;
+    catalogo = new CatalogoFalso();
     dialogo = new DialogoFalso();
     avisos = [];
     await TestBed.configureTestingModule({
       imports: [ReventaProductosPage, NoopAnimationsModule],
       providers: [
         { provide: ReventaService, useValue: servicio },
+        { provide: CatalogoReventaService, useValue: catalogo },
         { provide: MatDialog, useValue: dialogo },
         {
           provide: MatSnackBar,
@@ -223,23 +244,35 @@ describe('ReventaProductosPage: la lista de lo que se compra y se revende', () =
   });
 
   // ------------------------------------------- la verdad de este corte
-  it('dice producto por producto si ya se ofrece al registrar', async () => {
+  it('el producto que el dueño agregó SÍ se ofrece al registrar, y se dice', async () => {
     await armar([QUESO, BORONA, MOZZARELLA, CUAJADA]);
 
     expect(celda(filas()[0], '¿Ya se registra?')).toBe('Sí: se compra y se vende');
     // La borona solo se vende: entra gratis con el queso, no se le compra a nadie.
     expect(celda(filas()[1], '¿Ya se registra?')).toBe('Sí: se vende');
     expect(celda(filas()[2], '¿Ya se registra?')).toBe('Sí: se compra y se vende');
-    // El que el dueño acabó de agregar TODAVÍA NO se ofrece al registrar, y se dice.
-    expect(celda(filas()[3], '¿Ya se registra?')).toBe('Todavía no');
-    expect(textoPantalla()).toContain('quedan guardados en la lista');
+    // LA CUAJADA, que el dueño acabó de agregar, se ofrece igual que las demás. Antes
+    // decía "Todavía no" —era cierto y había que decirlo—, y hoy sería una mentira.
+    expect(celda(filas()[3], '¿Ya se registra?')).toBe('Sí: se compra y se vende');
+    expect(textoPantalla()).not.toContain('Todavía no');
+    expect(textoPantalla()).not.toContain('siguiente entrega');
   });
 
-  it('la nota de "todavía no" no aparece si todos los productos ya se registran', async () => {
+  it('el desactivado es el único que NO se ofrece, y la nota lo explica', async () => {
+    await armar([QUESO, { ...CUAJADA, estado: 'inactivo' }]);
+
+    expect(celda(filas()[0], '¿Ya se registra?')).toBe('Sí: se compra y se vende');
+    expect(celda(filas()[1], '¿Ya se registra?')).toBe('No: está desactivado');
+    expect(textoPantalla()).toContain('no se ofrecen al registrar');
+    // Y lo que ya tenga registrado sigue contando: es la razón de desactivar en vez
+    // de quitar.
+    expect(textoPantalla()).toContain('sigue contando en el resumen');
+  });
+
+  it('la nota del desactivado no aparece si todos están activos', async () => {
     await armar([QUESO, BORONA, MOZZARELLA]);
 
-    // Explicaría algo que no le pasó: los tres de siempre ya se ofrecen.
-    expect(textoPantalla()).not.toContain('quedan guardados en la lista');
+    expect(textoPantalla()).not.toContain('no se ofrecen al registrar');
   });
 
   // ------------------------------------------------------------ quitar
@@ -325,29 +358,58 @@ describe('ReventaProductosPage: la lista de lo que se compra y se revende', () =
     expect(dialogo.abiertos.at(-1)?.datos).toEqual({ item: undefined });
   });
 
-  it('agregar uno que se había quitado avisa que volvió tal como estaba', async () => {
+  it('el aviso dice CÓMO QUEDÓ MEDIDO el producto que se agregó', async () => {
     await armar([QUESO, BORONA]);
-    // El servidor no crea otro: REVIVE la misma fila con la unidad que ya tenía. Se
-    // pidió "por kilo" (es lo único que este corte deja pedir) y volvió por unidad,
-    // así que hay que decirlo en vez de dejar al dueño creyendo que quedó en kilos.
+    // Importa cuando el servidor REVIVE una fila que se había quitado: vuelve con la
+    // unidad que ya tenía, que puede no ser la que se pidió. El aviso dice lo que de
+    // verdad quedó guardado, que es lo que él necesita antes de registrar con él.
     dialogo.respuesta = MOZZARELLA;
 
     pagina.nuevo();
     await estabilizar();
 
     expect(avisos.length).toBe(1);
-    expect(avisos[0]).toContain('ya estaba en la lista y volvió tal como estaba');
-    expect(avisos[0]).toContain('se cuenta por unidad');
+    expect(avisos[0]).toContain('por unidad');
+    expect(avisos[0]).toContain('Ya se ofrece al registrar');
   });
 
-  it('agregar uno nuevo de verdad solo avisa que quedó en la lista', async () => {
+  it('agregar uno por kilo avisa que quedó por kilo y que ya se ofrece', async () => {
     await armar([QUESO]);
     dialogo.respuesta = CUAJADA;
 
     pagina.nuevo();
     await estabilizar();
 
-    expect(avisos[0]).toBe('«Cuajada» quedó en la lista');
+    expect(avisos[0]).toBe(
+      '«Cuajada» quedó en la lista, por kilo. Ya se ofrece al registrar compras y ventas.',
+    );
+  });
+
+  // ------------------------------------------- el catálogo compartido se refresca
+  it('agregar un producto le bota el caché al catálogo del desplegable', async () => {
+    // El desplegable de compras y ventas lee el catálogo compartido. Si no se bota,
+    // el dueño agrega "Cuajada" y al registrar sigue viendo la lista de antes: es el
+    // defecto que reportó, con otra cara.
+    await armar([QUESO]);
+    dialogo.respuesta = CUAJADA;
+
+    pagina.nuevo();
+    await estabilizar();
+
+    expect(catalogo.refrescos).toBe(1);
+  });
+
+  it('desactivar y quitar también le botan el caché', async () => {
+    await armar([QUESO, CUAJADA]);
+    dialogo.respuesta = true;
+
+    pagina.desactivar(QUESO);
+    await estabilizar();
+    expect(catalogo.refrescos).withContext('desactivar').toBe(1);
+
+    pagina.quitar(CUAJADA);
+    await estabilizar();
+    expect(catalogo.refrescos).withContext('quitar').toBe(2);
   });
 
   // ----------------------------------------------------------- en celular

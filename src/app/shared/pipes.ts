@@ -128,16 +128,43 @@ export class BarrasPipe implements PipeTransform {
 }
 
 /**
+ * Piezas de un producto QUE SE CUENTA y no se llama mozzarella: "100 unidades",
+ * "1 unidad". Sin decimales, por lo mismo que las barras.
+ *
+ * POR QUÉ NO ALCANZABA CON `| barras`. "Barra" es como se le dice a la pieza de LA
+ * MOZZARELLA, no a toda pieza: el día que el dueño agregó un producto por unidad
+ * llamado Panela, imprimir "100 barras de Panela" sería inventarle una unidad que
+ * él no usa. El backend ya habla así en sus mensajes de error ("Solo hay 10
+ * unidades de Mozzarella disponibles"), y esta es la misma palabra de este lado.
+ */
+@Pipe({ name: 'piezas' })
+export class PiezasPipe implements PipeTransform {
+  transform(value: Monto | null | undefined): string {
+    if (value === null || value === undefined || value === '') return '—';
+    const numero = Math.round(Number(value));
+    return `${ENTERO.format(numero)} ${Math.abs(numero) === 1 ? 'unidad' : 'unidades'}`;
+  }
+}
+
+/**
  * Una cantidad CON SU UNIDAD, decidida por el dato y no por la plantilla.
  *
- * Se usa donde una misma columna puede traer kilos o barras (el desglose por
+ * Se usa donde una misma columna puede traer kilos o piezas (el desglose por
  * producto, las listas de compras y ventas, los estados de cuenta): se le pasa la
  * `unidad` que manda el backend y él decide el formato y el rótulo. Así ninguna
  * plantilla tiene que acordarse de la regla, y —lo importante— NINGUNA puede
  * imprimir "8 kg" donde hay 8 barras, que es el error que este trabajo tiene que
  * evitar por encima de todo.
  *
- * Cuál de los dos números mirar lo decide quien llama (`fila.unidad === 'barra' ?
+ * LAS TRES UNIDADES QUE MANDA EL BACKEND, y son tres y no dos desde que el catálogo
+ * decide: 'kg' (se pesa), 'barra' (la pieza de la mozzarella, que es como el módulo
+ * la nombró desde el principio) y 'unidad' (la pieza de cualquier otro producto que
+ * se cuente). Lo que NO puede pasar es que una unidad desconocida caiga en la rama
+ * de los kilos: "100 kg de Panela" donde hay 100 panelas es exactamente la mentira
+ * que este pipe existe para impedir, así que solo 'kg' se pesa y todo lo demás se
+ * cuenta.
+ *
+ * Cuál de los dos números mirar lo decide quien llama (`seCuenta(fila.unidad) ?
  * fila.barras : fila.kilos`), porque el campo cambia de nombre en cada tabla.
  *
  * `decimales` es opt-in y por omisión sigue en 1, o sea que todas las pantallas
@@ -145,13 +172,14 @@ export class BarrasPipe implements PipeTransform {
  * DE UNA CUENTA que tiene que cuadrar —el recibo de una factura de reventa, donde
  * debajo de "99,11 kg × $15.777" va el resultado de multiplicar esas dos cifras—:
  * si ahí se leyera "99,1 kg", el dueño multiplicaría a mano y le saldría otra
- * plata. A las BARRAS no les aplica: no tienen decimales nunca (ver BarrasPipe).
+ * plata. A las PIEZAS no les aplica: no tienen decimales nunca.
  *
  *     {{ renglon.kilos | enUnidad: 'kg' : 2 }}
  */
 @Pipe({ name: 'enUnidad' })
 export class EnUnidadPipe implements PipeTransform {
   private readonly barras = new BarrasPipe();
+  private readonly piezas = new PiezasPipe();
   private readonly cantidad = new CantidadPipe();
 
   transform(
@@ -159,8 +187,8 @@ export class EnUnidadPipe implements PipeTransform {
     unidad: string | null | undefined,
     decimales = 1,
   ): string {
-    return unidad === 'barra'
-      ? this.barras.transform(value)
-      : this.cantidad.transform(value, 'kg', decimales);
+    if (unidad === 'barra') return this.barras.transform(value);
+    if (unidad === 'unidad') return this.piezas.transform(value);
+    return this.cantidad.transform(value, 'kg', decimales);
   }
 }

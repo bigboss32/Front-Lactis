@@ -21,9 +21,10 @@ import {
  *    clave, ni los decimales, ni si admite merma: eso lo deduce el servidor, y un
  *    campo deducible que además se pregunta es una segunda fuente para el mismo
  *    hecho;
- *  · que "Por unidad" se vea APAGADA al agregar, con la nota de que llega después:
- *    el servidor la rechaza en este corte y el dueño no tiene por qué estrellarse
- *    contra un error para averiguarlo;
+ *  · que "Por unidad" SE PUEDA ESCOGER al agregar: estuvo apagada mientras el
+ *    servidor la rechazaba, y hoy un producto por unidad se compra, se vende y tiene
+ *    su propio inventario igual que uno por kilo. La nota que decía "llega en la
+ *    siguiente entrega" dejó de ser cierta y no puede seguir en pantalla;
  *  · que al corregir, cómo se mide quede bajo candado (el servidor no lo acepta) y
  *    el nombre siga siendo libre;
  *  · que la lista de posibles padres no ofrezca lo que va a rebotar: ni el producto
@@ -190,15 +191,35 @@ describe('ReventaProductoFormDialog: tres preguntas', () => {
     expect(texto).not.toContain('Decimales');
   });
 
-  it('al agregar, "Por unidad" está apagada y se dice cuándo llega', async () => {
+  it('al agregar, las DOS medidas se pueden escoger', async () => {
     await armar(undefined, [QUESO]);
 
     const [porKilo, porUnidad] = opcionesDeUnidad();
     expect(porKilo.disabled).withContext('por kilo se puede').toBeFalse();
-    expect(porUnidad.disabled).withContext('por unidad todavía no').toBeTrue();
-    expect(textoPantalla()).toContain('Por unidad llega en la siguiente entrega');
-    // Y arranca en kilos, que es lo único que este corte deja guardar.
+    expect(porUnidad.disabled).withContext('por unidad TAMBIÉN, ya no llega después').toBeFalse();
+    // La nota de "llega en la siguiente entrega" dejó de ser cierta: se fue.
+    expect(textoPantalla()).not.toContain('siguiente entrega');
+    // En su lugar se dice la consecuencia de escoger, que es lo que él va a teclear
+    // mañana, y que no se puede cambiar después.
+    expect(textoPantalla()).toContain('va en piezas completas, sin decimales');
+    expect(textoPantalla()).toContain('esto no se puede cambiar después');
+    // Arranca en kilos, que es lo que la quesera maneja casi siempre.
     expect(dialogo.form.getRawValue().unidad).toBe('kg');
+  });
+
+  it('un producto POR UNIDAD se puede agregar, y su unidad viaja al servidor', async () => {
+    // Es lo que el dueño no podía hacer: crear algo que se cuenta y no sea la
+    // mozzarella. Si la unidad no viajara, quedaría guardado por kilo y sus piezas
+    // se registrarían como si fueran kilos.
+    await armar(undefined, [QUESO]);
+
+    dialogo.form.controls.unidad.setValue('unidad');
+    escribirNombre('Panela');
+    await dialogo.guardar();
+
+    expect(servicio.creados).toEqual([
+      { nombre: 'Panela', unidad: 'unidad', subproducto_de_id: null },
+    ]);
   });
 
   it('al corregir, cómo se mide queda bajo candado y el nombre no', async () => {

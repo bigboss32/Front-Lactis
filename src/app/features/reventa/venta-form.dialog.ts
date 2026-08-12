@@ -17,7 +17,13 @@ import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SpinnerBoton } from '../../shared/spinner-boton';
-import { ReventaService, TipoVenta, VentaQueso, VentaQuesoPayload } from './reventa.service';
+import {
+  CatalogoReventaService,
+  ReventaService,
+  VentaQueso,
+  VentaQuesoPayload,
+  seCuenta,
+} from './reventa.service';
 
 /**
  * Lo que se le puede corregir a un renglón de venta: todo menos el `tipo` (que no
@@ -37,9 +43,9 @@ export interface VentaQuesoFormData {
 }
 
 /**
- * Corrige UN PRODUCTO de una factura de venta: QUESO o BORONA en kilos, o
- * MOZZARELLA en barras. Calcula el total en vivo y deja anotar el gasto de vender
- * (ej. transporte).
+ * Corrige UN PRODUCTO de una factura de venta, EN LA UNIDAD QUE ESE PRODUCTO TENGA:
+ * kilos si se pesa, piezas si se cuenta. Calcula el total en vivo y deja anotar el
+ * gasto de vender (ej. transporte).
  *
  * SOLO CORRIGE, NO REGISTRA. Las ventas se registran en
  * `DocumentoReventaFormDialog`, que es la factura de varios productos y la única
@@ -85,7 +91,7 @@ export interface VentaQuesoFormData {
       <form [formGroup]="form" class="form-grid" id="form-venta-queso" (ngSubmit)="guardar()">
         <mat-form-field>
           <mat-label>¿Qué se vende?</mat-label>
-          <input matInput [value]="tipoLabel(tipo)" readonly />
+          <input matInput [value]="tipoLabel()" readonly />
           <mat-hint>El producto no se cambia: anule y registre de nuevo</mat-hint>
         </mat-form-field>
         <mat-form-field>
@@ -110,21 +116,24 @@ export interface VentaQuesoFormData {
           }
         </mat-form-field>
         @if (esMozzarella) {
-          <!-- La mozzarella se cuenta: step="1" y sin decimales. El backend
+          <!-- Lo que se cuenta va en piezas: step="1" y sin decimales. El backend
                RECHAZA "2,5 barras" en vez de redondearlas, así que el formulario no
                puede ofrecer algo que se va a devolver con error. Y no se menciona
-               la merma: la barra no pierde peso porque no se está pesando. -->
+               la merma: la pieza no pierde peso porque no se está pesando. -->
           <mat-form-field>
-            <mat-label>Barras</mat-label>
+            <mat-label>{{ palabraUnidad() === 'barra' ? 'Barras' : 'Unidades' }}</mat-label>
             <input matInput type="number" min="1" step="1" formControlName="barras" required />
-            <span matTextSuffix>barras</span>
-            <mat-hint>Barras completas: no acepta medias barras</mat-hint>
+            <span matTextSuffix>{{ palabraUnidad() }}s</span>
+            <mat-hint>
+              {{ palabraUnidad() === 'barra' ? 'Barras completas' : 'Piezas completas' }}: no
+              acepta media {{ palabraUnidad() }}
+            </mat-hint>
           </mat-form-field>
           <!-- CON DECIMALES los cuatro campos de este diálogo (precio y gasto, por
-               barra y por kilo): ninguno es un total, todos son POR UNIDAD y de
+               pieza y por kilo): ninguno es un total, todos son POR UNIDAD y de
                ellos salen la venta, el gasto y la ganancia. -->
           <mat-form-field>
-            <mat-label>Precio por barra</mat-label>
+            <mat-label>Precio por {{ palabraUnidad() }}</mat-label>
             <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
                    formControlName="precio_barra" required />
             <span matTextPrefix>$&nbsp;</span>
@@ -135,11 +144,11 @@ export interface VentaQuesoFormData {
             <mat-hint>Opcional</mat-hint>
           </mat-form-field>
           <mat-form-field>
-            <mat-label>Gasto por barra</mat-label>
+            <mat-label>Gasto por {{ palabraUnidad() }}</mat-label>
             <input matInput type="text" inputmode="decimal" appMiles [decimales]="2"
                    formControlName="gasto_por_barra" />
             <span matTextPrefix>$&nbsp;</span>
-            <span matTextSuffix>/barra</span>
+            <span matTextSuffix>/{{ palabraUnidad() }}</span>
             <mat-hint>Ej. transporte; no lo paga el cliente</mat-hint>
           </mat-form-field>
         } @else {
@@ -179,11 +188,11 @@ export interface VentaQuesoFormData {
         <span>Total de la venta: <strong>{{ total() | money: true }}</strong></span>
         @if (gastoTotal() > 0) {
           <!-- El rótulo del gasto lleva la unidad de ESTA venta: "/kg" en una de
-               kilos y "/barra" en una de barras. Un "$700/kg" debajo de una venta
+               kilos y "/barra" en una de piezas. Un "$700/kg" debajo de una venta
                de barras sería una cifra que no significa nada. -->
           <span>
             Gastos: <strong>{{ gastoTotal() | money: true }}</strong>
-            ({{ gastoUnitario() | money: true }}/{{ esMozzarella ? 'barra' : 'kg' }})
+            ({{ gastoUnitario() | money: true }}/{{ esMozzarella ? palabraUnidad() : 'kg' }})
           </span>
         }
       </div>
@@ -245,12 +254,25 @@ export class VentaQuesoFormDialog {
   private readonly dialogRef = inject(MatDialogRef<VentaQuesoFormDialog>);
   private readonly snackbar = inject(MatSnackBar);
 
+  private readonly catalogoServicio = inject(CatalogoReventaService);
+
   readonly data = inject<VentaQuesoFormData>(MAT_DIALOG_DATA);
   readonly guardando = signal(false);
 
-  /** El tipo de la fila guardada. No cambia nunca: ver el comentario del componente. */
-  readonly tipo: TipoVenta = this.data.item.tipo;
-  readonly esMozzarella = this.tipo === 'mozzarella';
+  /** La clave del producto de la fila. No cambia nunca: ver el comentario del componente. */
+  readonly tipo = this.data.item.tipo;
+  /**
+   * ESTA VENTA SE CUENTA POR PIEZAS, decidido por la UNIDAD QUE MANDA EL BACKEND y no
+   * preguntando si el producto se llama 'mozzarella'.
+   *
+   * Con la pregunta por el nombre, corregir la venta de un producto por unidad que no
+   * fuera la mozzarella abría el formulario en la rama de los kilos —en cero, porque
+   * en una venta por unidad los kilos son cero de verdad— y al guardar mandaba
+   * `kilos` a una fila que se cuenta.
+   */
+  readonly esMozzarella = seCuenta(this.data.item.unidad);
+  /** El nombre del producto, para los rótulos. Llega con el catálogo. */
+  readonly nombreDelProducto = signal<string>('');
 
   /**
    * Este renglón COMPARTE FACTURA con otros. La fecha y el cliente son de la
@@ -311,6 +333,13 @@ export class VentaQuesoFormDialog {
     firstValueFrom(this.servicio.sugerencias())
       .then((s) => this.clientes.set(s.clientes))
       .catch(() => undefined);
+    firstValueFrom(this.catalogoServicio.catalogo())
+      .then((catalogo) =>
+        this.nombreDelProducto.set(
+          catalogo.find((p) => p.clave === this.tipo)?.nombre ?? '',
+        ),
+      )
+      .catch(() => undefined);
     if (this.conHermanos) {
       // Apagados, no escondidos: el dueño necesita seguir viendo de qué venta se
       // trata mientras corrige la cantidad o el precio.
@@ -320,14 +349,22 @@ export class VentaQuesoFormDialog {
     protegerCambios(this.dialogRef, () => this.form);
   }
 
-  tipoLabel(tipo: TipoVenta): string {
-    if (tipo === 'mozzarella') return 'Mozzarella (por barra)';
-    return tipo === 'borona' ? 'Borona (por kilo)' : 'Queso (por kilo)';
+  /**
+   * La palabra de la pieza de ESTE producto: "barra" la de la mozzarella y "unidad"
+   * la de cualquier otro que se cuente. La manda el backend en la unidad de la fila.
+   */
+  palabraUnidad(): string {
+    return this.data.item.unidad === 'barra' ? 'barra' : 'unidad';
+  }
+
+  /** "Costeño (por kilo)": el nombre del catálogo con su unidad al lado. */
+  tipoLabel(): string {
+    const nombre = this.nombreDelProducto() || this.tipo;
+    return `${nombre} (por ${this.esMozzarella ? this.palabraUnidad() : 'kilo'})`;
   }
 
   nombreProducto(): string {
-    if (this.tipo === 'mozzarella') return 'la mozzarella';
-    return this.tipo === 'borona' ? 'la borona' : 'el queso';
+    return this.nombreDelProducto() || this.tipo;
   }
 
   /** Re-emite en cada cambio del formulario para recalcular el total en vivo. */

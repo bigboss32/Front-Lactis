@@ -21,18 +21,13 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { detalleDeError } from '../../shared/errores-ui';
 import { ReventaProductoFormDialog } from './producto-form.dialog';
-import {
-  ProductoReventa,
-  ReventaService,
-  TIPOS_COMPRA,
-  TIPOS_VENTA,
-} from './reventa.service';
+import { CatalogoReventaService, ProductoReventa, ReventaService } from './reventa.service';
 
 /**
  * Cómo se lee la columna "¿Ya se registra?" de un producto.
  *
- * `ya` en falso no es un defecto del producto: es el estado de la entrega. Ver el
- * comentario de `registro()`.
+ * `ya` en falso significa DESACTIVADO —o sea, una decisión del dueño— y ya no "la
+ * entrega todavía no llegó". Ver el comentario de `registro()`.
  */
 interface EstadoDeRegistro {
   texto: string;
@@ -51,13 +46,13 @@ interface EstadoDeRegistro {
  * DOS COSAS QUE ESTA PANTALLA DICE DE FRENTE, porque callarlas sería dejar al
  * dueño estrellándose:
  *
- *  1. LOS PRODUCTOS NUEVOS TODAVÍA NO SE OFRECEN AL REGISTRAR. En este corte los
- *     renglones de compra y de venta siguen guardando el producto en su columna
- *     `tipo`, y el servidor solo acepta ahí las tres cadenas de siempre (queso,
- *     borona, mozzarella). Un producto que se agregue queda guardado en la lista y
- *     empieza a ofrecerse en la siguiente entrega. Si esto no estuviera escrito, el
- *     dueño agregaría "Cuajada", iría a Ventas, no la encontraría y creería que el
- *     sistema perdió lo que hizo.
+ *  1. LO QUE ESTÁ AQUÍ ES LO QUE SE OFRECE AL REGISTRAR. Esta lista ES el
+ *     desplegable de las compras y las ventas: lo que se agregue aquí aparece allá de
+ *     una vez, y lo que se desactive deja de aparecer. Antes no era así —los caminos
+ *     de la plata decidían por el nombre y solo entendían queso, borona y
+ *     mozzarella—, y esta pantalla tenía que confesarlo con un "Todavía no". Ese
+ *     texto ya no es cierto y por eso se quitó: dejarlo puesto sería tan malo como
+ *     haberlo callado antes.
  *  2. EL CALENDARIO DE ARRIBA NO RECORTA ESTA LISTA. La pestaña vive dentro de la
  *     cáscara de reventa, que tiene el filtro de días compartido; el catálogo es
  *     completo y no tiene fechas, así que se dice en una línea en vez de dejar que
@@ -130,6 +125,7 @@ interface EstadoDeRegistro {
 })
 export class ReventaProductosPage implements OnInit {
   private readonly servicio = inject(ReventaService);
+  private readonly catalogoServicio = inject(CatalogoReventaService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly estadoFiltros = inject(EstadoFiltrosService);
@@ -148,10 +144,8 @@ export class ReventaProductosPage implements OnInit {
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly estado = new FormControl<string | null>(null);
 
-  /** Si hay algún producto que todavía no se ofrece al registrar. */
-  readonly hayProductosNuevos = computed(() =>
-    this.filas().some((p) => !this.registro(p).ya),
-  );
+  /** Si hay algún producto desactivado en la página: para explicar la columna. */
+  readonly hayDesactivados = computed(() => this.filas().some((p) => !this.registro(p).ya));
 
   constructor() {
     this.buscar.valueChanges
@@ -212,24 +206,29 @@ export class ReventaProductosPage implements OnInit {
   }
 
   /**
-   * Si el producto YA se ofrece al registrar una compra o una venta.
+   * Si el producto se ofrece al registrar una compra o una venta.
    *
-   * Se responde con las listas de tipos que el servidor acepta hoy en los
-   * renglones (`TIPOS_COMPRA` / `TIPOS_VENTA`, espejo de sus Literal), comparadas
-   * contra la CLAVE del producto —que es justamente la cadena que la fila guarda—
-   * y no contra el nombre, que el dueño puede cambiar cuando quiera.
+   * ESTA COLUMNA DECÍA OTRA COSA Y AHORA DICE LA VERDAD. Mientras los caminos de la
+   * plata decidían por el literal del tipo, un producto agregado por el dueño quedaba
+   * guardado pero no se ofrecía en ninguna parte, y la columna tenía que confesarlo
+   * con un "Todavía no". Ya no: el desplegable de la factura es el catálogo, así que
+   * TODO producto activo se ofrece.
    *
-   * De aquí sale también la única certeza que se tiene sobre los movimientos: un
-   * producto que no se puede registrar no puede tener ni una compra ni una venta.
+   * LO ÚNICO QUE DECIDE HOY ES EL ESTADO Y SI ES SUBPRODUCTO, y las dos respuestas
+   * son las MISMAS reglas con las que se arma el desplegable (`productosDelCatalogo`
+   * en documento-form.dialog.ts): un inactivo no se ofrece —desactivarlo es
+   * justamente decir "ya no manejo esto"— y un subproducto se vende pero no se
+   * compra, porque llega gratis con su padre. Si las dos reglas se separan, esta
+   * columna le empieza a mentir al dueño.
    */
   registro(producto: ProductoReventa): EstadoDeRegistro {
-    const claves = (lista: readonly string[]): boolean => lista.includes(producto.clave);
-    const seCompra = claves(TIPOS_COMPRA);
-    const seVende = claves(TIPOS_VENTA);
-    if (seCompra && seVende) return { texto: 'Sí: se compra y se vende', ya: true };
-    if (seVende) return { texto: 'Sí: se vende', ya: true };
-    if (seCompra) return { texto: 'Sí: se compra', ya: true };
-    return { texto: 'Todavía no', ya: false };
+    if (producto.estado !== 'activo') {
+      return { texto: 'No: está desactivado', ya: false };
+    }
+    if (producto.subproducto_de_id) {
+      return { texto: 'Sí: se vende', ya: true };
+    }
+    return { texto: 'Sí: se compra y se vende', ya: true };
   }
 
   nuevo(): void {
@@ -250,6 +249,7 @@ export class ReventaProductosPage implements OnInit {
         this.snackbar.open(this.mensajeGuardado(guardado, !item), 'OK', {
           duration: 6000,
         });
+        this.catalogoServicio.refrescar();
         void this.cargar();
       });
   }
@@ -257,18 +257,19 @@ export class ReventaProductosPage implements OnInit {
   /**
    * Qué se le dice al dueño después de guardar.
    *
-   * EL CASO RARO QUE SÍ HAY QUE CONTAR: agregar un producto que se había quitado
-   * no crea otro, REVIVE el mismo —con su mismo id y su misma clave, que es lo que
-   * deja que sus movimientos viejos sigan cuadrando con él— y no lo redefine:
-   * vuelve con la unidad que tenía. Como este corte no deja crear nada por unidad,
-   * un producto recién agregado que llega medido por unidad SOLO puede ser uno
-   * revivido, y hay que decírselo: pidió "por kilo" y quedó por unidad.
+   * SE DICE CÓMO QUEDÓ MEDIDO, y no es un adorno: agregar un producto que se había
+   * quitado no crea otro, REVIVE el mismo —con su mismo id y su misma clave, que es
+   * lo que deja que sus movimientos viejos sigan cuadrando con él— y NO lo redefine:
+   * vuelve con la unidad que tenía. O sea que se puede pedir "por kilo" y recibir uno
+   * por unidad. En vez de adivinar cuál de los dos casos fue, el aviso dice lo que de
+   * verdad quedó guardado, que es lo que el dueño necesita saber antes de registrar
+   * su primera compra con él.
    */
   private mensajeGuardado(producto: ProductoReventa, esNuevo: boolean): string {
-    if (esNuevo && !producto.se_pesa) {
-      return `«${producto.nombre}» ya estaba en la lista y volvió tal como estaba: se cuenta por unidad, no por kilo.`;
-    }
-    return esNuevo ? `«${producto.nombre}» quedó en la lista` : 'Producto guardado';
+    const medida = producto.se_pesa ? 'por kilo' : 'por unidad';
+    return esNuevo
+      ? `«${producto.nombre}» quedó en la lista, ${medida}. Ya se ofrece al registrar compras y ventas.`
+      : 'Producto guardado';
   }
 
   /**
@@ -306,11 +307,14 @@ export class ReventaProductosPage implements OnInit {
       this.avisoQuitar.set(null);
       this.snackbar.open(
         estado === 'activo'
-          ? `«${producto.nombre}» vuelve a ofrecerse`
-          : `«${producto.nombre}» deja de ofrecerse`,
+          ? `«${producto.nombre}» vuelve a ofrecerse al registrar`
+          : `«${producto.nombre}» deja de ofrecerse al registrar`,
         'OK',
         { duration: 4000 },
       );
+      // El desplegable de compras y ventas lee este mismo catálogo: si no se bota el
+      // caché, el producto que acaba de desactivar se le sigue ofreciendo.
+      this.catalogoServicio.refrescar();
       void this.cargar();
     } catch (err) {
       this.snackbar.open(
@@ -349,6 +353,7 @@ export class ReventaProductosPage implements OnInit {
           this.snackbar.open(`«${producto.nombre}» salió de la lista`, 'OK', {
             duration: 4000,
           });
+          this.catalogoServicio.refrescar();
           void this.cargar();
         } catch (err) {
           this.avisoQuitar.set(

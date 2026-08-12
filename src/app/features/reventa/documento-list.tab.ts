@@ -42,16 +42,26 @@ import { ReventaEstadoCuentaProductorDialog } from './estado-cuenta-productor.di
 import { ReventaEstadoCuentaDialog } from './estado-cuenta.dialog';
 import {
   AbonoReventa,
+  CatalogoReventaService,
   CompraQueso,
   DocumentoReventa,
   ReventaService,
   TipoDocumento,
   Unidad,
   VentaQueso,
+  seCuenta,
 } from './reventa.service';
 import { VentaQuesoFormDialog } from './venta-form.dialog';
 
-/** Cómo se llama cada producto en pantalla. Una sola tabla para los tres. */
+/**
+ * Cómo se llama cada producto en pantalla MIENTRAS EL CATÁLOGO NO HAYA LLEGADO.
+ *
+ * Los nombres de verdad salen del catálogo del dueño (ver `nombreDelProducto`), que
+ * es el único sitio donde están todos y donde se ven los cambios cuando él renombra.
+ * Esta tabla es solo el respaldo para el parpadeo de la primera carga y para los tres
+ * de siempre: sin ella, una factura se vería un instante rotulada con la clave
+ * interna ('mozzarella' en minúscula), y el dueño no tiene por qué ver claves.
+ */
 const ETIQUETAS: Record<string, string> = {
   queso: 'Queso',
   borona: 'Borona',
@@ -171,6 +181,7 @@ interface DocumentoVista {
 })
 export class DocumentoReventaListTab {
   private readonly servicio = inject(ReventaService);
+  private readonly catalogoServicio = inject(CatalogoReventaService);
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly estadoFiltros = inject(EstadoFiltrosService);
@@ -214,7 +225,41 @@ export class DocumentoReventaListTab {
    */
   private readonly filtroEstado = signal<string | null>(null);
 
+  /**
+   * Cómo se llama cada producto, por su clave, según el catálogo del dueño.
+   *
+   * Sin esto, un producto que él agregara salía en sus facturas rotulado con la CLAVE
+   * interna ('queso_costeno'), que es la cadena con la que el sistema lo nombra por
+   * dentro y que él no tiene por qué ver. Y como el nombre sale del catálogo,
+   * renombrar el producto renombra el rótulo de todas sus facturas viejas: la clave
+   * que ellas guardan no se movió, que es justo lo que hace que renombrar no tenga
+   * riesgo.
+   *
+   * Es una señal, así que `vistas` —que la lee al armar cada renglón— se recalcula
+   * sola cuando el catálogo llega.
+   */
+  private readonly nombres = signal<Record<string, string>>({});
+
+  nombreDelProducto(clave: string): string {
+    return this.nombres()[clave] ?? ETIQUETAS[clave] ?? clave;
+  }
+
+  /**
+   * La palabra de UNA pieza de esa unidad, para la cuenta escrita del gasto ("× $317
+   * por kilo"). "barra" es la pieza de la mozzarella y "unidad" la de cualquier otro
+   * producto que se cuente.
+   */
+  palabraUnidad(unidad: Unidad): string {
+    if (unidad === 'barra') return 'barra';
+    return unidad === 'unidad' ? 'unidad' : 'kilo';
+  }
+
   constructor() {
+    firstValueFrom(this.catalogoServicio.catalogo())
+      .then((catalogo) =>
+        this.nombres.set(Object.fromEntries(catalogo.map((p) => [p.clave, p.nombre]))),
+      )
+      .catch(() => undefined);
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
@@ -398,14 +443,17 @@ export class DocumentoReventaListTab {
   }
 
   private renglonDeVenta(r: VentaQueso): RenglonVista {
-    // `unidad` la manda el backend (la deduce del tipo): nunca se escoge "el campo
-    // que no esté en cero", porque en una venta de barras los de kilos vienen en
-    // cero DE VERDAD.
-    const deBarras = r.unidad === 'barra';
+    // `unidad` la manda el backend (la deduce de la fila): nunca se escoge "el campo
+    // que no esté en cero", porque en una venta de piezas los de kilos vienen en
+    // cero DE VERDAD. Y se pregunta con `seCuenta` y no `=== 'barra'`: la barra es la
+    // pieza de la mozzarella, y un producto por unidad del catálogo llega con
+    // `unidad: 'unidad'` — con la pregunta vieja su venta se leía como de kilos y la
+    // factura mostraba "0 kg × $0" debajo de una venta real.
+    const deBarras = seCuenta(r.unidad);
     return {
       id: r.id,
       tipo: r.tipo,
-      etiqueta: ETIQUETAS[r.tipo] ?? r.tipo,
+      etiqueta: this.nombreDelProducto(r.tipo),
       unidad: r.unidad,
       cantidad: Number(deBarras ? r.barras : r.kilos),
       precio: Number(deBarras ? r.precio_barra : r.precio_kilo),
@@ -437,11 +485,11 @@ export class DocumentoReventaListTab {
   }
 
   private renglonDeCompra(r: CompraQueso): RenglonVista {
-    const deBarras = r.unidad === 'barra';
+    const deBarras = seCuenta(r.unidad);
     return {
       id: r.id,
       tipo: r.tipo,
-      etiqueta: ETIQUETAS[r.tipo] ?? r.tipo,
+      etiqueta: this.nombreDelProducto(r.tipo),
       unidad: r.unidad,
       // KILOS BRUTOS y no netos: el valor de la compra es brutos × precio, así que
       // es la cifra con la que la multiplicación escrita del recibo da exacto. Hoy

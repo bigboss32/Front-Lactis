@@ -466,7 +466,7 @@
                               {{ r.conceptoGasto || 'Gasto de la venta' }} · {{ r.etiqueta }}:
                               {{ r.cantidad | enUnidad: r.unidad : 2 }} ×
                               {{ r.gastoUnitario | money: true }} por
-                              {{ r.unidad === 'barra' ? 'barra' : 'kilo' }}
+                              {{ palabraUnidad(r.unidad) }}
                             </span>
                             <span class="plata">{{ r.gasto | money: true }}</span>
                             <span></span>

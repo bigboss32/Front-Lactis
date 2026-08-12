@@ -3,15 +3,17 @@ import { MAT_DATE_LOCALE, provideNativeDateAdapter } from '@angular/material/cor
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { EMPTY, Observable, of } from 'rxjs';
+import { EMPTY, Observable, of, throwError } from 'rxjs';
 
 import { DocumentoFormData, DocumentoReventaFormDialog } from './documento-form.dialog';
 import {
+  CatalogoReventaService,
   DocumentoCompra,
   DocumentoReventa,
   DocumentoReventaPayload,
   DocumentoReventaUpdatePayload,
   DocumentoVenta,
+  ProductoReventa,
   SugerenciasReventa,
   VentaQueso,
 } from './reventa.service';
@@ -48,6 +50,76 @@ const COMPRA = {
   mozzarella: { barras: 12, precio: 11317, total: 135804 },
   total: 939401.41,
 };
+
+/**
+ * EL CATÁLOGO DEL DUEÑO tal como lo tiene hoy en producción: los tres de siempre MÁS
+ * el "costeño" que él creó por kilo. Se le agrega una "Panela" por unidad, que es el
+ * caso que el módulo no sabía manejar: un producto que se cuenta y no es la
+ * mozzarella.
+ */
+const producto = (datos: Partial<ProductoReventa>): ProductoReventa =>
+  ({
+    id: 'p-x',
+    empresa_id: 'e-1',
+    estado: 'activo',
+    created_at: '2026-08-01T00:00:00Z',
+    updated_at: '2026-08-01T00:00:00Z',
+    nombre: 'Queso',
+    clave: 'queso',
+    unidad: 'kg',
+    decimales: 2,
+    subproducto_de_id: null,
+    subproducto_de_nombre: null,
+    admite_ajustes: true,
+    se_pesa: true,
+    orden: 0,
+    ...datos,
+  }) as ProductoReventa;
+
+const CATALOGO: ProductoReventa[] = [
+  producto({ id: 'p-1', nombre: 'Queso', clave: 'queso', orden: 0 }),
+  producto({
+    id: 'p-2',
+    nombre: 'Borona',
+    clave: 'borona',
+    subproducto_de_id: 'p-1',
+    subproducto_de_nombre: 'Queso',
+    orden: 1,
+  }),
+  producto({
+    id: 'p-3',
+    nombre: 'Mozzarella',
+    clave: 'mozzarella',
+    unidad: 'unidad',
+    decimales: 0,
+    admite_ajustes: false,
+    se_pesa: false,
+    orden: 2,
+  }),
+  producto({ id: 'p-4', nombre: 'Costeño', clave: 'costeno', orden: 3 }),
+  producto({
+    id: 'p-5',
+    nombre: 'Panela',
+    clave: 'panela',
+    unidad: 'unidad',
+    decimales: 0,
+    admite_ajustes: false,
+    se_pesa: false,
+    orden: 4,
+  }),
+];
+
+class CatalogoFalso {
+  productos: ProductoReventa[] = CATALOGO;
+
+  catalogo(): Observable<readonly ProductoReventa[]> {
+    return of(this.productos);
+  }
+
+  refrescar(): void {
+    // No hace falta para estas pruebas: el catálogo se pide una vez por diálogo.
+  }
+}
 
 class ServicioFalso {
   creado: DocumentoReventaPayload | null = null;
@@ -118,18 +190,30 @@ describe('DocumentoReventaFormDialog: el recibo de varios productos', () => {
   let fixture: ComponentFixture<DocumentoReventaFormDialog>;
   let dialogo: DocumentoReventaFormDialog;
   let servicio: ServicioFalso;
+  let catalogo: CatalogoFalso;
 
-  const armar = async (data: DocumentoFormData): Promise<void> => {
+  /**
+   * `ajustarCatalogo` corre ANTES de crear el componente: el catálogo se pide en el
+   * constructor del diálogo, así que una prueba que quiera otro catálogo (o una
+   * consulta que falle) tiene que dejarlo puesto antes, no después.
+   */
+  const armar = async (
+    data: DocumentoFormData,
+    ajustarCatalogo?: (falso: CatalogoFalso) => void,
+  ): Promise<void> => {
     // Se reinicia a mano porque algunas pruebas arman el diálogo DOS VECES (una de
     // venta y otra de compra) para comparar las dos caras del mismo formulario.
     TestBed.resetTestingModule();
     servicio = new ServicioFalso();
+    catalogo = new CatalogoFalso();
+    ajustarCatalogo?.(catalogo);
     await TestBed.configureTestingModule({
       imports: [DocumentoReventaFormDialog, NoopAnimationsModule],
       providers: [
         provideNativeDateAdapter(),
         { provide: MAT_DATE_LOCALE, useValue: 'es-CO' },
         { provide: MAT_DIALOG_DATA, useValue: data },
+        { provide: CatalogoReventaService, useValue: catalogo },
         {
           provide: MatDialogRef,
           useValue: {
@@ -157,7 +241,7 @@ describe('DocumentoReventaFormDialog: el recibo de varios productos', () => {
   /** Escribe un renglón: producto, cantidad y precio (y su tarifa de gasto). */
   const llenar = (
     i: number,
-    producto: 'queso' | 'borona' | 'mozzarella',
+    producto: string,
     cantidad: number,
     precio: number,
     gasto?: number,
@@ -207,6 +291,10 @@ describe('DocumentoReventaFormDialog: el recibo de varios productos', () => {
   const textoPantalla = (): string => comoSeLee(fixture.nativeElement.textContent);
 
   const campos = (): number => fixture.nativeElement.querySelectorAll('mat-form-field').length;
+
+  /** El botón que registra la factura (el del pie, tipo submit). */
+  const botonGuardar = (): HTMLButtonElement =>
+    fixture.nativeElement.querySelector('button[type="submit"]');
 
   // -------------------------------------------------------- el pie suma exacto
   it('el total es la suma EXACTA de los tres renglones impresos', async () => {
@@ -699,5 +787,145 @@ describe('DocumentoReventaFormDialog: el recibo de varios productos', () => {
       borona_kilos: 3.33,
       observaciones: null,
     });
+  });
+  // ------------------------------------------- el desplegable ES el catálogo
+  describe('el desplegable de producto', () => {
+    /** Los productos que ofrece el renglón, tal como se leen en el desplegable. */
+    const opciones = (): string[] => dialogo.catalogo().map((p) => p.etiqueta);
+
+    it('ofrece el catálogo COMPLETO del dueño, con el producto que él agregó', async () => {
+      // ES EL DEFECTO QUE ÉL REPORTÓ: creó "Costeño" en la pestaña de Productos y al
+      // registrar una venta no le aparecía, porque esta lista estaba escrita en el
+      // código con tres renglones.
+      await armar({ tipo: 'venta' });
+
+      expect(opciones()).toEqual(['Queso', 'Borona', 'Mozzarella', 'Costeño', 'Panela']);
+      expect(dialogo.catalogoListo()).toBeTrue();
+    });
+
+    it('al comprar no ofrece los subproductos: la borona llega gratis con el queso', async () => {
+      // Ofrecerla sería ofrecer una compra que el servidor rechaza, y peor: anotarle
+      // un costo a algo que por definición no se paga.
+      await armar({ tipo: 'compra' });
+
+      expect(opciones()).toEqual(['Queso', 'Mozzarella', 'Costeño', 'Panela']);
+    });
+
+    it('un producto desactivado no se ofrece', async () => {
+      await armar({ tipo: 'venta' }, (falso) => {
+        falso.productos = CATALOGO.map((p) =>
+          p.clave === 'costeno' ? ({ ...p, estado: 'inactivo' } as ProductoReventa) : p,
+        );
+      });
+
+      expect(opciones()).not.toContain('Costeño');
+    });
+
+    it('sin catálogo no se puede registrar, y se dice', async () => {
+      // Registrar sin saber qué productos hay es anotarle plata al inventario
+      // equivocado. Se apaga el botón y se explica, en vez de dejar un desplegable
+      // vacío sin razón.
+      await armar({ tipo: 'venta' }, (falso) => {
+        falso.catalogo = () => throwError(() => new Error('sin señal'));
+      });
+
+      expect(dialogo.catalogoListo()).toBeFalse();
+      expect(dialogo.errorCatalogo()).toBeTrue();
+      expect(textoPantalla()).toContain('No fue posible cargar su lista de productos');
+      expect(botonGuardar().disabled).toBeTrue();
+    });
+
+    it('el renglón nuevo nace con el primer producto del catálogo, no con "queso"', async () => {
+      // Si el dueño quitó el queso de su lista, la factura no puede nacer con él.
+      await armar({ tipo: 'venta' }, (falso) => {
+        falso.productos = CATALOGO.filter((p) => p.clave !== 'queso');
+      });
+
+      expect(dialogo.renglones.at(0).controls.producto.value).toBe('borona');
+    });
+  });
+
+  // ------------------------------- la cantidad acepta o rechaza según el producto
+  describe('la cantidad se mide según el producto escogido', () => {
+    it('un producto POR UNIDAD del dueño rechaza decimales, igual que la mozzarella', async () => {
+      await armar({ tipo: 'venta' });
+      dialogo.form.controls.tercero.setValue('Tienda La 33');
+      llenar(0, 'panela', 2.5, 3000);
+      await estabilizar();
+
+      expect(dialogo.esDeBarras(0)).withContext('la panela se cuenta').toBeTrue();
+      expect(dialogo.renglones.at(0).controls.cantidad.hasError('barrasEnteras')).toBeTrue();
+      expect(dialogo.form.invalid).toBeTrue();
+      // Y con piezas completas pasa.
+      dialogo.renglones.at(0).controls.cantidad.setValue(100);
+      await estabilizar();
+      expect(dialogo.form.valid).toBeTrue();
+    });
+
+    it('un producto POR KILO del dueño sí acepta decimales', async () => {
+      await armar({ tipo: 'venta' });
+      dialogo.form.controls.tercero.setValue('Tienda La 33');
+      llenar(0, 'costeno', 12.45, 14000);
+      await estabilizar();
+
+      expect(dialogo.esDeBarras(0)).toBeFalse();
+      expect(dialogo.form.valid).toBeTrue();
+      expect(textoPantalla()).toContain('Precio por kilo');
+    });
+
+    it('la panela se rotula en UNIDADES y la mozzarella en BARRAS', async () => {
+      // "100 barras de panela" sería inventarle al dueño una unidad que no usa; y la
+      // mozzarella tiene que seguir diciendo barras, que es como están impresos sus
+      // comprobantes.
+      await armar({ tipo: 'venta' });
+      llenar(0, 'panela', 100, 3000);
+      await estabilizar();
+      expect(dialogo.rotuloCantidad(0)).toBe('unidades');
+      expect(textoPantalla()).toContain('Precio por unidad');
+
+      llenar(0, 'mozzarella', 7, 21999);
+      await estabilizar();
+      expect(dialogo.rotuloCantidad(0)).toBe('barras');
+      expect(textoPantalla()).toContain('Precio por barra');
+    });
+
+    it('la plata de un producto por unidad viaja en barras/precio_barra, sin kilos', async () => {
+      // Es el defecto crítico del backend visto desde la pantalla: si la cantidad
+      // viajara en `kilos`, la compra de 100 panelas se guardaba en CEROS.
+      await armar({ tipo: 'compra' });
+      dialogo.form.controls.tercero.setValue('Patricia');
+      llenar(0, 'panela', 100, 2000);
+      await estabilizar();
+      await dialogo.guardar();
+
+      expect(servicio.creado?.renglones[0]).toEqual({
+        tipo: 'panela',
+        barras: 100,
+        precio_barra: 2000,
+        observaciones: null,
+      });
+    });
+  });
+
+  // ------------------------------------- el recibo suma exacto con los productos nuevos
+  it('el pie suma EXACTO una factura con el producto nuevo y una panela', async () => {
+    // La cuenta del dueño: 12,45 kg de costeño a $14.000 = $174.300, y 100 panelas a
+    // $3.000 = $300.000. Total $474.300.
+    await armar({ tipo: 'venta' });
+    dialogo.form.controls.tercero.setValue('Tienda La 33');
+    llenar(0, 'costeno', 12.45, 14000);
+    llenar(1, 'panela', 100, 3000);
+    await estabilizar();
+
+    const renglones = renglonesDelRecibo();
+    expect(renglones.length).toBe(2);
+    expect(renglones[0].texto).toBe('Costeño · 12,45 kg × $ 14.000');
+    expect(renglones[1].texto).toBe('Panela · 100 unidades × $ 3.000');
+    expect(renglones[0].plata).toBe(174300);
+    expect(renglones[1].plata).toBe(300000);
+
+    const aMano = renglones.reduce((suma, r) => suma + r.plata, 0);
+    expect(totalDelRecibo()).toBeCloseTo(aMano, 2);
+    expect(totalDelRecibo()).toBeCloseTo(474300, 2);
   });
 });

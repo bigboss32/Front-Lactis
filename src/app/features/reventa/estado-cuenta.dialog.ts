@@ -14,7 +14,13 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { detalleDeError } from '../../shared/errores-ui';
-import { EstadoCuentaCliente, EstadoCuentaVenta, ReventaService } from './reventa.service';
+import {
+  EstadoCuentaCliente,
+  EstadoCuentaVenta,
+  ReventaService,
+  Unidad,
+  seCuenta,
+} from './reventa.service';
 
 /**
  * Formato de cifras del estado de cuenta. A propósito NO usa los pipes globales
@@ -187,7 +193,7 @@ type Alcance = 'historico' | 'periodo';
                          el cliente reconoce de su propia entrega: "8 barras" y no
                          "0 kg" ni "8 kg". -->
                     <td>{{ cantidadVenta(venta) }}</td>
-                    <td>{{ pesos(venta.unidad === 'barra' ? venta.precio_barra : venta.precio_kilo) }}</td>
+                    <td>{{ pesos(seCuenta(venta.unidad) ? venta.precio_barra : venta.precio_kilo) }}</td>
                     <td>{{ pesos(venta.valor_total) }}</td>
                     <td>{{ pesos(venta.abonado) }}</td>
                     <td>{{ pesos(venta.saldo) }}</td>
@@ -206,7 +212,9 @@ type Alcance = 'historico' | 'periodo';
                       <span class="renglon">{{ kilos(ec.total_kilos) }}</span>
                     }
                     @if (hayBarras()) {
-                      <span class="renglon">{{ barras(ec.total_barras) }}</span>
+                      <span class="renglon">
+                        {{ barras(ec.total_barras, unidadDeLasPiezas()) }}
+                      </span>
                     }
                   </td>
                   <td></td>
@@ -565,26 +573,49 @@ export class ReventaEstadoCuentaDialog {
     return `${numero < 0 ? '-' : ''}$ ${formatearCifra(Math.abs(numero), 2, 2)}`;
   }
 
+  /** La pregunta "¿esto se cuenta?", disponible también para la plantilla. */
+  readonly seCuenta = seCuenta;
+
   /** Kilos con el mismo formato que el PDF: 10,34 kg, 51,7 kg y 100 kg. */
   kilos(valor: Monto): string {
     return `${formatearCifra(valor, 1, 2)} kg`;
   }
 
   /**
-   * Barras con el mismo formato que el PDF: "8 barras", "1 barra". Sin decimales
-   * (una barra es una barra) y pluralizado, porque esto lo lee el cliente y
-   * "1 barras" se ve como un error del sistema.
+   * Piezas con el mismo formato que el PDF: "8 barras", "1 barra", "100 unidades".
+   * Sin decimales (una pieza es una pieza) y pluralizado, porque esto lo lee el
+   * cliente y "1 barras" se ve como un error del sistema.
+   *
+   * LA PALABRA LA DECIDE LA UNIDAD DE LA FILA: "barra" es la pieza de la mozzarella,
+   * y a cualquier otro producto que se cuente se le dice "unidad". Decirle "barras" a
+   * una panela en el documento que se le entrega al cliente sería inventarle una
+   * unidad que nadie usa.
    */
-  barras(valor: Monto): string {
+  barras(valor: Monto, unidad: Unidad = 'barra'): string {
     const numero = Math.round(Number(valor) || 0);
-    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? 'barra' : 'barras'}`;
+    const singular = unidad === 'barra' ? 'barra' : 'unidad';
+    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? singular : singular + 's'}`;
   }
 
-  /** ¿El cliente compró mozzarella? Decide los rótulos y el subtotal de barras. */
+  /** ¿El cliente compró algo que se cuenta? Decide los rótulos y su subtotal. */
   readonly hayBarras = computed(() => {
     const ec = this.datos();
     if (!ec) return false;
-    return Number(ec.total_barras) > 0 || ec.ventas.some((v) => v.unidad === 'barra');
+    return Number(ec.total_barras) > 0 || ec.ventas.some((v) => seCuenta(v.unidad));
+  });
+
+  /**
+   * La unidad del subtotal de piezas: la de la primera venta que se cuente.
+   *
+   * El backend suma `total_barras` sin mirar de qué producto son, así que si el
+   * cliente compró barras Y panelas ese subtotal ya no es de una sola cosa; en ese
+   * caso se rotula en la palabra genérica ("unidades"), que es lo único cierto. Cada
+   * fila sí dice la suya, que es lo que él reconoce de su entrega.
+   */
+  readonly unidadDeLasPiezas = computed<Unidad>(() => {
+    const cuentan = (this.datos()?.ventas ?? []).filter((v) => seCuenta(v.unidad));
+    const unidades = new Set(cuentan.map((v) => v.unidad));
+    return unidades.size === 1 ? (cuentan[0].unidad as Unidad) : 'unidad';
   });
 
   /**
@@ -601,7 +632,9 @@ export class ReventaEstadoCuentaDialog {
 
   /** La cantidad de una venta, en su unidad. La unidad la manda el backend. */
   cantidadVenta(venta: EstadoCuentaVenta): string {
-    return venta.unidad === 'barra' ? this.barras(venta.barras) : this.kilos(venta.kilos);
+    return seCuenta(venta.unidad)
+      ? this.barras(venta.barras, venta.unidad)
+      : this.kilos(venta.kilos);
   }
 
   /** Mismos rótulos del resumen del PDF (allá van en mayúsculas por el estilo). */

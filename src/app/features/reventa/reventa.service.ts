@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, map, shareReplay } from 'rxjs';
 
 import { ApiService, QueryParams } from '../../core/api.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { Monto, Page, TenantFields } from '../../core/models';
 
 /** Fecha local de hoy en formato ISO YYYY-MM-DD (el backend espera date). */
@@ -17,46 +18,77 @@ export function hoyIso(): string {
 // Los Decimal llegan como string; se formatean con | money y | cantidad.
 
 /**
- * Qué se vende/registra: queso entero, borona (subproducto a menor precio) o
- * mozzarella.
+ * QUÉ SE VENDE O SE COMPRA EN UN RENGLÓN: la CLAVE de un producto del catálogo.
  *
- * LA MOZZARELLA NO SE PESA, SE CUENTA: entra como barra y sale como barra, y el
- * peso de la barra no hace falta para ninguna cuenta. Por eso sus cantidades no
- * viven en los campos `kilos*` sino en los `barras*`, y NUNCA se suman con ellos:
- * "20 kg + 8 barras" no es un número. La plata sí se suma, que los pesos son
- * pesos.
+ * ERA UNA LISTA DE TRES ('queso' | 'borona' | 'mozzarella') Y AHORA ES UNA CLAVE
+ * CUALQUIERA, y ese cambio es todo el asunto de este corte. El catálogo se abrió
+ * para que el dueño creara sus propios productos —ya creó "costeño"—, y el backend
+ * dejó de decidir por el literal del tipo: la unidad, el inventario, el costo y la
+ * fila del desglose salen del producto (ver `catalogo.py` en el backend). Una unión
+ * cerrada de tres cadenas de este lado significaba, literalmente, que el
+ * desplegable no podía ofrecer lo que el dueño acababa de crear.
+ *
+ * SIGUEN SIENDO DOS NOMBRES y no uno solo porque no se compra lo mismo que se
+ * vende: un SUBPRODUCTO (la borona) se vende pero no se compra, porque llega gratis
+ * con su padre. Quién es subproducto lo dice el catálogo con `subproducto_de_id`, no
+ * el nombre.
  */
-export type TipoVenta = 'queso' | 'borona' | 'mozzarella';
-
-/** Qué se compra: queso (se pesa) o mozzarella (se cuenta por barras). */
-export type TipoCompra = 'queso' | 'mozzarella';
-
-/**
- * Los mismos dos tipos de arriba, como LISTA, para poder preguntar «¿este
- * producto ya se puede registrar?».
- *
- * Están tipadas contra las uniones de arriba a propósito: si mañana el backend
- * acepta un tipo más y se agrega a `TipoVenta`, TypeScript no obliga a agregarlo
- * aquí, pero si se escribe aquí uno que la unión no tiene, no compila. Es la
- * dirección que importa: la lista no puede inventar un tipo que el servidor
- * rechazaría.
- *
- * PARA QUÉ SIRVEN. La pestaña de Productos las usa para decirle al dueño, de
- * frente, cuáles de sus productos ya se ofrecen al registrar una compra o una
- * venta: en este corte los renglones siguen guardando el producto en su columna
- * `tipo` y el backend solo acepta estas cadenas, así que un producto nuevo del
- * catálogo todavía no aparece en los formularios. Callarlo dejaría al dueño
- * agregando "Cuajada" y buscándola en vano en la pantalla de ventas.
- */
-export const TIPOS_COMPRA: readonly TipoCompra[] = ['queso', 'mozzarella'];
-export const TIPOS_VENTA: readonly TipoVenta[] = ['queso', 'borona', 'mozzarella'];
+export type TipoVenta = string;
+export type TipoCompra = string;
 
 /**
- * En qué se mide una fila. La deduce el backend del `tipo` (una sola fuente de
- * verdad, ver `unidad_de` en models.py) y viaja en la respuesta para que la
- * pantalla ponga el rótulo correcto sin tener que repetir la regla.
+ * En qué se mide una fila YA REGISTRADA. La deduce el backend (ver `unidad_de` en
+ * models.py) y viaja en la respuesta para que la pantalla ponga el rótulo correcto
+ * sin repetir la regla.
+ *
+ * SON TRES VALORES Y NO DOS: 'kg' lo que se pesa, 'barra' la pieza de la mozzarella
+ * —el nombre con el que nació el módulo y con el que están impresos los
+ * comprobantes del dueño— y 'unidad' la pieza de cualquier otro producto que se
+ * cuente. Preguntar `unidad === 'barra'` para saber si algo se cuenta era correcto
+ * cuando la mozzarella era el único producto por unidad; hoy deja las panelas
+ * cayendo en la rama de los kilos, o sea mostrando "0 kg" donde hay 100 piezas.
+ * Para eso está `seCuenta`.
  */
-export type Unidad = 'kg' | 'barra';
+export type Unidad = 'kg' | 'barra' | 'unidad';
+
+/**
+ * ¿Esta fila se cuenta por piezas enteras? Todo lo que no se pese.
+ *
+ * Se pregunta así —y no `=== 'barra'`— en TODA la pantalla a propósito: la lista de
+ * unidades que se cuentan puede crecer (hoy 'barra' y 'unidad'), pero la de las que
+ * se pesan es una sola y no va a crecer. Escrita al derecho, un valor nuevo que
+ * nadie previó se trataría como kilos e imprimiría "8 kg" donde hay 8 piezas; al
+ * revés, lo peor que pasa es que se cuente algo que se pesaba, y eso salta a la
+ * vista en la primera pantalla.
+ */
+export function seCuenta(unidad: Unidad | string | null | undefined): boolean {
+  return unidad !== 'kg';
+}
+
+/**
+ * CÓMO SE LE DICE A LA PIEZA de un producto que se cuenta: "barra" la de la
+ * mozzarella, "unidad" la de todos los demás.
+ *
+ * ES SOLO EL RÓTULO Y NO DECIDE NI UN PESO — la unidad de la plata la manda el
+ * catálogo y viaja en cada fila—, pero tiene que estar escrito en alguna parte: el
+ * módulo nació llamando "barra" a la pieza de la mozzarella, así está en los
+ * comprobantes que el dueño ya archivó y así la sigue rotulando el backend (manda
+ * `unidad: 'barra'` en sus filas). Para cualquier otro producto por unidad la palabra
+ * es "unidad", que es la que usa el propio backend en sus mensajes ("Solo hay 10
+ * unidades de Panela disponibles"): decirle "barras" a una panela sería inventarle al
+ * dueño una unidad que él no usa.
+ */
+export function piezaDe(clave: string): Unidad {
+  return clave === 'mozzarella' ? 'barra' : 'unidad';
+}
+
+/** La unidad con que se rotula un producto del catálogo: 'kg', 'barra' o 'unidad'. */
+export function unidadDelProducto(producto: {
+  clave: string;
+  unidad: UnidadProducto;
+}): Unidad {
+  return producto.unidad === 'kg' ? 'kg' : piezaDe(producto.clave);
+}
 
 // ------------------------------------------- catálogo de productos de reventa
 /**
@@ -734,20 +766,106 @@ export interface ConversionBorona extends TenantFields {
 }
 
 /**
- * A dónde fue a parar el queso comprado en el período.
- * Las tres primeras son salidas reales; 'pendiente' y 'anterior' son el residuo con signo.
+ * LA CLAVE DE UNA FILA DEL DESGLOSE: a dónde fue a parar lo que se compró.
+ *
+ * YA NO ES UNA LISTA CERRADA, porque el desglose ya no tiene filas fijas: el backend
+ * lo arma con una fila por producto del catálogo. Lo que llega es:
+ *
+ *  · `{clave}` — lo que se vendió de ese producto ('queso', 'borona', 'costeno'…);
+ *  · `{clave}_pendiente` / `{clave}_anterior` — el residuo de ese producto, o sea lo
+ *    que quedó en bodega o lo que salió de un inventario de antes del período. Los
+ *    dos grupos de siempre conservan sus nombres viejos ('pendiente', 'anterior',
+ *    'mozzarella_pendiente', 'mozzarella_anterior') porque son los que están
+ *    impresos en los comprobantes que el dueño ya archivó;
+ *  · `merma` — lo que se pagó y se perdió;
+ *  · `sin_producto` — LA RED DE SEGURIDAD: plata del encabezado que no cupo en
+ *    ninguna fila de producto. Nunca debería llegar, y por eso mismo la pantalla la
+ *    muestra SIEMPRE que llegue: es lo único que impide que una plata desaparezca en
+ *    silencio del desglose que el dueño suma a mano;
+ *  · `sin_identificar` — filas cuyo `tipo` quedó en blanco en la base.
+ *
+ * Ninguna pantalla puede decidir plata comparando contra estas cadenas: para eso
+ * están `etiqueta`, `nota` y `unidad`, que el backend manda listos.
  */
-export type ProductoGanancia =
-  | 'queso'
-  | 'borona'
-  | 'merma'
-  | 'pendiente'
-  | 'anterior'
-  // Los de la mozzarella, medidos en BARRAS. Solo llegan si hubo mozzarella en el
-  // período: un negocio de puro queso sigue recibiendo los cinco de arriba.
-  | 'mozzarella'
-  | 'mozzarella_pendiente'
-  | 'mozzarella_anterior';
+export type ProductoGanancia = string;
+
+/** Las dos terminaciones con que el backend nombra la fila del RESIDUO de un grupo. */
+const FIN_PENDIENTE = '_pendiente';
+const FIN_ANTERIOR = '_anterior';
+
+/**
+ * La fila es un RESIDUO: lo que quedó en bodega ('…_pendiente') o lo que salió de un
+ * inventario anterior al período ('…_anterior').
+ *
+ * Se pregunta por la terminación y no por una lista de nombres porque los nombres
+ * dependen del catálogo del dueño. Los dos grupos de siempre entran igual: sus claves
+ * históricas son exactamente 'pendiente' y 'anterior' (que son la terminación sola) y
+ * 'mozzarella_pendiente' / 'mozzarella_anterior'.
+ */
+export function esResiduo(producto: ProductoGanancia): boolean {
+  return (
+    producto === 'pendiente' ||
+    producto === 'anterior' ||
+    producto.endsWith(FIN_PENDIENTE) ||
+    producto.endsWith(FIN_ANTERIOR)
+  );
+}
+
+/** La fila es el residuo NEGATIVO: mercancía que venía de antes del período. */
+export function esDeInventarioAnterior(producto: ProductoGanancia): boolean {
+  return producto === 'anterior' || producto.endsWith(FIN_ANTERIOR);
+}
+
+/**
+ * LA CLAVE DEL PRODUCTO al que pertenece una fila del desglose: se le quita la
+ * terminación del residuo.
+ *
+ * Sirve para cruzar la fila con el catálogo (con `existencias`, por ejemplo) y saber
+ * cómo se llama su pieza. Las dos claves históricas del queso ('pendiente' y
+ * 'anterior') no tienen de dónde sacar la clave —son la terminación sola— y quedan en
+ * cadena vacía: no importa, porque esas dos filas se pesan y para las que se pesan la
+ * palabra es siempre "kg".
+ */
+export function claveBaseDeFila(producto: ProductoGanancia): string {
+  if (producto === 'pendiente' || producto === 'anterior') return '';
+  if (producto.endsWith(FIN_PENDIENTE)) return producto.slice(0, -FIN_PENDIENTE.length);
+  if (producto.endsWith(FIN_ANTERIOR)) return producto.slice(0, -FIN_ANTERIOR.length);
+  return producto;
+}
+
+/**
+ * La fila NO corresponde a una venta: la merma, los dos residuos y la red de
+ * seguridad. En ellas un $0 en las columnas de venta significa "aquí no hubo venta"
+ * y se pinta con un guion; en una fila de producto, en cambio, el cero es una cifra.
+ */
+export function esFilaSinVenta(producto: ProductoGanancia): boolean {
+  return producto === 'merma' || producto === 'sin_producto' || esResiduo(producto);
+}
+
+/**
+ * LO QUE HAY EN BODEGA DE UN PRODUCTO, en su unidad.
+ *
+ * Una fila por producto del catálogo, SIEMPRE —aunque esté en cero, porque "no hay"
+ * es una respuesta que el dueño necesita ver—, más cualquier clave que aparezca en
+ * los movimientos sin estar en el catálogo (una fila vieja, un tipo escrito mal): si
+ * esa mercancía no saliera en ninguna pantalla, se podría despachar sin que nadie la
+ * cuente.
+ *
+ * ES DE AQUÍ DE DONDE SE LEE EL INVENTARIO. `kilos_disponibles`, `borona_disponible`
+ * y `barras_disponibles` siguen llegando y dicen exactamente lo que decían, pero solo
+ * hablan de los tres productos con los que nació el módulo.
+ *
+ * `disponible` está en la unidad de SU producto y no se suma con la de otro.
+ */
+export interface ExistenciaProducto {
+  /** La clave del producto (la misma que llevan las filas de compra y de venta). */
+  producto: string;
+  /** El nombre que el dueño le puso en el catálogo, listo para mostrar. */
+  etiqueta: string;
+  /** 'kg' (se pesa) o 'unidad' (se cuenta). Ojo: aquí nunca dice 'barra'. */
+  unidad: 'kg' | 'unidad';
+  disponible: Monto;
+}
 
 /**
  * Fila del desglose de ganancia por producto.
@@ -866,11 +984,26 @@ export interface ResumenReventa {
   kilos_pendientes: Monto;
   /** (ventas − gastos) / kilos COMPRADOS: lo neto que dejó cada kilo comprado. */
   valor_realizado_kilo: Monto;
-  /** Desglose de la ganancia por producto: queso, borona, merma y el residuo. */
+  /**
+   * EL DESGLOSE DE LA GANANCIA, UNA FILA POR PRODUCTO. Ya no son las filas fijas de
+   * queso, borona y mozzarella: el backend lo arma desde el catálogo, así que un
+   * producto que el dueño agregue trae la suya con su nombre y su unidad.
+   *
+   * LAS CUATRO IGUALDADES SON EXACTAS y son las que él verifica con calculadora:
+   *
+   *     Σ costo    = total_compras
+   *     Σ ingreso  = total_ventas
+   *     Σ gastos   = total_gastos
+   *     Σ ganancia = ganancia_estimada
+   *
+   * De ahí sale la regla de esta pantalla: NINGUNA fila con plata se puede esconder.
+   */
   por_producto: GananciaProducto[];
   /** Ganancia estimada por productor, ordenada de mayor a menor. */
   por_productor: GananciaProductor[];
   // Acumulados (histórico, sin filtro de fechas)
+  // LOS TRES DE SIEMPRE, cada uno el inventario de SU producto. Siguen llegando y
+  // siguen diciendo lo mismo; el de CUALQUIER producto sale en `existencias`.
   kilos_disponibles: Monto;
   borona_disponible: Monto; // de compras + conversiones - vendida
   /**
@@ -878,6 +1011,15 @@ export interface ResumenReventa {
    * con su propia unidad, jamás sumado con los dos de arriba.
    */
   barras_disponibles: Monto;
+  /**
+   * EL INVENTARIO POR PRODUCTO, uno por fila y en la unidad de cada uno. Es de aquí
+   * de donde la pantalla lee las existencias.
+   *
+   * OPCIONAL a propósito: el backend la está agregando en este mismo corte y la
+   * pantalla tiene que servir con las dos versiones. Cuando no viene, el resumen se
+   * comporta como antes leyendo los tres campos de arriba.
+   */
+  existencias?: ExistenciaProducto[];
   /** Incluye lo que quede pendiente del libro anterior (ver `por_pagar_libro_anterior`). */
   por_pagar_productores: Monto;
   /** Incluye lo que quede pendiente del libro anterior (ver `por_cobrar_libro_anterior`). */
@@ -1604,5 +1746,74 @@ export class ReventaService {
   /** Borra el soporte y también el archivo del almacenamiento. */
   eliminarAdjunto(adjuntoId: string): Observable<void> {
     return this.api.delete(`${this.base}/adjuntos/${adjuntoId}`);
+  }
+}
+
+// -------------------------------------------------- el catálogo, en un solo sitio
+/** Cuántos productos se traen de una. Un catálogo de quesera no llega ni cerca. */
+const TOPE_CATALOGO = 200;
+
+/**
+ * EL CATÁLOGO DE PRODUCTOS, LEÍDO UNA VEZ Y COMPARTIDO POR TODAS LAS PANTALLAS.
+ *
+ * POR QUÉ EXISTE. Desde este corte, cinco pantallas necesitan el catálogo para no
+ * mentir: el desplegable de la factura (qué se puede comprar y vender), el diálogo
+ * que corrige un renglón (en qué unidad está), la lista de facturas (cómo se llama
+ * el producto de cada renglón) y la pestaña de Productos. Que cada una lo pida por
+ * su cuenta serían cuatro consultas para abrir un diálogo, y —peor— dos pantallas de
+ * la misma sesión podrían quedar con catálogos distintos.
+ *
+ * LA REGLA MULTIEMPRESA ESTÁ EXIGIDA AQUÍ, y no es un detalle: el dueño maneja DOS
+ * queseras en la misma instalación y cada una tiene su propio 'queso'. Cambiar de
+ * quesera NO recarga la aplicación (ver `cambiarEmpresa` en el layout), así que un
+ * caché a secas le mostraría a la quesera B los nombres y las unidades del catálogo
+ * de A: registraría una compra creyendo que va en kilos cuando en su catálogo ese
+ * producto se cuenta. Por eso el caché GUARDA DE QUÉ EMPRESA ES y se bota solo
+ * cuando la empresa activa cambia.
+ *
+ * TRAE TODO EL CATÁLOGO, activos e inactivos. Quién se ofrece al registrar lo decide
+ * cada pantalla (los inactivos no se ofrecen), pero una factura vieja de un producto
+ * ya desactivado tiene que poder seguir mostrando su nombre: sin los inactivos ese
+ * renglón se quedaría rotulado con la clave interna.
+ */
+@Injectable({ providedIn: 'root' })
+export class CatalogoReventaService {
+  private readonly servicio = inject(ReventaService);
+  private readonly auth = inject(AuthService);
+
+  private cache: { empresa: string | null; datos$: Observable<readonly ProductoReventa[]> } | null =
+    null;
+
+  /**
+   * El catálogo de la empresa activa. Se pide una vez por empresa y se comparte
+   * (`shareReplay`), así que dos diálogos abiertos seguidos no hacen dos consultas.
+   */
+  catalogo(): Observable<readonly ProductoReventa[]> {
+    const empresa = this.auth.empresaActiva();
+    if (!this.cache || this.cache.empresa !== empresa) {
+      this.cache = {
+        empresa,
+        datos$: this.servicio
+          .listarProductos({ page: 1, page_size: TOPE_CATALOGO })
+          .pipe(
+            map((pagina) => pagina.items),
+            // `refCount: false` para que el resultado siga guardado cuando el
+            // último diálogo se cierre: es justo el caso de "abrir, cerrar y
+            // volver a abrir" que haría la segunda consulta.
+            shareReplay({ bufferSize: 1, refCount: false }),
+          ),
+      };
+    }
+    return this.cache.datos$;
+  }
+
+  /**
+   * Bota el caché. Lo llama la pestaña de Productos después de agregar, corregir,
+   * activar, desactivar o quitar un producto: si no, el dueño agrega "Costeño" y el
+   * desplegable de la factura le sigue mostrando la lista de antes, que es
+   * exactamente el defecto que este corte vino a arreglar.
+   */
+  refrescar(): void {
+    this.cache = null;
   }
 }

@@ -14,7 +14,13 @@ import { HasPermissionDirective } from '../../core/auth/has-permission.directive
 import { Monto } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { detalleDeError } from '../../shared/errores-ui';
-import { EstadoCuentaCompra, EstadoCuentaProductor, ReventaService } from './reventa.service';
+import {
+  EstadoCuentaCompra,
+  EstadoCuentaProductor,
+  ReventaService,
+  Unidad,
+  seCuenta,
+} from './reventa.service';
 
 /**
  * Formato de cifras del estado de cuenta. A propósito NO usa los pipes globales
@@ -201,7 +207,7 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
                          columna, igual que en el PDF. Y cada fila lleva SU unidad:
                          el productor tiene que reconocer la entrega que él hizo. -->
                     <td>{{ cantidadCompra(compra) }}</td>
-                    <td>{{ pesos(compra.unidad === 'barra' ? compra.precio_barra : compra.precio_kilo) }}</td>
+                    <td>{{ pesos(seCuenta(compra.unidad) ? compra.precio_barra : compra.precio_kilo) }}</td>
                     <td>{{ pesos(compra.valor_total) }}</td>
                     <td>{{ pesos(compra.abonado) }}</td>
                     <td>{{ pesos(compra.saldo) }}</td>
@@ -218,7 +224,9 @@ type EstadoSaldo = 'por-pagar' | 'al-dia' | 'pagado-de-mas';
                       <span class="renglon">{{ kilos(ec.total_kilos) }}</span>
                     }
                     @if (hayBarras()) {
-                      <span class="renglon">{{ barras(ec.total_barras) }}</span>
+                      <span class="renglon">
+                        {{ barras(ec.total_barras, unidadDeLasPiezas()) }}
+                      </span>
                     }
                   </td>
                   <td></td>
@@ -611,22 +619,39 @@ export class ReventaEstadoCuentaProductorDialog {
     return `${formatearCifra(valor, 1, 2)} kg`;
   }
 
+  /** La pregunta "¿esto se cuenta?", disponible también para la plantilla. */
+  readonly seCuenta = seCuenta;
+
   /**
-   * Barras con el mismo formato que el PDF: "12 barras", "1 barra". Sin decimales
-   * y pluralizado, por lo mismo que en el documento del cliente.
+   * Piezas con el mismo formato que el PDF: "12 barras", "1 barra", "100 unidades".
+   * Sin decimales y pluralizado, por lo mismo que en el documento del cliente, y con
+   * la palabra que le corresponde a la unidad de la fila: "barra" es la pieza de la
+   * mozzarella y "unidad" la de cualquier otro producto que se cuente.
    */
-  barras(valor: Monto): string {
+  barras(valor: Monto, unidad: Unidad = 'barra'): string {
     const numero = Math.round(Number(valor) || 0);
-    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? 'barra' : 'barras'}`;
+    const singular = unidad === 'barra' ? 'barra' : 'unidad';
+    return `${formatearCifra(numero, 0, 0)} ${Math.abs(numero) === 1 ? singular : singular + 's'}`;
   }
 
-  /** ¿El productor entregó mozzarella? Decide los rótulos y el subtotal de barras. */
+  /** ¿El productor entregó algo que se cuenta? Decide los rótulos y su subtotal. */
   readonly hayBarras = computed(() => {
     const ec = this.datos();
     if (!ec) return false;
     return (
-      Number(ec.total_barras) > 0 || ec.compras_detalle.some((c) => c.unidad === 'barra')
+      Number(ec.total_barras) > 0 || ec.compras_detalle.some((c) => seCuenta(c.unidad))
     );
+  });
+
+  /**
+   * La unidad del subtotal de piezas: la de la única clase que él entregó. Si entregó
+   * de dos clases distintas, ese total ya no es de una sola cosa y se rotula en la
+   * palabra genérica, que es lo único cierto. Cada fila sí dice la suya.
+   */
+  readonly unidadDeLasPiezas = computed<Unidad>(() => {
+    const cuentan = (this.datos()?.compras_detalle ?? []).filter((c) => seCuenta(c.unidad));
+    const unidades = new Set(cuentan.map((c) => c.unidad));
+    return unidades.size === 1 ? (cuentan[0].unidad as Unidad) : 'unidad';
   });
 
   /**
@@ -642,7 +667,9 @@ export class ReventaEstadoCuentaProductorDialog {
 
   /** La cantidad de una compra, en su unidad. La unidad la manda el backend. */
   cantidadCompra(compra: EstadoCuentaCompra): string {
-    return compra.unidad === 'barra' ? this.barras(compra.barras) : this.kilos(compra.kilos);
+    return seCuenta(compra.unidad)
+      ? this.barras(compra.barras, compra.unidad)
+      : this.kilos(compra.kilos);
   }
 
   /**

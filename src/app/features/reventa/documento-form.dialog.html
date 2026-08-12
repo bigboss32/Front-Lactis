@@ -72,27 +72,44 @@
     <h3 class="seccion">{{ esVenta ? '¿Qué le vendió?' : '¿Qué le compró?' }}</h3>
     <p class="ayuda">
       @if (esVenta) {
-        El peso REAL al despachar: es aquí donde se ve la merma. La mozzarella no se
-        pesa, se cuenta por barras completas.
+        El peso REAL al despachar: es aquí donde se ve la merma. Los productos que se
+        cuentan van en piezas completas, sin decimales.
       } @else {
-        Lo que recibió y le paga al productor. La mozzarella no se pesa, se cuenta
-        por barras completas.
+        Lo que recibió y le paga al productor. Los productos que se cuentan van en
+        piezas completas, sin decimales.
       }
+      Aquí se ofrece <strong>su lista de productos</strong>, la de la pestaña
+      Productos: el que agregue allá aparece acá.
     </p>
+
+    @if (errorCatalogo()) {
+      <!-- Sin catálogo no se puede escoger producto, y registrar con el producto
+           equivocado es plata anotada al inventario que no es. Se dice y se apaga el
+           botón, en vez de dejar un desplegable vacío sin explicación. -->
+      <p class="aviso-soportes">
+        <mat-icon>warning</mat-icon>
+        <span>
+          No fue posible cargar su lista de productos, así que no se puede registrar
+          nada todavía. Revise la señal y vuelva a abrir esta ventana.
+        </span>
+      </p>
+    }
 
     <div formArrayName="renglones">
       @for (fila of renglones.controls; track fila; let i = $index) {
         <div class="renglon" [formGroupName]="i">
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Producto</mat-label>
-            <!-- El producto TRAE SU UNIDAD: al escogerlo, el sufijo de la cantidad
-                 pasa a kg o a barras y el rótulo del precio con él. Por eso no hay
-                 un par de campos apagados esperando la otra unidad. -->
+            <!-- EL DESPLEGABLE ES EL CATÁLOGO DEL DUEÑO, no una lista escrita en el
+                 código: el producto que él agregue aparece aquí. Y TRAE SU UNIDAD: al
+                 escogerlo, el sufijo de la cantidad pasa a kg, a barras o a unidades,
+                 y el rótulo del precio con él. Por eso no hay un par de campos
+                 apagados esperando la otra unidad. -->
             <mat-select
               formControlName="producto"
               (selectionChange)="productoCambio(i, $event.value)"
             >
-              @for (p of catalogo; track p.tipo) {
+              @for (p of catalogo(); track p.tipo) {
                 <mat-option [value]="p.tipo">{{ p.etiqueta }}</mat-option>
               }
             </mat-select>
@@ -109,16 +126,19 @@
               [step]="esDeBarras(i) ? 1 : 0.1"
               [attr.inputmode]="esDeBarras(i) ? 'numeric' : 'decimal'"
             />
-            <span matTextSuffix>{{ esDeBarras(i) ? 'barras' : 'kg' }}</span>
+            <span matTextSuffix>{{ rotuloCantidad(i) }}</span>
             @if (fila.controls.cantidad.hasError('barrasEnteras')) {
-              <mat-error>Las barras van completas: no acepta medias barras</mat-error>
+              <mat-error>
+                Las {{ rotuloCantidad(i) }} van completas: no acepta media
+                {{ rotuloUnidad(i) }}
+              </mat-error>
             }
           </mat-form-field>
 
-          <!-- CON DECIMALES: no es un total, es el precio de UN kilo o de UNA barra,
-               y de él sale la plata del renglón. -->
+          <!-- CON DECIMALES: no es un total, es el precio de UNA pieza (un kilo, una
+               barra, una unidad), y de él sale la plata del renglón. -->
           <mat-form-field subscriptSizing="dynamic">
-            <mat-label>{{ esDeBarras(i) ? 'Precio por barra' : 'Precio por kilo' }}</mat-label>
+            <mat-label>Precio por {{ rotuloUnidad(i) }}</mat-label>
             <input
               matInput
               type="text"
@@ -192,16 +212,16 @@
             <mat-hint>El mismo para todos los productos de esta factura</mat-hint>
           </mat-form-field>
 
-          <!-- La tarifa va POR PRODUCTO porque va por unidad: $/kg en el queso y la
-               borona, $/barra en la mozzarella. Un "$700 por kilo" cobrado sobre
-               barras no significa nada, y esa es justo la confusión que este módulo
-               no permite. -->
+          <!-- La tarifa va POR PRODUCTO porque va por unidad: $/kg en lo que se pesa
+               y $/pieza en lo que se cuenta. Un "$700 por kilo" cobrado sobre barras
+               no significa nada, y esa es justo la confusión que este módulo no
+               permite. -->
           <div formArrayName="renglones">
             @for (fila of renglones.controls; track fila; let i = $index) {
               <div class="gasto-renglon" [formGroupName]="i">
                 <span class="nombre">{{ etiquetaDe(i) }}</span>
                 <mat-form-field subscriptSizing="dynamic">
-                  <mat-label>Cuánto por {{ esDeBarras(i) ? 'barra' : 'kilo' }}</mat-label>
+                  <mat-label>Cuánto por {{ rotuloUnidad(i) }}</mat-label>
                   <input
                     matInput
                     type="text"
@@ -255,7 +275,7 @@
               <span
                 >{{ g.etiqueta }}: {{ g.cantidad | enUnidad: g.unidad : 2 }} ×
                 {{ g.porUnidad | money: true }} por
-                {{ g.unidad === 'barra' ? 'barra' : 'kilo' }}</span
+                {{ palabraUnidad(g.unidad) }}</span
               >
               <strong>{{ g.total | money: true }}</strong>
             </div>
@@ -294,7 +314,7 @@
     mat-flat-button
     type="submit"
     form="form-documento-reventa"
-    [disabled]="form.invalid || guardando()"
+    [disabled]="form.invalid || guardando() || !catalogoListo()"
   >
     @if (guardando()) {
       <app-spinner-boton /> Guardando…

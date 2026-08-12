@@ -13,8 +13,9 @@ import { Monto } from '../../core/models';
 import { isoToDate } from '../../shared/date-utils';
 import { detalleDeError } from '../../shared/errores-ui';
 import { PageHeader } from '../../shared/page-header';
-import { BarrasPipe, CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { CantidadPipe, MoneyPipe, PiezasPipe } from '../../shared/pipes';
 import {
+  CatalogoReventaService,
   GananciaPorDia,
   LoteResumen,
   LotesPanel,
@@ -98,13 +99,13 @@ function n(valor: Monto | null | undefined): number {
   imports: [
     DatePipe, MatCardModule, MatButtonModule, MatIconModule, MatProgressBarModule,
     MatTooltipModule, MatFormFieldModule, MatInputModule, MatDatepickerModule,
-    PageHeader, MoneyPipe, CantidadPipe, BarrasPipe,
+    PageHeader, MoneyPipe, CantidadPipe, PiezasPipe,
   ],
   template: `
     <div class="page">
       <app-page-header
         titulo="Ganancia por lote"
-        subtitulo="Cada tanda de queso que compró y qué dejó. Un lote son todas las compras de una misma fecha."
+        subtitulo="Cada tanda que compró y qué dejó. Un lote son todas las compras de una misma fecha."
       />
 
       @if (cargando()) {
@@ -231,7 +232,7 @@ function n(valor: Monto | null | undefined): number {
         @if (p.lotes.length === 0) {
           <mat-card class="vacio">
             <mat-icon aria-hidden="true">inventory_2</mat-icon>
-            <h3>Todavía no hay compras de queso</h3>
+            <h3>Todavía no hay compras registradas</h3>
             <p>
               En cuanto registre una compra, aquí aparece ese lote con lo que costó,
               lo que se vendió de él y cuánto dejó.
@@ -286,7 +287,9 @@ function n(valor: Monto | null | undefined): number {
               <span>
                 Hay
                 @if (n(p.kilos_sin_lote) > 0) {
-                  <strong>{{ p.kilos_sin_lote | cantidad: 'kg' }} de queso</strong>
+                  <!-- Suma los kilos de todos los productos que se pesan y no son
+                       subproducto, así que ya no se puede rotular "de queso". -->
+                  <strong>{{ p.kilos_sin_lote | cantidad: 'kg' }}</strong>
                 }
                 @if (n(p.kilos_sin_lote) > 0 && n(p.borona_sin_lote) > 0) { y }
                 @if (n(p.borona_sin_lote) > 0) {
@@ -303,21 +306,26 @@ function n(valor: Monto | null | undefined): number {
 
           <!-- EL ALCANCE DEL PANEL, DICHO DE FRENTE. El reparto por lotes trabaja en
                KILOS de punta a punta (un lote son las compras de una fecha con UN
-               costo por kilo), así que la mozzarella no entra: metida ahí inflaría el
-               costo por kilo con pesos que no salieron de ningún kilo. No es un
-               error como el aviso de arriba —esas ventas están bien registradas—, y
-               por eso el mensaje es informativo y no de alerta. Se dice porque
-               callarlo dejaría al dueño creyendo que la ganancia de este panel es
-               todo lo que dejó el negocio. -->
+               costo por kilo), así que lo que se cuenta por piezas no entra: metido
+               ahí inflaría el costo por kilo con pesos que no salieron de ningún
+               kilo. No es un error como el aviso de arriba —esas compras están bien
+               registradas—, y por eso el mensaje es informativo y no de alerta. Se
+               dice porque callarlo dejaría al dueño creyendo que la ganancia de este
+               panel es todo lo que dejó el negocio.
+
+               EL TEXTO YA NO NOMBRA A LA MOZZARELLA: esta cifra suma las piezas
+               compradas de TODOS los productos que se cuentan, y desde que el dueño
+               puede crear los suyos ya no es solo ella. -->
           @if (n(p.barras_fuera_del_reparto) > 0) {
             <mat-card class="aviso info">
               <mat-icon aria-hidden="true">info</mat-icon>
               <span>
-                Este panel es <strong>solo del queso</strong>. La mozzarella se cuenta
-                por barras y no por kilos, así que sus
-                <strong>{{ p.barras_fuera_del_reparto | barras }}</strong> compradas no
+                Este panel es <strong>solo de lo que se pesa</strong>. Lo que se cuenta
+                por piezas —la mozzarella y cualquier otro producto suyo por unidad—
+                no se mide en kilos, así que sus
+                <strong>{{ p.barras_fuera_del_reparto | piezas }}</strong> compradas no
                 entran en el reparto por lotes ni en las cifras de arriba. Su ganancia
-                está completa —y en barras— en el <strong>Resumen</strong>.
+                está completa, y en su propia unidad, en el <strong>Resumen</strong>.
               </span>
             </mat-card>
           }
@@ -429,11 +437,17 @@ function n(valor: Monto | null | undefined): number {
                     </div>
                   </dl>
 
-                  <!-- A dónde fue el queso del lote -->
+                  <!-- A dónde fueron los kilos del lote.
+
+                       "Vendido" y ya no "Vendido como queso": esta cifra suma lo
+                       vendido de TODOS los productos que se pesan y no son
+                       subproducto, y desde que el dueño puede crear los suyos ya no
+                       es solo el queso. Lo vendido de cada producto, con su nombre y
+                       su plata, está en el desglose del Resumen. -->
                   <dl class="bloque">
                     <h4>A dónde fue</h4>
                     <div>
-                      <dt>Vendido como queso</dt>
+                      <dt>Vendido</dt>
                       <dd>{{ l.kilos_vendidos | cantidad: 'kg' }}</dd>
                     </div>
                     @if (n(l.kilos_a_borona) > 0) {
@@ -591,9 +605,12 @@ function n(valor: Monto | null | undefined): number {
                                 <td>{{ isoADate(v.fecha) | date: 'dd/MM/yyyy' }}</td>
                                 <td>
                                   {{ v.cliente }}
-                                  @if (v.tipo === 'borona') {
-                                    <span class="nota">borona</span>
-                                  }
+                                  <!-- QUÉ PRODUCTO SE LE VENDIÓ, siempre y por su
+                                       nombre. Antes solo decía "borona" y solo
+                                       cuando el tipo era esa palabra, así que con
+                                       dos productos que se pesan la tabla no dejaba
+                                       ver de cuál era cada fila. -->
+                                  <span class="nota">{{ nombreDelProducto(v.tipo) }}</span>
                                 </td>
                                 <td class="num">
                                   {{ v.kilos | cantidad: 'kg' }}
@@ -1147,6 +1164,7 @@ function n(valor: Monto | null | undefined): number {
 })
 export class ReventaLotesPage implements OnInit {
   private readonly servicio = inject(ReventaService);
+  private readonly catalogoServicio = inject(CatalogoReventaService);
 
   readonly panel = signal<LotesPanel | null>(null);
   readonly cargando = signal(false);
@@ -1154,6 +1172,20 @@ export class ReventaLotesPage implements OnInit {
 
   /** Para usar `n()` desde la plantilla. */
   readonly n = n;
+
+  /**
+   * Cómo se llama cada producto, por su clave, según el catálogo del dueño.
+   *
+   * La tabla de ventas de un lote necesita decir de qué producto es cada fila: con
+   * dos productos que se pesan —el queso y el que él agregue— una columna de kilos
+   * sin el nombre al lado no deja saber qué se vendió. Mientras el catálogo llega se
+   * muestra la clave, que es lo único cierto que se tiene.
+   */
+  private readonly nombres = signal<Record<string, string>>({});
+
+  nombreDelProducto(clave: string): string {
+    return this.nombres()[clave] ?? clave;
+  }
 
   /**
    * Las barras van de la más VIEJA a la más nueva, al contrario que las tarjetas:
@@ -1210,6 +1242,12 @@ export class ReventaLotesPage implements OnInit {
   ngOnInit(): void {
     this.cargar();
     this.cargarDias();
+    this.catalogoServicio.catalogo().subscribe({
+      next: (catalogo) =>
+        this.nombres.set(Object.fromEntries(catalogo.map((p) => [p.clave, p.nombre]))),
+      // Sin catálogo las filas se rotulan con la clave: el panel sigue sirviendo.
+      error: () => undefined,
+    });
   }
 
   cargarDias(): void {
