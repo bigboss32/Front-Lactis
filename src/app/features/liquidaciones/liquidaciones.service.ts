@@ -148,6 +148,7 @@ export function resultadoGenerarDeCrudo(crudo: unknown): ResultadoGenerar {
 export interface PagoPayload {
   fecha: string; // ISO 'YYYY-MM-DD'
   valor: number;
+  destinatario?: string | null;
   observaciones: string | null;
 }
 

@@ -64,6 +64,11 @@ export interface PagoDialogData {
           </mat-hint>
         </mat-form-field>
         <mat-form-field class="full">
+          <mat-label>Girado a / Destinatario (opcional)</mat-label>
+          <input matInput formControlName="destinatario" [placeholder]="'Ej. Pepito (si se gira a un tercero)'" />
+          <mat-hint>Si no lo cambia, queda a nombre de {{ data.tercero }}</mat-hint>
+        </mat-form-field>
+        <mat-form-field class="full">
           <mat-label>Observaciones</mat-label>
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
         </mat-form-field>
@@ -104,6 +109,7 @@ export class PagoLiquidacionFormDialog {
       // que el servidor le diga que no.
       [Validators.required, Validators.min(0.01), Validators.max(Number(this.data.saldo))],
     ],
+    destinatario: [''],
     observaciones: [''],
   });
 
@@ -120,6 +126,7 @@ export class PagoLiquidacionFormDialog {
         this.servicio.registrarPago(this.data.id, {
           fecha: dateToIso(valores.fecha),
           valor: Number(valores.valor),
+          destinatario: valores.destinatario?.trim() || null,
           observaciones: valores.observaciones || null,
         }),
       );

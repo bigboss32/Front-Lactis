@@ -454,7 +454,7 @@ export class LiquidacionDetailDialog {
       ? ['fecha', 'ruta', 'litros', 'precio_litro', 'valor']
       : ['fecha', 'litros', 'precio_litro', 'valor'],
   );
-  readonly columnasPagos = ['fecha', 'valor', 'observaciones', 'acciones'];
+  readonly columnasPagos = ['fecha', 'valor', 'destinatario', 'observaciones', 'acciones'];
 
   private readonly hayRutas = computed(() =>
     this.liq().detalles.some((detalle) => !!detalle.ruta_id || !!detalle.ruta_nombre),

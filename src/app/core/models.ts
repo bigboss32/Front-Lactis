@@ -513,6 +513,7 @@ export interface PagoLiquidacion {
   id: string;
   fecha: string;
   valor: Monto;
+  destinatario?: string | null;
   observaciones: string | null;
 }
 
