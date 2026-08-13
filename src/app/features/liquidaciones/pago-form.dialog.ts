@@ -48,27 +48,25 @@ export interface PagoDialogData {
     <h2 mat-dialog-title>Registrar pago — {{ data.tercero }}</h2>
     <mat-dialog-content>
       <form [formGroup]="form" class="form-grid" id="form-pago-liquidacion" (ngSubmit)="guardar()">
-        <mat-form-field>
+        <mat-form-field subscriptSizing="dynamic">
           <mat-label>Fecha del pago</mat-label>
           <input matInput [matDatepicker]="pFecha" (click)="pFecha.open()" formControlName="fecha" required />
           <mat-datepicker-toggle matSuffix [for]="pFecha" />
           <mat-datepicker #pFecha />
         </mat-form-field>
-        <mat-form-field>
+        <mat-form-field subscriptSizing="dynamic">
           <mat-label>Valor</mat-label>
           <!-- cdkFocusInitial: el foco arranca en el valor, no en la fecha (que se llena con el calendario). -->
           <input matInput type="text" inputmode="numeric" appMiles formControlName="valor" required cdkFocusInitial />
           <span matTextPrefix>$&nbsp;</span>
-          <mat-hint>
-            Saldo pendiente: {{ data.saldo | money }}. Si le paga menos, queda debiendo el resto.
-          </mat-hint>
+          <mat-hint>Saldo pendiente: {{ data.saldo | money }}</mat-hint>
         </mat-form-field>
-        <mat-form-field class="full">
+        <mat-form-field class="full" subscriptSizing="dynamic">
           <mat-label>Girado a / Destinatario (opcional)</mat-label>
           <input matInput formControlName="destinatario" [placeholder]="'Ej. Pepito (si se gira a un tercero)'" />
           <mat-hint>Si no lo cambia, queda a nombre de {{ data.tercero }}</mat-hint>
         </mat-form-field>
-        <mat-form-field class="full">
+        <mat-form-field class="full" subscriptSizing="dynamic">
           <mat-label>Observaciones</mat-label>
           <textarea matInput formControlName="observaciones" rows="2"></textarea>
         </mat-form-field>
