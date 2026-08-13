@@ -28,4 +28,8 @@ export class NominaService {
   eliminar(id: string): Observable<void> {
     return this.api.delete(`/nomina/${id}`);
   }
+
+  descargarPdf(id: string, fallbackName: string): Observable<void> {
+    return this.api.download(`/nomina/${id}/pdf`, fallbackName);
+  }
 }

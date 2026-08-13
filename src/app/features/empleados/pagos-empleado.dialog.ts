@@ -117,6 +117,9 @@ import { NominaService } from './nomina.service';
         <ng-container matColumnDef="acciones">
           <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
           <td mat-cell *matCellDef="let pago" class="col-acciones">
+            <button mat-icon-button matTooltip="Descargar recibo PDF" (click)="descargarPdf(pago)">
+              <mat-icon>picture_as_pdf</mat-icon>
+            </button>
             <button mat-icon-button matTooltip="Eliminar" (click)="eliminar(pago)">
               <mat-icon>delete</mat-icon>
             </button>
@@ -244,6 +247,12 @@ export class PagosEmpleadoDialog {
     } finally {
       this.guardando.set(false);
     }
+  }
+
+  descargarPdf(pago: PagoEmpleado): void {
+    const nombre = `${this.data.empleado.nombre}_${this.data.empleado.apellido}`.replace(/\s+/g, '_');
+    const fallback = `recibo_nomina_${nombre}_${pago.fecha}.pdf`;
+    this.servicio.descargarPdf(pago.id, fallback).subscribe();
   }
 
   eliminar(pago: PagoEmpleado): void {

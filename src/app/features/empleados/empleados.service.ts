@@ -21,4 +21,8 @@ export class EmpleadosService extends CrudService<Empleado, EmpleadoPayload> {
   constructor() {
     super('/empleados');
   }
+
+  descargarPdfPago(pagoId: string, fallbackName: string) {
+    return this.api.download(`/nomina/${pagoId}/pdf`, fallbackName);
+  }
 }
