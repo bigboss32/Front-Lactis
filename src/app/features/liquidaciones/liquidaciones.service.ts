@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
 import { CrudService } from '../../core/api.service';
-import { Liquidacion, Monto } from '../../core/models';
+import { Liquidacion, ModoTransporte, Monto } from '../../core/models';
 
 export interface GenerarLiquidacionesPayload {
   periodo_inicio: string; // ISO 'YYYY-MM-DD'
@@ -178,6 +178,22 @@ export interface PreLiquidacionDetalle {
    * manda el campo; ver `ruta_borrada` en core/models.ts, es el mismo.
    */
   ruta_borrada?: boolean;
+  /**
+   * CÓMO SE COBRÓ ESTE RENGLÓN: por litro o por día completo. El mismo campo (y el
+   * mismo trato) que en `LiquidacionDetalle` de core/models.ts, porque es la misma
+   * tabla: el avance imprime un PDF con los mismos renglones, y ese papel escribe
+   * "Día completo" donde no hay tarifa por litro que escribir. Si la pantalla del
+   * avance dijera "$ 0,00" donde el papel dice "Día completo", el dueño estaría
+   * mandando por WhatsApp un documento que no se parece a lo que él está viendo.
+   */
+  modo_transporte?: ModoTransporte;
+  /**
+   * Y si un renglón fijo en $0,00 lo está porque ese día YA SE COBRÓ completo en otro
+   * comprobante. El mismo campo (y el mismo trato) que en `LiquidacionDetalle` de
+   * core/models.ts: no se deduce de que el valor sea cero, porque un fijo de $0,00 que
+   * nunca se cobró también vale cero.
+   */
+  dia_fijo_ya_cobrado?: boolean;
 }
 
 export interface PreLiquidacionAnticipo {
@@ -195,6 +211,14 @@ export interface PreLiquidacion {
   periodo_fin: string;
   total_litros: Monto;
   precio_promedio: Monto;
+  /**
+   * El avance trae algún día cobrado POR DÍA COMPLETO, y por eso `precio_promedio` no
+   * se puede afirmar (llega en cero a propósito). Ver `tiene_dias_fijos` en
+   * core/models.ts: es el mismo campo en el comprobante ya generado. Esta pantalla solo
+   * muestra el promedio en el avance del PROVEEDOR —donde no hay días fijos, porque eso
+   * es flete— igual que el PDF preliminar.
+   */
+  tiene_dias_fijos?: boolean;
   valor_bruto: Monto;
   bonificaciones: Monto;
   descuentos: Monto;

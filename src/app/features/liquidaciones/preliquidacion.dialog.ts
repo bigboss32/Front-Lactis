@@ -23,7 +23,12 @@ import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { OpcionSelect, SelectBuscable } from '../../shared/select-buscable';
-import { LiquidacionesService, PreLiquidacion } from './liquidaciones.service';
+import {
+  LiquidacionesService,
+  PreLiquidacion,
+  PreLiquidacionDetalle,
+} from './liquidaciones.service';
+import { notasDelDiaFijo, precioDelRenglon, renglonDeDiaFijo } from './renglon-transporte';
 
 type TipoTercero = 'proveedor' | 'transportador';
 
@@ -261,7 +266,19 @@ function esteMes(): [Date, Date] {
               -->
               <ng-container matColumnDef="precio_litro">
                 <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
-                <td mat-cell *matCellDef="let d" class="num">{{ d.precio_litro | money: true }}</td>
+                <!--
+                  EL DÍA FIJO NO LLEVA TARIFA, porque no existe ninguna por litro que
+                  reproduzca $150.000 el día: va la palabra, la misma que imprime el PDF
+                  preliminar que se comparte por WhatsApp. Pintar el "$ 0,00" que manda
+                  el backend en esos renglones diría que ese día se recogió gratis.
+                -->
+                <td mat-cell *matCellDef="let d" class="num">
+                  @if (esDiaCompleto(d)) {
+                    <span class="dia-completo">{{ precioDelDia(d) }}</span>
+                  } @else {
+                    {{ d.precio_litro | money: true }}
+                  }
+                </td>
               </ng-container>
               <ng-container matColumnDef="valor">
                 <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
@@ -270,6 +287,10 @@ function esteMes(): [Date, Date] {
               <tr mat-header-row *matHeaderRowDef="columnasDetalle()"></tr>
               <tr mat-row *matRowDef="let d; columns: columnasDetalle()"></tr>
             </table>
+            <!-- La letra chica del día fijo, palabra por palabra como en el papel. -->
+            @for (nota of notasDiaFijo(); track nota) {
+              <p class="nota-dia-fijo">{{ nota }}</p>
+            }
           }
         </div>
       }
@@ -360,6 +381,24 @@ function esteMes(): [Date, Date] {
 
     table.detalle { width: 100%; }
     table.detalle .num { text-align: right; font-variant-numeric: tabular-nums; }
+    /* "Día completo": una palabra, no una cifra, y con la misma marca que usa el
+       comprobante oficial —es el mismo renglón visto antes de generarlo—. */
+    .dia-completo {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--mat-sys-primary) 14%, transparent);
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .nota-dia-fijo {
+      max-width: 620px;
+      margin: 8px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
     /* La marca de ruta borrada: visible pero sin competir con las cifras. */
     .borrada {
       font-size: 0.75rem;
@@ -407,6 +446,22 @@ export class PreLiquidacionDialog {
       ? ['fecha', 'ruta', 'litros', 'precio_litro', 'valor']
       : ['fecha', 'litros', 'precio_litro', 'valor'],
   );
+
+  /**
+   * El renglón de un DÍA COMPLETO se escribe como en el comprobante y como en el papel:
+   * la misma función para las tres, para que el avance no invente una tercera forma de
+   * decirlo. Ver renglon-transporte.ts.
+   */
+  esDiaCompleto(detalle: PreLiquidacionDetalle): boolean {
+    return renglonDeDiaFijo(detalle);
+  }
+
+  precioDelDia(detalle: PreLiquidacionDetalle): string {
+    return precioDelRenglon(detalle);
+  }
+
+  /** La letra chica, solo cuando hay renglones que explicar. */
+  readonly notasDiaFijo = computed(() => notasDelDiaFijo(this.resultado()?.detalles ?? []));
 
   private readonly quincena = quincenaActual();
 

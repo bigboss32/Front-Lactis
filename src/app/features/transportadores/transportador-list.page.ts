@@ -16,14 +16,13 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Transportador, TransportadorRuta } from '../../core/models';
+import { Transportador, TransportadorRuta, esDiaFijo } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
-import { MoneyPipe } from '../../shared/pipes';
 import { TransportadorFormDialog } from './transportador-form.dialog';
-import { TransportadoresService, rutasEnOrden } from './transportadores.service';
+import { TransportadoresService, rutasEnOrden, tarifaLegible } from './transportadores.service';
 
 @Component({
   selector: 'app-transportador-list',
@@ -31,7 +30,7 @@ import { TransportadoresService, rutasEnOrden } from './transportadores.service'
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule,
-    PageHeader, EstadoChip, MoneyPipe, HasPermissionDirective,
+    PageHeader, EstadoChip, HasPermissionDirective,
   ],
   templateUrl: './transportador-list.page.html',
   styles: `
@@ -73,7 +72,8 @@ import { TransportadoresService, rutasEnOrden } from './transportadores.service'
         color: var(--mat-sys-on-surface-variant);
         font-variant-numeric: tabular-nums;
         /* La CIFRA no se parte NUNCA: "$ 242," en un renglón y "76/L" en el otro
-           se lee como otra plata. Por eso el nowrap se queda acá y solo acá. */
+           se lee como otra plata. Por eso el nowrap se queda acá y solo acá.
+           Y por lo mismo "por día" viaja con un espacio duro dentro de la cadena. */
         white-space: nowrap;
       }
       /* "(borrada)": se tiene que ver, pero la tarifa manda. */
@@ -83,6 +83,27 @@ import { TransportadoresService, rutasEnOrden } from './transportadores.service'
         white-space: nowrap;
       }
     }
+    /*
+     * LA TARIFA FIJA SE TIENE QUE RECONOCER DE UN VISTAZO.
+     *
+     * "$ 150.000 por día" y "$ 242,76/L" son dos cosas que no se parecen en nada y
+     * que en una lista se ven igual: dos cifras grises en la misma columna. El fijo
+     * es la excepción —casi todo el negocio va por litro—, así que se marca: en el
+     * color normal del texto (no en el gris de acompañamiento), con más peso y con
+     * el fondo tenue de la marca. Nada de rojo: un fijo no tiene nada de malo, lo
+     * que pasa es que hay que verlo.
+     *
+     * Va en el mismo .tarifa, así que conserva el nowrap: la cifra y "por día" no
+     * se pueden separar, porque medio renglón dice otra cosa.
+     */
+    .tarifa.fija {
+      color: var(--mat-sys-on-surface);
+      font-weight: 500;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--mat-sys-primary) 14%, transparent);
+    }
+
     /* En celular la tabla se vuelve tarjetas y la celda alinea a la derecha: la
        lista se pega a ese borde para que las tarifas queden una debajo de otra y
        se puedan comparar de un vistazo. */
@@ -119,6 +140,23 @@ export class TransportadorListPage implements OnInit {
    */
   rutasDe(fila: Transportador): TransportadorRuta[] {
     return rutasEnOrden(fila.rutas ?? []);
+  }
+
+  /**
+   * La tarifa como se lee, CON SU UNIDAD: "$ 242,76/L" o "$ 150.000 por día".
+   *
+   * Sirve para las dos columnas —la general y la de cada ruta— porque las dos son lo
+   * mismo: una cifra y un modo. La cadena la arma `tarifaLegible`, que es la misma que
+   * usa el formulario, para que la lista y el diálogo de edición no puedan escribir esa
+   * plata de dos maneras distintas.
+   */
+  tarifa(fila: Transportador | TransportadorRuta): string {
+    return tarifaLegible(fila);
+  }
+
+  /** ¿Es un fijo por día? La lista lo resalta: es la excepción y hay que reconocerla. */
+  esFija(fila: Transportador | TransportadorRuta): boolean {
+    return esDiaFijo(fila.modo_transporte);
   }
 
   constructor() {

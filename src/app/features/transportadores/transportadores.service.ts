@@ -1,7 +1,14 @@
 import { Injectable } from '@angular/core';
 
 import { CrudService } from '../../core/api.service';
-import { Transportador, TransportadorRuta } from '../../core/models';
+import {
+  ModoTransporte,
+  Monto,
+  Transportador,
+  TransportadorRuta,
+  esDiaFijo,
+} from '../../core/models';
+import { pesosExactos } from '../../shared/pipes';
 
 /**
  * Las rutas de un transportador ORDENADAS POR NOMBRE, que es como se leen.
@@ -25,10 +32,54 @@ export function rutasEnOrden(rutas: readonly TransportadorRuta[]): Transportador
   });
 }
 
-/** Una ruta que hace el transportador con su tarifa por litro, tal como la recibe el API. */
+/**
+ * LO QUE SE LEE AL LADO DE LA CIFRA, y que le cambia el significado.
+ *
+ * "$ 242,76 /L" es una cosa y "$ 150.000 por día" es otra: la misma columna, la misma
+ * plata escrita igual, y dos cuentas que no se parecen. Sin la unidad, un fijo por día
+ * leído como tarifa por litro son $45.000.000 de flete en un día de 300 litros — y en
+ * la pantalla las dos cifras se ven idénticas. Por eso la unidad no es adorno y por eso
+ * se escribe en UN solo sitio: la lista, el formulario y sus pruebas dicen lo mismo.
+ *
+ * El espacio del fijo es DURO (U+00A0): "$ 150.000" y "por día" no se pueden separar en
+ * dos renglones, porque medio renglón dice otra cosa.
+ */
+export function unidadDeLaTarifa(modo: ModoTransporte | string | null | undefined): string {
+  return esDiaFijo(modo) ? ' por día' : '/L';
+}
+
+/**
+ * UNA TARIFA COMPLETA, COMO SE LEE: "$ 242,76/L" o "$ 150.000 por día".
+ *
+ * La cifra sale del MISMO formateador del comprobante y del PDF (`pesosExactos`), con
+ * centavos cuando los tiene: una tarifa de $242,76 leída "$ 243" es una cifra que no se
+ * paga. Y la unidad va pegada, en la misma cadena, para que ninguna pantalla pueda
+ * pintar la plata y olvidarse de decir de qué es.
+ *
+ * Sirve igual para la tarifa general del transportador y para la de cada una de sus
+ * rutas: las dos son "una cifra y un modo", que es justo lo que pide este parámetro.
+ */
+export function tarifaLegible(
+  tarifa: { valor_transporte: Monto; modo_transporte?: ModoTransporte } | null | undefined,
+): string {
+  if (!tarifa) return '—';
+  return pesosExactos(tarifa.valor_transporte) + unidadDeLaTarifa(tarifa.modo_transporte);
+}
+
+/** Una ruta que hace el transportador con su tarifa y su modo, como la recibe el API. */
 export interface TransportadorRutaPayload {
   ruta_id: string;
   valor_transporte: number | string;
+  /**
+   * SIEMPRE SE MANDA, y va pegado a `valor_transporte`: son un solo dato en dos campos.
+   *
+   * El backend trata el modo ausente como "no me toque el modo" justamente para que un
+   * cliente viejo no le vuelva 'litro' una ruta que estaba en día fijo SIN cambiarle la
+   * cifra (los $150.000 del día pasarían a $150.000 por litro y en pantalla la cifra se
+   * vería idéntica). Este diálogo no necesita esa red: muestra las dos cosas en pantalla
+   * y manda las dos, así que lo que el usuario ve es exactamente lo que queda guardado.
+   */
+  modo_transporte: ModoTransporte;
 }
 
 export interface TransportadorPayload {
@@ -37,6 +88,8 @@ export interface TransportadorPayload {
   telefono?: string | null;
   /** Tarifa GENERAL: la que se cobra cuando la ruta del día no tiene tarifa propia. */
   valor_transporte: number | string;
+  /** Y su modo, por lo mismo que en cada ruta: la cifra sola no dice qué se cobra. */
+  modo_transporte: ModoTransporte;
   estado?: string;
   /**
    * Sus rutas con tarifa. OJO con los tres casos, porque el PUT es parcial y el

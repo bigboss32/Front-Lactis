@@ -309,6 +309,38 @@ export interface Ruta extends TenantFields {
 }
 
 /**
+ * CÓMO SE LE PAGA EL FLETE: por litro (como siempre) o un FIJO POR DÍA.
+ *
+ * Lo pidió el dueño así: "en el transporte hay un nuevo requerimiento: que sea por
+ * litro o que sea por día fijo, es decir, el transporte de leche a fábrica vale 150k
+ * independientemente de los litros".
+ *
+ * Los dos valores son los del backend, tal cual (`MODOS_DE_TRANSPORTE` en
+ * Back-Lactis/app/modules/transportadores/models.py). No se traducen ni se abrevian:
+ * viajan por el API en los dos sentidos y un "fijo" o un "DIA_FIJO" inventado acá
+ * rebota con un 422.
+ */
+export type ModoTransporte = 'litro' | 'dia_fijo';
+
+export const MODO_POR_LITRO: ModoTransporte = 'litro';
+export const MODO_DIA_FIJO: ModoTransporte = 'dia_fijo';
+
+/**
+ * ¿Esa tarifa (o ese renglón) se cobra por DÍA COMPLETO?
+ *
+ * Existe como función y no como comparación suelta porque la pregunta la hacen cinco
+ * pantallas y TODAS tienen que contestarla igual: el formulario del transportador, su
+ * lista, el comprobante, el avance y las pruebas. Y por el `undefined`: mientras una
+ * respuesta vieja —o cacheada— llegue sin el campo, se lee como POR LITRO, que es lo
+ * que esas tarifas y esos renglones significaron desde que existen. Adivinar por las
+ * cifras ("litros × precio no da el valor") es lo que hace imprimir un comprobante que
+ * no cuadra: eso también le pasa a una fila corregida a mano en la base.
+ */
+export function esDiaFijo(modo: ModoTransporte | string | null | undefined): boolean {
+  return modo === MODO_DIA_FIJO;
+}
+
+/**
  * Una ruta que hace el transportador, CON LA TARIFA que cobra en ella.
  *
  * El mismo señor puede hacer dos rutas el mismo día y cobrar distinto en cada
@@ -325,6 +357,18 @@ export interface TransportadorRuta {
   ruta_id: string;
   nombre: string | null;
   valor_transporte: Monto;
+  /**
+   * CÓMO se cobra ESTA ruta. `valor_transporte` cambia de significado con él: por
+   * litro son $/L (242,76) y en día fijo es lo que vale el día completo (150.000).
+   *
+   * Por eso los dos campos no se pueden leer ni mandar por separado. Alex puede tener
+   * Nápoles por litro y "a fábrica" por día fijo AL MISMO TIEMPO, así que el modo va
+   * en cada ruta y no solo en el transportador.
+   *
+   * Opcional para leer una respuesta vieja como POR LITRO (ver `esDiaFijo`), nunca
+   * para mandarlo a medias: el payload manda siempre los dos juntos.
+   */
+  modo_transporte?: ModoTransporte;
   /**
    * La ruta se BORRÓ después de habérsela asignado, y la tarifa sigue guardada.
    *
@@ -348,6 +392,14 @@ export interface Transportador extends TenantFields {
    * dónde sacar la tarifa.
    */
   valor_transporte: Monto;
+  /**
+   * El modo de esa tarifa GENERAL. El de cada ruta va en su propia fila.
+   *
+   * Un fijo general se cobra POR DÍA Y POR RUTA igual que el de una ruta: si ese día
+   * recogió en dos rutas sin tarifa propia, son DOS fijos; y si en una ruta recogió de
+   * cinco proveedores, ese día sigue valiendo UNO.
+   */
+  modo_transporte?: ModoTransporte;
   /** Sus rutas con tarifa propia. Vacío = solo cobra la tarifa general. */
   rutas: TransportadorRuta[];
 }
@@ -506,6 +558,39 @@ export interface LiquidacionDetalle {
    * poder decirlo sin que la cifra cambie.
    */
   ruta_borrada?: boolean;
+  /**
+   * CÓMO SE COBRÓ ESTE RENGLÓN, y sin esto la pantalla no lo puede escribir bien:
+   *
+   *  · 'litro'    → "219,45 L × $242,76 = $53.273,68", y se verifica multiplicando;
+   *  · 'dia_fijo' → NO hay tarifa por litro que escribir (`precio_litro` viaja en CERO,
+   *    que es la verdad: ninguna tarifa por litro reproduce $150.000 el día), así que
+   *    en esa columna va la palabra "Día completo" y los litros quedan al lado como
+   *    información. Se verifica leyéndolo: el día vale $150.000.
+   *
+   * Se guarda EN EL RENGLÓN, así que un comprobante viejo sigue significando lo mismo
+   * el día que a esa ruta le cambien el modo. Opcional para leer una respuesta vieja
+   * como por litro; ver `esDiaFijo`.
+   */
+  modo_transporte?: ModoTransporte;
+  /**
+   * POR QUÉ UN RENGLÓN DE DÍA FIJO VALE $0,00, que son DOS cosas distintas y la
+   * pantalla no las puede confundir:
+   *
+   *  · true  → ese día completo YA SE COBRÓ en otro comprobante (leche que se anotó
+   *    después de liquidar ese día: el viaje costó $150.000 una vez y recoger un
+   *    proveedor más no cuesta más). La columna Precio/L escribe "Ya cobrado";
+   *  · false → simplemente vale eso. Si el valor es $0,00 es porque la tarifa fija de
+   *    esa ruta es de $0,00 —el dueño decidió no cobrar ese viaje— y la columna escribe
+   *    "Día completo", igual que cualquier otro día fijo.
+   *
+   * NO SE DEDUCE DE `valor === 0`: así se deducía y era falso la mitad de las veces.
+   * Sobre un fijo de $0,00 que NUNCA se cobró, "Ya cobrado" le afirma al dueño que ya
+   * se le pagó al conductor mientras el PDF —que sí usa este campo— dice lo contrario.
+   *
+   * Opcional para leer una respuesta vieja: sin el campo, ningún renglón dice "Ya
+   * cobrado", que es exactamente lo que era cierto antes de que existiera.
+   */
+  dia_fijo_ya_cobrado?: boolean;
 }
 
 /** Un pago parcial (abono) hecho contra una liquidación aprobada. */
@@ -564,6 +649,20 @@ export interface Liquidacion extends TenantFields {
   periodo_fin: string;
   total_litros: Monto;
   precio_promedio: Monto;
+  /**
+   * EL COMPROBANTE TRAE ALGÚN DÍA COBRADO POR DÍA COMPLETO, y por eso el
+   * `precio_promedio` de arriba NO SE PUEDE AFIRMAR.
+   *
+   * Cuando llega en true el backend manda el promedio en CERO a propósito: con días
+   * fijos mezclados esa división no reproduce la tarifa de ningún renglón ($150.000 del
+   * día más $53.273,68 a $242,76 daría "$363,80/L", que no es la tarifa de nada), y
+   * escribirla sería afirmar una tarifa por litro que no existe. La pantalla del
+   * transportador NO imprime ese promedio —su comprobante en PDF tampoco lo imprime, y
+   * las dos hojas tienen que decir lo mismo—, así que hoy no hay dónde mentir; el día
+   * en que alguien agregue ese renglón, ESTA bandera es la que tiene que hacerlo decir
+   * "—" y nunca "$ 0,00" el litro. Hay una prueba que lo mide.
+   */
+  tiene_dias_fijos?: boolean;
   valor_bruto: Monto;
   bonificaciones: Monto;
   descuentos: Monto;

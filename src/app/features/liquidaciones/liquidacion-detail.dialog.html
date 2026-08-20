@@ -123,7 +123,22 @@
     <ng-container matColumnDef="precio_litro">
       <th mat-header-cell *matHeaderCellDef class="num">Precio/L</th>
       <td mat-cell *matCellDef="let detalle" class="num">
-        @if (editandoId() === detalle.id) {
+        <!--
+          EL DÍA FIJO VA PRIMERO, antes que cualquier rama que muestre una cifra.
+
+          Ese día NO tiene tarifa por litro: el backend manda `precio_litro` en cero
+          porque es la verdad —ninguna tarifa por litro reproduce $150.000 el día—, y
+          pintar "$ 0" ahí diría que ese día se recogió gratis. Va la palabra, la misma
+          que imprime el PDF que se le entrega al conductor: la línea se verifica
+          leyéndola ("el día vale $150.000") y no multiplicando. Y estando de primera,
+          por este renglón no pasa el lápiz de corregir el precio ni en un comprobante
+          en el que ese lápiz sí se ofrece.
+        -->
+        @if (esDiaCompleto(detalle)) {
+          <span class="dia-completo" [matTooltip]="explicacionDelDia(detalle)">
+            {{ precioDelDia(detalle) }}
+          </span>
+        } @else if (editandoId() === detalle.id) {
           <span class="precio-edicion">
             @if (guardandoId() === detalle.id) {
               <app-spinner-boton />
@@ -181,6 +196,18 @@
     <tr mat-header-row *matHeaderRowDef="columnasDetalle()"></tr>
     <tr mat-row *matRowDef="let detalle; columns: columnasDetalle()"></tr>
   </table>
+
+  <!--
+    LA LETRA CHICA DE LOS DÍAS FIJOS, palabra por palabra como la imprime el PDF.
+
+    Va pegada al desglose y no al final del diálogo porque explica ESTAS líneas: quien
+    suma la columna a mano se encuentra un renglón cuyo valor no sale de multiplicar
+    nada, y sin esta frase solo ve una plata que no le cuadra con los litros. La segunda
+    nota (los renglones en $0,00 de un día que ya se cobró) sale sola cuando hay alguno.
+  -->
+  @for (nota of notasDiaFijo(); track nota) {
+    <p class="nota-dia-fijo">{{ nota }}</p>
+  }
 
   @if (liq().detalles.length === 0) {
     <p class="sin-datos">Esta liquidación no tiene detalles diarios</p>

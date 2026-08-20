@@ -98,6 +98,26 @@ const ALEX: Transportador = {
   ],
 };
 
+/**
+ * EL CASO NUEVO DEL DUEÑO, textual: "el transporte de leche a fábrica vale 150k
+ * independientemente de los litros".
+ *
+ * El mismo señor, con las dos formas de cobrar a la vez: Nápoles por litro a $242,76 y
+ * el viaje a fábrica a $150.000 EL DÍA. Es la razón de ser de este campo.
+ */
+const ALEX_CON_FIJO: Transportador = {
+  ...ALEX,
+  rutas: [
+    { ruta_id: 'r-nap', nombre: 'Nápoles', valor_transporte: '242.76', modo_transporte: 'litro' },
+    {
+      ruta_id: 'r-fab',
+      nombre: 'A fábrica',
+      valor_transporte: '150000.00',
+      modo_transporte: 'dia_fijo',
+    },
+  ],
+};
+
 describe('TransportadorFormDialog', () => {
   let fixture: ComponentFixture<TransportadorFormDialog>;
   let dialogo: TransportadorFormDialog;
@@ -187,11 +207,15 @@ describe('TransportadorFormDialog', () => {
     // Cada ruta con SU tarifa. El orden es el de la pantalla (por nombre) y al
     // backend le da igual: reemplaza la lista completa y la vuelve a leer ordenada.
     expect(servicio.actualizado?.payload.rutas).toEqual([
-      { ruta_id: 'r-mir', valor_transporte: 300 },
-      { ruta_id: 'r-nap', valor_transporte: 242.76 },
+      { ruta_id: 'r-mir', valor_transporte: 300, modo_transporte: 'litro' },
+      { ruta_id: 'r-nap', valor_transporte: 242.76, modo_transporte: 'litro' },
     ]);
     // Y la tarifa general se queda como estaba: es la de las rutas sin tarifa propia.
     expect(Number(servicio.actualizado?.payload.valor_transporte)).toBe(238);
+    // EL MODO VIAJA SIEMPRE, incluso en un transportador que llegó sin el campo (una
+    // respuesta vieja): 'litro' es lo que esa tarifa significaba el día que se guardó,
+    // así que reenviarlo no le mueve un peso a nadie.
+    expect(servicio.actualizado?.payload.modo_transporte).toBe('litro');
   });
 
   it('una ruta que ya no está en el catálogo se sigue viendo con su nombre', async () => {
@@ -257,7 +281,7 @@ describe('TransportadorFormDialog', () => {
     await dialogo.guardar();
 
     expect(servicio.actualizado?.payload.rutas).toEqual([
-      { ruta_id: 'r-nap', valor_transporte: 242.76 },
+      { ruta_id: 'r-nap', valor_transporte: 242.76, modo_transporte: 'litro' },
     ]);
   });
 
@@ -295,7 +319,9 @@ describe('TransportadorFormDialog', () => {
     await dialogo.guardar();
 
     // 242,76 y no 24276 (la coma como miles) ni 242 (la coma botada).
-    expect(servicio.creado?.rutas).toEqual([{ ruta_id: 'r-nap', valor_transporte: 242.76 }]);
+    expect(servicio.creado?.rutas).toEqual([
+      { ruta_id: 'r-nap', valor_transporte: 242.76, modo_transporte: 'litro' },
+    ]);
   });
 
   it('el renglón nuevo arranca con la tarifa vacía, no en cero', async () => {
@@ -387,5 +413,219 @@ describe('TransportadorFormDialog', () => {
     await estabilizar();
 
     expect(dialogo.avisoDeAgregar()).toBe('Ya no quedan rutas por agregar.');
+  });
+
+  // ==========================================================================
+  // POR LITRO O UN FIJO POR DÍA
+  // ==========================================================================
+  // "El transporte de leche a fábrica vale 150k independientemente de los litros".
+  //
+  // Lo que estas pruebas cuidan es que la pantalla no pueda mentir sobre CUÁL de las
+  // dos cosas es una cifra: los mismos "$ 150.000" son un día de trabajo o —leídos por
+  // litro— cuarenta y cinco millones de flete en un día de 300 litros, y en la caja se
+  // ven exactamente igual. Lo único que los distingue es el modo, así que el modo tiene
+  // que verse, tiene que viajar pegado a la cifra y tiene que estar explicado.
+
+  /** Lo que se lee en el rótulo del campo de tarifa de un renglón. */
+  const rotuloTarifa = (i: number): string =>
+    (filas()[i].querySelector('.campo-tarifa mat-label')?.textContent ?? '').trim();
+
+  /** Y la unidad que va pegada a la caja: "/L" o "por día". */
+  const sufijoTarifa = (i: number): string =>
+    (filas()[i].querySelector('.campo-tarifa .mat-mdc-form-field-text-suffix')?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const textoPantalla = (): string =>
+    (fixture.nativeElement.textContent ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+
+  it('al editar, cada ruta abre con SU modo: Nápoles por litro y a fábrica por día', async () => {
+    await armar(ALEX_CON_FIJO);
+    await estabilizar();
+
+    // Van por nombre: "A fábrica" primero, Nápoles después.
+    expect(rutaVisible(0)).toBe('A fábrica');
+    expect(dialogo.rutas.at(0).controls.modo_transporte.value).toBe('dia_fijo');
+    expect(dialogo.fijoDeLaFila(0)).toBeTrue();
+    expect(campoTarifa(0).value).toBe('150.000');
+
+    expect(rutaVisible(1)).toBe('Nápoles');
+    expect(dialogo.rutas.at(1).controls.modo_transporte.value).toBe('litro');
+    expect(dialogo.fijoDeLaFila(1)).toBeFalse();
+    expect(campoTarifa(1).value).toBe('242,76');
+  });
+
+  it('el campo del fijo cambia de rótulo y de unidad: no dice "por litro"', async () => {
+    await armar(ALEX_CON_FIJO);
+    await estabilizar();
+
+    // "Tarifa por litro" encima de $ 150.000 es la frase que hace la equivocación.
+    expect(rotuloTarifa(0)).toBe('Cuánto vale el día');
+    expect(rotuloTarifa(1)).toBe('Tarifa por litro');
+    // Y la unidad al lado de la caja, que es lo que se lee mientras se teclea.
+    expect(sufijoTarifa(0)).toBe('/día');
+    expect(sufijoTarifa(1)).toBe('/L');
+  });
+
+  it('en el ancho del diálogo la cifra del fijo se ve COMPLETA, sin recortarse', async () => {
+    // Cuatro columnas en un diálogo de 640px es justo donde una caja de plata se queda
+    // sin espacio y el navegador empieza a esconder dígitos: "150.00" con el resto
+    // desplazado fuera de la vista. Se mide EN EL NAVEGADOR y en el ancho real del
+    // contenido del diálogo (640 menos los 24 de cada lado), porque esto no se puede
+    // razonar de memoria; y el ancho se le pone al CONTENEDOR de las rutas, que es
+    // contra el que se decide el reparto de columnas.
+    await armar(ALEX_CON_FIJO);
+    const lista = fixture.nativeElement.querySelector('.lista-de-rutas') as HTMLElement;
+    lista.style.width = '592px';
+    await estabilizar();
+
+    // A ese ancho el renglón va en CUATRO columnas: ruta, cómo le paga, cuánto, quitar.
+    expect(getComputedStyle(filas()[0]).gridTemplateColumns.split(' ').length).toBe(4);
+    const caja = campoTarifa(0);
+    expect(caja.value).toBe('150.000');
+    // Si el texto no cupiera, el navegador lo dejaría desplazable dentro de la caja.
+    expect(caja.scrollWidth).toBeLessThanOrEqual(caja.clientWidth);
+  });
+
+  it('cuando el diálogo se encoge, el renglón se apila en vez de recortar la plata', async () => {
+    // El caso que obliga a medir el CONTENEDOR y no la pantalla: en un equipo de 620px
+    // el diálogo mide 496 —no es "un celular" y ninguna consulta de pantalla de celular
+    // se activaría—, y con cuatro columnas a la ruta le quedaban 74px.
+    await armar(ALEX_CON_FIJO);
+    const lista = fixture.nativeElement.querySelector('.lista-de-rutas') as HTMLElement;
+    lista.style.width = '448px';
+    await estabilizar();
+
+    // Dos columnas: la ruta con su papelera arriba, y debajo el modo y la tarifa.
+    expect(getComputedStyle(filas()[0]).gridTemplateColumns.split(' ').length).toBe(2);
+    const caja = campoTarifa(0);
+    expect(caja.value).toBe('150.000');
+    expect(caja.scrollWidth).toBeLessThanOrEqual(caja.clientWidth);
+  });
+
+  it('dice qué significa el fijo, con el caso real: uno o cinco proveedores', async () => {
+    // ES EL ERROR QUE HAY QUE HACER IMPOSIBLE: creer que el fijo es por proveedor o por
+    // recepción. Cinco proveedores ese día en esa ruta son $150.000, no $750.000.
+    await armar(ALEX_CON_FIJO);
+    await estabilizar();
+
+    const texto = textoPantalla();
+    expect(texto).toContain('Es POR DÍA Y POR RUTA');
+    expect(texto).toContain('el viaje a fábrica vale $ 150.000');
+    expect(texto).toContain('así recoja de uno o de cinco proveedores');
+  });
+
+  it('la explicación del fijo NO sale cuando todo va por litro', async () => {
+    await armar(ALEX);
+    await estabilizar();
+
+    expect(textoPantalla()).not.toContain('POR DÍA Y POR RUTA');
+  });
+
+  it('guardar manda el modo PEGADO a la cifra de cada ruta y de la general', async () => {
+    // Sin esto el backend deja el modo como estaba ("no me toque el modo") y la
+    // pantalla podría mostrar una cosa mientras la base guarda otra.
+    await armar(ALEX_CON_FIJO);
+    await estabilizar();
+
+    await dialogo.guardar();
+
+    expect(servicio.actualizado?.payload.rutas).toEqual([
+      { ruta_id: 'r-fab', valor_transporte: 150000, modo_transporte: 'dia_fijo' },
+      { ruta_id: 'r-nap', valor_transporte: 242.76, modo_transporte: 'litro' },
+    ]);
+    expect(servicio.actualizado?.payload.modo_transporte).toBe('litro');
+  });
+
+  it('cambiar el modo de una ruta se guarda con su cifra, sin tocar la de las otras', async () => {
+    await armar(ALEX);
+    await estabilizar();
+
+    // El renglón 0 es Mira Valle: pasa a cobrarse por día completo, a $ 180.000.
+    dialogo.rutas.at(0).controls.modo_transporte.setValue('dia_fijo');
+    dialogo.rutas.at(0).controls.valor_transporte.setValue(180000);
+    await estabilizar();
+
+    expect(dialogo.fijoDeLaFila(0)).toBeTrue();
+    expect(rotuloTarifa(0)).toBe('Cuánto vale el día');
+    await dialogo.guardar();
+
+    expect(servicio.actualizado?.payload.rutas).toEqual([
+      { ruta_id: 'r-mir', valor_transporte: 180000, modo_transporte: 'dia_fijo' },
+      { ruta_id: 'r-nap', valor_transporte: 242.76, modo_transporte: 'litro' },
+    ]);
+  });
+
+  it('la tarifa general también se puede volver un fijo por día', async () => {
+    await armar(ALEX);
+    await estabilizar();
+
+    dialogo.form.controls.modo_transporte.setValue('dia_fijo');
+    dialogo.form.controls.valor_transporte.setValue(150000);
+    await estabilizar();
+
+    expect(dialogo.fijoGeneral()).toBeTrue();
+    // Y el aviso general agrega la otra mitad de la regla: dos rutas en un día son
+    // dos fijos, que es justo lo que el general puede cobrar sin que nadie lo note.
+    expect(textoPantalla()).toContain('Si en un mismo día hace dos rutas, se le pagan dos fijos');
+
+    await dialogo.guardar();
+    expect(servicio.actualizado?.payload.modo_transporte).toBe('dia_fijo');
+    expect(Number(servicio.actualizado?.payload.valor_transporte)).toBe(150000);
+  });
+
+  it('un fijo que se quedó cobrándose POR LITRO se avisa con la cuenta hecha', async () => {
+    // EL CAMINO PELIGROSO, y el único que esta pantalla puede autorizar sin que se
+    // note: se cambia el modo de "por día" a "por litro" y la cifra se queda igual.
+    // $ 150.000 el litro son $ 45.000.000 en un día de 300 litros, y en la caja se ve
+    // exactamente lo mismo que antes.
+    await armar(ALEX_CON_FIJO);
+    await estabilizar();
+    expect(textoPantalla()).not.toContain('POR LITRO son');
+
+    dialogo.rutas.at(0).controls.modo_transporte.setValue('litro');
+    await estabilizar();
+
+    expect(dialogo.tarifaIncreibleDeLaFila(0)).toBeTrue();
+    const texto = textoPantalla();
+    expect(texto).toContain('$ 150.000 POR LITRO son $ 45.000.000 de flete en un día de 300 litros');
+    // Y no bloquea: la pantalla avisa, no decide. El backend acepta la cifra.
+    expect(dialogo.form.valid).toBeTrue();
+  });
+
+  it('una tarifa por litro de verdad no dispara ninguna alarma', async () => {
+    await armar(ALEX);
+    await estabilizar();
+
+    expect(dialogo.tarifaIncreibleDeLaFila(0)).toBeFalse();
+    expect(dialogo.tarifaIncreibleDeLaFila(1)).toBeFalse();
+    expect(dialogo.tarifaGeneralIncreible()).toBeFalse();
+    expect(textoPantalla()).not.toContain('POR LITRO son');
+  });
+
+  it('un transportador nuevo nace POR LITRO: nada cambia si nadie toca el modo', async () => {
+    await armar();
+    api.rutas.next(pagina([ruta('r-nap', 'Nápoles')]));
+    await estabilizar();
+
+    expect(dialogo.form.controls.modo_transporte.value).toBe('litro');
+    dialogo.agregarRuta();
+    await estabilizar();
+    expect(dialogo.rutas.at(0).controls.modo_transporte.value).toBe('litro');
+  });
+
+  it('el selector se lee como lo diría el dueño, no con jerga', async () => {
+    await armar(ALEX);
+    await estabilizar();
+
+    // La pregunta, tal cual, y las dos únicas respuestas posibles.
+    expect(textoPantalla()).toContain('¿Cómo le paga?');
+    fixture.nativeElement.querySelector('.mat-mdc-select-trigger').click();
+    await estabilizar();
+
+    const opciones = Array.from(document.querySelectorAll('mat-option')).map((o) =>
+      ((o as HTMLElement).textContent ?? '').trim(),
+    );
+    expect(opciones).toEqual(['Por litro', 'Un fijo por día']);
   });
 });

@@ -1,7 +1,7 @@
 <div class="page">
   <app-page-header
     titulo="Transportadores"
-    subtitulo="Transportadores de leche con su tarifa por litro en cada ruta"
+    subtitulo="Transportadores de leche y lo que se les paga en cada ruta: por litro o un fijo por día"
   >
     <button mat-flat-button *hasPermission="'transportadores:crear'" (click)="abrirFormulario()">
       <mat-icon>add</mat-icon> Nuevo transportador
@@ -74,9 +74,16 @@
                   @if (ruta.ruta_borrada) {
                     <span class="borrada">(borrada)</span>
                   }
-                  <!-- money: true = con centavos: la tarifa puede ser $242,76 y
-                       redondearla a "$ 243" muestra una cifra que no se paga. -->
-                  <span class="tarifa">{{ ruta.valor_transporte | money: true }}/L</span>
+                  <!--
+                    LA CIFRA CON SU UNIDAD, en una sola cadena (`tarifaLegible`): con
+                    centavos cuando los tiene —$242,76 leído "$ 243" es una cifra que
+                    no se paga— y con "/L" o "por día" pegado. Esas dos palabras son lo
+                    ÚNICO que distingue un día completo de una tarifa por litro: la
+                    cifra se escribe igual en los dos casos. El fijo además se resalta,
+                    porque en una lista donde casi todo va por litro es lo que hay que
+                    reconocer de un vistazo.
+                  -->
+                  <span class="tarifa" [class.fija]="esFija(ruta)">{{ tarifa(ruta) }}</span>
                 </li>
               }
             </ul>
@@ -89,8 +96,11 @@
       <ng-container matColumnDef="valor_transporte">
         <th mat-header-cell *matHeaderCellDef class="num">Tarifa general</th>
         <!-- La tarifa general: la que se usa cuando la ruta del día no tiene tarifa
-             propia arriba. money: true por lo mismo, es una tarifa por litro. -->
-        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Tarifa general'">{{ fila.valor_transporte | money: true }}</td>
+             propia arriba. Con su unidad, igual que las de las rutas: acá también
+             puede ser un fijo por día, y la cifra sola no lo diría. -->
+        <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Tarifa general'">
+          <span class="tarifa" [class.fija]="esFija(fila)">{{ tarifa(fila) }}</span>
+        </td>
       </ng-container>
 
       <ng-container matColumnDef="estado">

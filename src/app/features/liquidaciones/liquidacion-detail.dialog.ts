@@ -26,6 +26,12 @@ import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { comoFecha, periodoDe } from './periodo-liquidacion';
+import {
+  ROTULO_DIA_FIJO_YA_COBRADO,
+  notasDelDiaFijo,
+  precioDelRenglon,
+  renglonDeDiaFijo,
+} from './renglon-transporte';
 import { LiquidacionesService } from './liquidaciones.service';
 import { PagoLiquidacionFormDialog } from './pago-form.dialog';
 
@@ -169,6 +175,38 @@ interface RenglonComparable {
       font-style: italic;
       margin: 8px 0;
     }
+    /*
+     * "Día completo" / "Ya cobrado" en la columna Precio/L.
+     *
+     * NO va con tabular-nums ni alineado como una cifra: es una palabra, y lo que tiene
+     * que quedar claro de un vistazo es que ese renglón NO se multiplica. Se marca con
+     * el fondo tenue de la marca —igual que la tarifa fija en la lista de
+     * transportadores, para que sea el mismo idioma en las dos pantallas— y sin rojo:
+     * no hay nada malo en un día fijo.
+     */
+    .dia-completo {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--mat-sys-primary) 14%, transparent);
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    /*
+     * La nota que explica esos renglones: las mismas palabras del PDF. En el tono
+     * discreto de las demás notas del diálogo —no es una alarma, es la instrucción de
+     * cómo se lee la línea de arriba— y con el ancho de la columna de texto para que
+     * no se lea como parte de la tabla.
+     */
+    .nota-dia-fijo {
+      max-width: 620px;
+      margin: 8px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
     /* "(borrada)" al lado del nombre de la ruta: se tiene que ver, pero no puede
        competir con las cifras del renglón. */
     .borrada {
@@ -459,6 +497,48 @@ export class LiquidacionDetailDialog {
   private readonly hayRutas = computed(() =>
     this.liq().detalles.some((detalle) => !!detalle.ruta_id || !!detalle.ruta_nombre),
   );
+
+  /**
+   * ¿ESTE RENGLÓN SE COBRÓ POR DÍA COMPLETO? Lo dice el renglón, no las cifras.
+   *
+   * Adivinarlo ("litros × precio no da el valor") es lo que hace imprimir un comprobante
+   * que no cuadra: eso también le pasa a una fila corregida a mano en la base, y las dos
+   * hay que mostrarlas al revés.
+   */
+  esDiaCompleto(detalle: LiquidacionDetalle): boolean {
+    return renglonDeDiaFijo(detalle);
+  }
+
+  /** Lo que va en la columna Precio/L: la tarifa, o la palabra del día fijo. */
+  precioDelDia(detalle: LiquidacionDetalle): string {
+    return precioDelRenglon(detalle);
+  }
+
+  /**
+   * La explicación de esa palabra, al pasar por encima.
+   *
+   * Se decide POR LA PALABRA QUE SE ESTÁ MOSTRANDO y no volviendo a mirar las cifras:
+   * dos cuentas para lo mismo terminan diciendo cosas distintas, y acá la de abajo
+   * afirmaría "ya se cobró" sobre un renglón que dice "Día completo".
+   */
+  explicacionDelDia(detalle: LiquidacionDetalle): string {
+    return this.precioDelDia(detalle) === ROTULO_DIA_FIJO_YA_COBRADO
+      ? 'Ese día completo ya se le pagó en otro comprobante: esta leche se anotó ' +
+          'después y recogerla no costó más'
+      : 'Ese día completo vale lo que dice la columna Valor, así haya recogido de uno ' +
+          'o de cinco proveedores';
+  }
+
+  /**
+   * LA LETRA CHICA DE LOS DÍAS FIJOS, con las MISMAS palabras del PDF. Vacía casi siempre.
+   *
+   * Sale de los renglones que se están mostrando y no de la bandera `tiene_dias_fijos`
+   * del comprobante: esta nota explica UNAS LÍNEAS que están en pantalla, y una nota sin
+   * las líneas que explica es peor que ninguna. La bandera dice otra cosa —que el
+   * promedio por litro del encabezado no se puede afirmar— y esta pantalla no imprime
+   * ese promedio en la del transportador, igual que su PDF.
+   */
+  readonly notasDiaFijo = computed(() => notasDelDiaFijo(this.liq().detalles));
 
   /** Si ya se le abonó algo: manda el historial, no el estado. */
   readonly tienePagos = computed(() => this.liq().pagos.length > 0);
@@ -1246,6 +1326,11 @@ export class LiquidacionDetailDialog {
           [
             detalle.fecha,
             detalle.ruta_nombre ?? '',
+            // EL MODO ENTRA EN LA FIRMA: recalcular vuelve a clasificar los días, así
+            // que un día que salía en dos líneas por litro puede quedar en UNA que dice
+            // "Día completo". El papel cambia de forma aunque la plata quede igual, y
+            // decirle al dueño "no cambió nada" con el desglose distinto es mentirle.
+            detalle.modo_transporte ?? '',
             // Normalizado a centavos: "82" y "82.00" son la misma cifra y no
             // pueden contar como un renglón que cambió.
             this.enCentavos(detalle.litros),

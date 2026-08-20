@@ -77,6 +77,55 @@ const liquidacion = (
   ...cifras,
 });
 
+/**
+ * UN RENGLÓN DE DÍA COMPLETO, como lo manda el backend.
+ *
+ * La tarifa viaja en CERO y eso es la verdad, no un dato que falte: no existe ninguna
+ * tarifa por litro que reproduzca $150.000 el día. Los litros van al lado como
+ * información —hacen falta para que el total de litros siga siendo la suma de la
+ * columna— y lo que NO hay que hacer con ellos es multiplicarlos.
+ */
+const detFijo = (
+  id: string,
+  fecha: string,
+  litros: string,
+  valor: string,
+  ruta?: [string, string],
+  yaCobrado = false,
+): LiquidacionDetalle => ({
+  ...det(id, fecha, litros, '0', valor, ruta),
+  modo_transporte: 'dia_fijo',
+  // POR QUÉ VALE $0,00 LO DICE EL BACKEND, no la cifra: un fijo en cero puede serlo
+  // porque ese día ya se cobró en otro comprobante (true) o porque la tarifa fija de esa
+  // ruta es de $0,00 (false). Ver `dia_fijo_ya_cobrado`.
+  dia_fijo_ya_cobrado: yaCobrado,
+});
+
+/**
+ * EL CASO DEL DUEÑO, con las cifras medidas: el día que recogió de CINCO proveedores en
+ * la ruta a fábrica (499,95 L) y otro día por litro en Nápoles.
+ *
+ * El día completo vale $150.000 —UNA vez, no cinco— y el de Nápoles se sigue
+ * comprobando multiplicando: 219,45 L × $242,76 = $53.273,68. Los dos suman
+ * $203.273,68, que es la cifra grande del comprobante.
+ */
+const EL_DIA_A_FABRICA = [
+  detFijo('d-1', '2026-07-16', '499.95', '150000.00', ['r-fab', 'A fábrica']),
+  det('d-2', '2026-07-17', '219.45', '242.76', '53273.68', ['r-nap', 'Nápoles']),
+];
+
+const CIFRAS_A_FABRICA: Partial<Liquidacion> = {
+  total_litros: '719.40',
+  // Con días fijos mezclados el backend manda el promedio en CERO a propósito: esa
+  // división no reproduce la tarifa de ningún renglón. La pantalla no lo imprime.
+  precio_promedio: '0',
+  tiene_dias_fijos: true,
+  valor_transporte: '203273.68',
+  valor_total: '203273.68',
+  neto_a_pagar: '203273.68',
+  saldo: '203273.68',
+};
+
 /** El día en que hizo LAS DOS rutas, cada una a su tarifa. */
 const EL_MARTES = [
   det('d-1', '2026-07-07', '82', '242.76', '19906.32', ['r-nap', 'Nápoles']),
@@ -488,6 +537,179 @@ describe('LiquidacionDetailDialog: renglones por día y ruta', () => {
     const fila = detalleEnPantalla()[1];
     expect(fila[1]).toBe('Nápoles (borrada)');
     expect(fila[4]).toBe('$ 19.906,32');
+  });
+
+  // ==========================================================================
+  // EL DÍA COBRADO POR DÍA COMPLETO
+  // ==========================================================================
+  // "El transporte de leche a fábrica vale 150k independientemente de los litros".
+  //
+  // Ese renglón NO se puede mostrar como los demás, porque litros × precio no da su
+  // valor. Y la regla de oro no se afloja: la columna sigue sumando EXACTO la cifra
+  // grande, y el dueño tiene que poder verificar cada línea a mano —la fija leyéndola,
+  // la de por litro multiplicando—.
+
+  it('el día fijo se lee como el día completo, no como litros × precio', async () => {
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    expect(detalleEnPantalla().slice(1)).toEqual([
+      // Los litros van al lado como información; la columna Precio/L lleva una PALABRA,
+      // que es la misma que imprime el PDF que se le entrega al conductor.
+      ['16/07/2026', 'A fábrica', '499,95 L', 'Día completo', '$ 150.000'],
+      ['17/07/2026', 'Nápoles', '219,45 L', '$ 242,76', '$ 53.273,68'],
+    ]);
+  });
+
+  it('en el renglón fijo no hay NINGUNA tarifa por litro que invite a multiplicar', async () => {
+    // Escribir "$ 150.000" en esa columna invitaría a multiplicarlo por los 499,95
+    // litros —y a preguntar por los setenta y cinco millones que no aparecen—, y
+    // escribir "$ 0,00" diría que ese día se recogió gratis. Va la palabra.
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    const precio = detalleEnPantalla()[1][3];
+    expect(precio).toBe('Día completo');
+    expect(precio).not.toContain('$');
+  });
+
+  it('la columna Valor sigue sumando EXACTO la cifra grande con un día fijo adentro', async () => {
+    // LA REGLA DE ORO, con el caso nuevo: el dueño suma la columna con la calculadora
+    // y tiene que caer. 150.000 + 53.273,68 = 203.273,68.
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    const sumado = sumaDelDesglose();
+    const resumen = resumenEnPantalla();
+    expect(sumado).toBe(20327368);
+    expect(centavos(resumen['Valor transporte'])).toBe(sumado);
+    expect(centavos(resumen['Valor total'])).toBe(sumado);
+    expect(centavos(resumen['Saldo a pagar'])).toBe(sumado);
+    // Y los litros del día fijo entran en el total como los demás: 499,95 + 219,45.
+    expect(resumen['Total litros']).toBe('719,4 L');
+  });
+
+  it('el día de los cinco proveedores es UN renglón de $150.000, no cinco', async () => {
+    // Es el error que había que hacer imposible. El comprobante trae un solo renglón
+    // por (día, ruta) —lo reparte el backend entre las cinco recepciones— y la
+    // pantalla no lo puede volver a multiplicar por nada.
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    const delDia = detalleEnPantalla()
+      .slice(1)
+      .filter((fila) => fila[0] === '16/07/2026');
+    expect(delDia.length).toBe(1);
+    expect(delDia[0][4]).toBe('$ 150.000');
+    expect(fixture.nativeElement.textContent).not.toContain('750.000');
+  });
+
+  it('un día completo que YA se cobró va en $0,00 y lo dice con esas palabras', async () => {
+    // Leche anotada después de que ese día ya se liquidó: el día costó $150.000 una
+    // vez y recoger un proveedor más ese mismo día no cuesta más. Un renglón en cero
+    // sin explicación parece un error del sistema o una plata que alguien quitó.
+    await armar(
+      liquidacion(
+        [
+          detFijo('d-1', '2026-07-16', '82.00', '0', ['r-fab', 'A fábrica'], true),
+          det('d-2', '2026-07-17', '219.45', '242.76', '53273.68', ['r-nap', 'Nápoles']),
+        ],
+        'transportador',
+        {
+          total_litros: '301.45',
+          precio_promedio: '0',
+          tiene_dias_fijos: true,
+          valor_transporte: '53273.68',
+          valor_total: '53273.68',
+          neto_a_pagar: '53273.68',
+          saldo: '53273.68',
+        },
+      ),
+    );
+
+    expect(detalleEnPantalla()[1]).toEqual([
+      '16/07/2026',
+      'A fábrica',
+      '82 L',
+      'Ya cobrado',
+      '$ 0',
+    ]);
+    // Y la columna sigue cuadrando: el renglón en cero no suma ni resta nada.
+    expect(sumaDelDesglose()).toBe(5327368);
+    expect(centavos(resumenEnPantalla()['Valor transporte'])).toBe(5327368);
+    expect(fixture.nativeElement.textContent).toContain('ya se le pagó en otro comprobante');
+  });
+
+  it('la letra chica dice cómo se lee esa línea, con las palabras del papel', async () => {
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    const texto = comoSeLee(fixture.nativeElement.textContent);
+    // Palabra por palabra como el PDF: el dueño pone el papel al lado de la pantalla.
+    expect(texto).toContain('«Día completo» se cobran POR DÍA y no por litro');
+    expect(texto).toContain('sin importar cuántos litros ni cuántos proveedores se recogieron');
+    expect(texto).toContain('multiplicarlos no da el valor');
+    // La segunda nota es solo para los renglones MARCADOS como ya cobrados, y acá no
+    // hay ninguno: el día fijo de este comprobante vale sus $150.000.
+    expect(texto).not.toContain('«Ya cobrado»');
+  });
+
+  it('un fijo de $0,00 que NUNCA se cobró dice «Día completo», no «Ya cobrado»', async () => {
+    // EL DEFECTO, con las dos cifras del dueño. Un renglón de día fijo puede valer
+    // $0,00 por DOS razones que no se distinguen mirando la cifra:
+    //   · ese día ya se le pagó en OTRO comprobante  → «Ya cobrado»;
+    //   · la tarifa fija de esa ruta es de $0,00 —el dueño decidió no cobrar ese
+    //     viaje—  → «Día completo», porque a nadie se le ha pagado nada.
+    // Deduciéndolo del cero, la pantalla le afirmaba al dueño que al conductor ya se le
+    // había pagado ese día mientras el PDF —que sí usa el dato guardado— decía "Día
+    // completo". El backend manda la bandera; la pantalla la usa.
+    await armar(
+      liquidacion(
+        [
+          detFijo('d-1', '2026-07-16', '82.00', '0', ['r-fab', 'A fábrica'], false),
+          det('d-2', '2026-07-17', '219.45', '242.76', '53273.68', ['r-nap', 'Nápoles']),
+        ],
+        'transportador',
+        {
+          total_litros: '301.45',
+          precio_promedio: '0',
+          tiene_dias_fijos: true,
+          valor_transporte: '53273.68',
+          valor_total: '53273.68',
+          neto_a_pagar: '53273.68',
+          saldo: '53273.68',
+        },
+      ),
+    );
+
+    expect(detalleEnPantalla()[1]).toEqual([
+      '16/07/2026',
+      'A fábrica',
+      '82 L',
+      'Día completo',
+      '$ 0',
+    ]);
+    const texto = comoSeLee(fixture.nativeElement.textContent);
+    expect(texto).not.toContain('«Ya cobrado»');
+    expect(fixture.nativeElement.textContent).not.toContain('ya se le pagó en otro comprobante');
+    // Y la cifra grande no se movió por esto: el renglón en cero no suma ni resta.
+    expect(sumaDelDesglose()).toBe(5327368);
+  });
+
+  it('sin días fijos no aparece ninguna nota: el comprobante de siempre no cambia', async () => {
+    await armar(liquidacion(EL_MARTES));
+
+    const texto = comoSeLee(fixture.nativeElement.textContent);
+    expect(texto).not.toContain('Día completo');
+    expect(texto).not.toContain('se cobran POR DÍA');
+    expect(fixture.nativeElement.querySelector('.nota-dia-fijo')).toBeNull();
+  });
+
+  it('con días fijos NO se afirma ningún promedio por litro', async () => {
+    // El backend manda `precio_promedio` en CERO cuando hay días fijos mezclados,
+    // porque esa división no reproduce la tarifa de ningún renglón ($150.000 del día
+    // más $53.273,68 a $242,76 daría "$363,80/L", que no es tarifa de nada). El
+    // comprobante del transportador no imprime ese promedio —su PDF tampoco—, así que
+    // lo que la pantalla no puede hacer es estrenarlo en "$ 0,00 el litro".
+    await armar(liquidacion(EL_DIA_A_FABRICA, 'transportador', CIFRAS_A_FABRICA));
+
+    expect(rotulosDelResumen(fixture)).not.toContain('Precio promedio');
+    expect(comoSeLee(fixture.nativeElement.textContent)).not.toContain('$ 0,00');
   });
 
   it('el precio por litro NO se ofrece para corregir en la del transportador', async () => {

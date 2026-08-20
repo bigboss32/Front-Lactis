@@ -157,6 +157,92 @@ describe('PreLiquidacionDialog: el avance también es un desglose', () => {
     ]);
   });
 
+  it('el día completo se lee igual que en el comprobante y que en el papel', async () => {
+    // El avance imprime un PDF que se comparte por WhatsApp con el MISMO conductor al
+    // que después le llega el comprobante: si la pantalla dijera "$ 0,00" donde el
+    // papel dice "Día completo", el dueño estaría mandando un documento que no se
+    // parece a lo que él está viendo. Y la columna sigue sumando la cifra grande.
+    await conElAvance({
+      ...AVANCE,
+      total_litros: '499.95',
+      tiene_dias_fijos: true,
+      valor_transporte: '150000.00',
+      valor_total: '150000.00',
+      saldo: '150000.00',
+      detalles: [
+        {
+          fecha: '2026-07-16',
+          litros: '499.95',
+          // La tarifa viaja en cero: en un día fijo no existe ninguna por litro.
+          precio_litro: '0',
+          valor: '150000.00',
+          ruta_id: 'r-fab',
+          ruta_nombre: 'A fábrica',
+          modo_transporte: 'dia_fijo',
+          // Este día vale sus $150.000: no es ningún día ya cobrado en otra parte.
+          dia_fijo_ya_cobrado: false,
+        },
+      ],
+    });
+
+    expect(detalleEnPantalla().slice(1)).toEqual([
+      ['16/07/2026', 'A fábrica', '499,95 L', 'Día completo', '$ 150.000'],
+    ]);
+    const texto = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
+    expect(texto).toContain('«Día completo» se cobran POR DÍA y no por litro');
+    expect(centavos(resumenEnPantalla()['Valor transporte'])).toBe(15000000);
+  });
+
+  it('en el avance, un fijo en $0,00 dice lo que el backend diga y no lo que el cero parezca', async () => {
+    // LAS DOS RAZONES POR LAS QUE UN FIJO VALE $0,00, y la pantalla no las puede
+    // confundir: el día ya se cobró en OTRO comprobante («Ya cobrado») o la tarifa fija
+    // de esa ruta es de $0,00 y a nadie se le ha pagado nada («Día completo»). Antes se
+    // deducía del cero y la mitad de las veces era falso; el avance se le manda al
+    // conductor por WhatsApp, así que afirmarle un pago que no ocurrió es peor acá.
+    await conElAvance({
+      ...AVANCE,
+      total_litros: '178.00',
+      tiene_dias_fijos: true,
+      valor_transporte: '0',
+      valor_total: '0',
+      saldo: '0',
+      detalles: [
+        {
+          fecha: '2026-07-16',
+          litros: '82.00',
+          precio_litro: '0',
+          valor: '0',
+          ruta_id: 'r-fab',
+          ruta_nombre: 'A fábrica',
+          modo_transporte: 'dia_fijo',
+          dia_fijo_ya_cobrado: true,
+        },
+        {
+          fecha: '2026-07-17',
+          litros: '96.00',
+          precio_litro: '0',
+          valor: '0',
+          ruta_id: 'r-fab',
+          ruta_nombre: 'A fábrica',
+          modo_transporte: 'dia_fijo',
+          dia_fijo_ya_cobrado: false,
+        },
+      ],
+    });
+
+    expect(detalleEnPantalla().slice(1)).toEqual([
+      ['16/07/2026', 'A fábrica', '82 L', 'Ya cobrado', '$ 0'],
+      ['17/07/2026', 'A fábrica', '96 L', 'Día completo', '$ 0'],
+    ]);
+  });
+
+  it('sin días fijos el avance de siempre no cambia ni una palabra', async () => {
+    await conElAvance();
+
+    expect(fixture.nativeElement.textContent).not.toContain('Día completo');
+    expect(fixture.nativeElement.querySelector('.nota-dia-fijo')).toBeNull();
+  });
+
   it('la columna Valor suma exacto el Valor transporte del resumen', async () => {
     await conElAvance();
 

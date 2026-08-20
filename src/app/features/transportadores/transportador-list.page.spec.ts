@@ -4,7 +4,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Observable, of } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
-import { Page, Transportador } from '../../core/models';
+import { Page, Transportador, TransportadorRuta } from '../../core/models';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { TransportadorListPage } from './transportador-list.page';
 import { TransportadoresService } from './transportadores.service';
@@ -20,12 +20,8 @@ import { TransportadoresService } from './transportadores.service';
 const transportador = (
   id: string,
   nombre: string,
-  rutas: {
-    ruta_id: string;
-    nombre: string | null;
-    valor_transporte: string;
-    ruta_borrada?: boolean;
-  }[],
+  rutas: TransportadorRuta[],
+  general: Partial<Pick<Transportador, 'valor_transporte' | 'modo_transporte'>> = {},
 ): Transportador => ({
   id,
   empresa_id: 'e-1',
@@ -37,6 +33,7 @@ const transportador = (
   telefono: '3115550000',
   valor_transporte: '238.00',
   rutas,
+  ...general,
 });
 
 const FILAS: Transportador[] = [
@@ -57,6 +54,23 @@ const FILAS: Transportador[] = [
   transportador('t-4', 'Con Ruta Borrada', [
     { ruta_id: 'r-5', nombre: 'La Y', valor_transporte: '210.00', ruta_borrada: true },
   ]),
+  // EL CASO NUEVO: el mismo señor con las dos formas de cobrar. "El transporte de leche
+  // a fábrica vale 150k independientemente de los litros".
+  transportador('t-5', 'Alex Con Fijo', [
+    { ruta_id: 'r-1', nombre: 'Nápoles', valor_transporte: '242.76', modo_transporte: 'litro' },
+    {
+      ruta_id: 'r-6',
+      nombre: 'A fábrica',
+      valor_transporte: '150000.00',
+      modo_transporte: 'dia_fijo',
+    },
+  ]),
+  // Y uno cuya tarifa GENERAL es un fijo por día: la columna de al lado también tiene
+  // que decirlo, porque esa cifra sola no distingue un día de un litro.
+  transportador('t-6', 'General Por Día', [], {
+    valor_transporte: '150000.00',
+    modo_transporte: 'dia_fijo',
+  }),
 ];
 
 class ServicioFalso {
@@ -97,6 +111,14 @@ describe('TransportadorListPage: rutas y tarifa en la tabla', () => {
     );
   };
 
+  /** La celda "Tarifa general" de una fila, como se lee. */
+  const tarifaGeneralDeLaFila = (i: number): string => {
+    const celda = (
+      fixture.nativeElement.querySelectorAll('tr.mat-mdc-row')[i] as HTMLElement
+    ).querySelectorAll('td')[4];
+    return (celda.textContent ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+
   it('el de dos rutas las muestra las dos con su tarifa, con centavos', async () => {
     // $242,76 y no "$ 243": es la cifra por la que se multiplican los litros.
     // Y POR NOMBRE, no en el orden que manda el API (que es por id de ruta, un
@@ -132,10 +154,37 @@ describe('TransportadorListPage: rutas y tarifa en la tabla', () => {
     expect(rutasDeLaFila(3)).toEqual(['La Y(borrada)$ 210/L']);
   });
 
-  it('la tarifa general va aparte de las de las rutas', async () => {
+  it('la tarifa general va aparte de las de las rutas, y con su unidad', async () => {
+    // "/L" ya no es adorno: desde que la tarifa puede ser un fijo por d\u00eda, la cifra
+    // sola no dice si eso se multiplica por los litros o si es lo que vale el d\u00eda.
+    expect(tarifaGeneralDeLaFila(0)).toBe('$ 238/L');
+  });
+
+  // ==========================================================================
+  // POR LITRO O UN FIJO POR D\u00cdA, DE UN VISTAZO
+  // ==========================================================================
+
+  it('el fijo por d\u00eda no se puede confundir con una tarifa por litro', async () => {
+    // Las dos formas de cobrar en el mismo se\u00f1or. Sin la unidad, "$ 150.000" y
+    // "$ 242,76" son dos cifras grises en la misma columna y la \u00fanica diferencia
+    // \u2014que una se multiplica por los litros y la otra no\u2014 quedaba invisible.
+    expect(rutasDeLaFila(4)).toEqual(['A f\u00e1brica$ 150.000 por d\u00eda', 'N\u00e1poles$ 242,76/L']);
+  });
+
+  it('el rengl\u00f3n del fijo se resalta: es la excepci\u00f3n y hay que reconocerla', async () => {
+    const fijas = (
+      fixture.nativeElement.querySelectorAll('tr.mat-mdc-row')[4] as HTMLElement
+    ).querySelectorAll('ul.rutas .tarifa.fija');
+    // Solo una de las dos rutas la lleva: la de por litro se sigue viendo como siempre.
+    expect(fijas.length).toBe(1);
+    expect((fijas[0].textContent ?? '').replace(/\u00a0/g, ' ').trim()).toBe('$ 150.000 por d\u00eda');
+  });
+
+  it('la tarifa GENERAL por d\u00eda tambi\u00e9n lo dice, y tambi\u00e9n se resalta', async () => {
+    expect(tarifaGeneralDeLaFila(5)).toBe('$ 150.000 por d\u00eda');
     const celda = (
-      fixture.nativeElement.querySelectorAll('tr.mat-mdc-row')[0] as HTMLElement
+      fixture.nativeElement.querySelectorAll('tr.mat-mdc-row')[5] as HTMLElement
     ).querySelectorAll('td')[4];
-    expect((celda.textContent ?? '').replace(/\u00a0/g, ' ').trim()).toBe('$ 238');
+    expect(celda.querySelector('.tarifa.fija')).withContext('marcada como fija').toBeTruthy();
   });
 });
