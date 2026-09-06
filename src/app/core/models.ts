@@ -600,6 +600,19 @@ export interface PagoLiquidacion {
   valor: Monto;
   destinatario?: string | null;
   observaciones: string | null;
+  /**
+   * CUÁNTOS SOPORTES (fotos de la transferencia) TIENE ESTE PAGO. Solo el número.
+   *
+   * Los soportes con sus enlaces se piden aparte, cuando se abren: cada enlace hay
+   * que FIRMARLO, y firmar los de todos los pagos de una quincena para pintar una
+   * lista sería regalar accesos que casi nadie va a abrir. Con el número alcanza
+   * para poner el clip al lado del pago que sí tiene la foto.
+   *
+   * OPCIONAL para leer una respuesta vieja: sin el campo no sale ningún clip con
+   * número, que es exactamente lo que era cierto antes de que existiera. Se lee
+   * siempre con `?? 0` y nunca se pinta "undefined".
+   */
+  adjuntos_count?: number;
 }
 
 /**

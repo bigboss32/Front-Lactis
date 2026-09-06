@@ -4,6 +4,7 @@ import { Observable, map, shareReplay } from 'rxjs';
 import { ApiService, QueryParams } from '../../core/api.service';
 import { AuthService } from '../../core/auth/auth.service';
 import { Monto, Page, TenantFields } from '../../core/models';
+import { EnlaceSoporte, SoporteArchivo, SoportesLista } from '../../shared/soportes.model';
 
 /** Fecha local de hoy en formato ISO YYYY-MM-DD (el backend espera date). */
 export function hoyIso(): string {
@@ -443,47 +444,25 @@ export interface DocumentoListOpts extends QueryParams {
 
 // ------------------------------------- adjuntos (soportes de transferencia)
 /**
- * Un soporte de pago con su enlace TEMPORAL.
+ * Un soporte de pago de una compra o una venta, con su enlace TEMPORAL.
  *
- * `url` no está guardada en ninguna parte: el backend la firma cada vez que se
- * pide la lista y se muere sola a los pocos minutos (`url_expira`). Si la
- * pantalla queda abierta media hora, los enlaces que tiene en memoria ya no
- * sirven y hay que volver a pedir la lista.
- *
- * Es `null` cuando el almacenamiento no está configurado en el servidor: la
- * fila igual se muestra, pero sin poder abrirla.
+ * La forma común —el enlace firmado que caduca, el tamaño, quién lo subió— está en
+ * `shared/soportes.model.ts` y la comparte con los soportes de los pagos de una
+ * liquidación, que se ven en LA MISMA pantalla. Acá solo se agrega de cuál de los
+ * dos documentos cuelga. Extenderla y no volver a escribirla es lo que impide que
+ * un día dejen de encajar y el diálogo compartido deje de servir para un lado.
  */
-export interface AdjuntoReventa {
-  id: string;
+export interface AdjuntoReventa extends SoporteArchivo {
   compra_id: string | null;
   venta_id: string | null;
-  nombre_archivo: string;
-  content_type: string;
-  tamano_bytes: number;
-  es_imagen: boolean;
-  subido_por_nombre: string | null;
-  created_at: string;
-  url: string | null;
-  url_expira: string | null;
 }
 
-export interface AdjuntosLista {
-  /** false = el servidor no tiene configurado el almacenamiento de imágenes. */
-  disponible: boolean;
-  mensaje: string | null;
-  cupo_restante: number;
+export interface AdjuntosLista extends SoportesLista {
   adjuntos: AdjuntoReventa[];
 }
 
 /** Enlace de más duración para mandar UNA imagen por fuera (WhatsApp). */
-export interface EnlaceCompartido {
-  url: string;
-  nombre_archivo: string;
-  expira: string;
-  /** Ya viene en cristiano y en hora de Colombia: "hasta el martes 5 de agosto...". */
-  expira_texto: string;
-  dias: number;
-}
+export type EnlaceCompartido = EnlaceSoporte;
 
 // ------------------------------------------------------------------ lotes
 /**

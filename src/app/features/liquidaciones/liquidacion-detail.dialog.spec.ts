@@ -5,8 +5,10 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Observable, Subject, of, throwError } from 'rxjs';
 
 import { AuthService } from '../../core/auth/auth.service';
-import { Liquidacion, LiquidacionDetalle } from '../../core/models';
+import { Liquidacion, LiquidacionDetalle, PagoLiquidacion } from '../../core/models';
 import { ConfirmData } from '../../shared/confirm-dialog';
+import { SoportesDialog } from '../../shared/soportes.dialog';
+import { SoportesResultado } from '../../shared/soportes.model';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import { LiquidacionesService } from './liquidaciones.service';
 
@@ -1982,5 +1984,279 @@ describe('LiquidacionDetailDialog: la quincena saldada en cero se puede cerrar',
 
     expect(botonCerrar()).toBeNull();
     expect(fixture.componentInstance.puedeCerrarSinPago()).toBeFalse();
+  });
+});
+
+/**
+ * LA FOTO DE LA TRANSFERENCIA, PEGADA AL PAGO. Es lo que pidió el dueño con estas
+ * palabras: "que se le puedan agregar los comprobantes a los pagos de los proveedores".
+ *
+ * Lo que estas pruebas cuidan es lo que el dueño tiene que poder entender sin que nadie
+ * se lo explique:
+ *
+ *  · DÓNDE se anexa. En el pago, no en la quincena entera. Una quincena se paga en dos
+ *    o tres entregas, cada una con su transferencia, y un montón de fotos colgadas del
+ *    comprobante no dice cuál es de cuál. Por eso el clip va en la FILA del pago.
+ *  · CUÁLES ya tienen su respaldo, de un vistazo: el número encima del clip.
+ *  · QUE LA FOTO PESADA SE REDUCE SOLA, dicho ANTES de que pase.
+ *  · Y que borrar el pago se lleva sus fotos, dicho ANTES de borrarlo: el servidor las
+ *    borra también del almacenamiento, y enterarse después es haber perdido la única
+ *    prueba de una entrega de plata.
+ *
+ * Los PERMISOS con que se abre son los de LIQUIDACIONES y no los de reventa —anexar pide
+ * 'administrar', el mismo que registrar el pago— y eso también se mide: la pantalla es la
+ * misma de reventa, y si le pasara los permisos del otro módulo mostraría botones que el
+ * servidor va a rebotar.
+ */
+interface DatosDeApertura {
+  titulo?: string;
+  ayuda?: string;
+  permisos?: { subir: string; compartir: string; eliminar: string };
+  mensaje?: string;
+}
+
+class ServicioConPagos extends ServicioFalso {
+  eliminados: string[] = [];
+  trasEliminar: Liquidacion | null = null;
+
+  eliminarPago(_id: string, pagoId: string): Observable<Liquidacion> {
+    this.eliminados.push(pagoId);
+    return of(this.trasEliminar as Liquidacion);
+  }
+}
+
+describe('LiquidacionDetailDialog: los soportes de cada pago', () => {
+  let fixture: Fixture;
+  let servicio: ServicioConPagos;
+  let snackbar: SnackbarFalso;
+  /** Cada diálogo que la pantalla abrió: cuál componente y con qué datos. */
+  let aperturas: { componente: unknown; data: DatosDeApertura }[];
+  /** Lo que responde el diálogo que se abrió. */
+  let respuesta: unknown;
+
+  const pago = (
+    id: string,
+    fecha: string,
+    valor: string,
+    adjuntosCount?: number,
+  ): PagoLiquidacion => ({
+    id,
+    fecha,
+    valor,
+    destinatario: null,
+    observaciones: null,
+    ...(adjuntosCount === undefined ? {} : { adjuntos_count: adjuntosCount }),
+  });
+
+  const conPagos = (pagos: PagoLiquidacion[]): Liquidacion =>
+    liquidacion(EL_MARTES, 'transportador', {
+      estado: 'parcial',
+      pagado: '20000',
+      saldo: '24506.32',
+      pagos,
+    });
+
+  const armar = async (item: Liquidacion): Promise<void> => {
+    servicio = new ServicioConPagos();
+    snackbar = new SnackbarFalso();
+    aperturas = [];
+    respuesta = undefined;
+    await TestBed.configureTestingModule({
+      imports: [LiquidacionDetailDialog, NoopAnimationsModule],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: { item } },
+        { provide: LiquidacionesService, useValue: servicio },
+        { provide: MatSnackBar, useValue: snackbar },
+        {
+          provide: AuthService,
+          useValue: { hasPermission: () => true, perfil: () => null, esSuperadmin: () => false },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(LiquidacionDetailDialog);
+    // La instancia REAL, por lo mismo que en las demás pruebas de esta pantalla: su
+    // MatDialog sale de su propio inyector (importa MatDialogModule) y un doble puesto
+    // en `providers` no se usaría nunca.
+    spyOn(fixture.debugElement.injector.get(MatDialog), 'open').and.callFake(
+      (componente: unknown, config?: { data?: DatosDeApertura }) => {
+        aperturas.push({ componente, data: config?.data ?? {} });
+        return { afterClosed: () => of(respuesta) } as ReturnType<MatDialog['open']>;
+      },
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  /** El encabezado y las filas de la tabla de PAGOS (la segunda de la pantalla). */
+  const leerPagos = (): string[][] => {
+    const tablas = fixture.nativeElement.querySelectorAll('table');
+    const tabla = tablas[tablas.length - 1] as HTMLTableElement;
+    return Array.from(tabla.querySelectorAll('tr')).map((tr) =>
+      Array.from((tr as HTMLElement).querySelectorAll('th,td')).map((celda) => leido(celda)),
+    );
+  };
+
+  /** El clip de la fila n del cuerpo de la tabla de pagos. */
+  const clip = (fila: number): HTMLButtonElement =>
+    fixture.nativeElement.querySelectorAll('td.col-soportes button')[fila] as HTMLButtonElement;
+
+  const textoEnPantalla = (): string => comoSeLee(fixture.nativeElement.textContent);
+
+  it('la tabla de pagos trae la columna Soporte, y el clip sale en TODAS las filas', async () => {
+    await armar(
+      conPagos([pago('p-1', '2026-09-05', '20000', 2), pago('p-2', '2026-09-06', '5000', 0)]),
+    );
+
+    const filas = leerPagos();
+    expect(filas[0]).toEqual([
+      'Fecha', 'Valor', 'Girado a / Destinatario', 'Observaciones', 'Soporte', '',
+    ]);
+    // También en el pago que NO tiene fotos: si el clip solo saliera cuando ya hay
+    // una, no habría por dónde anexar la primera.
+    expect(fixture.nativeElement.querySelectorAll('td.col-soportes button').length).toBe(2);
+  });
+
+  it('el número encima del clip dice cuál pago ya tiene su respaldo', async () => {
+    await armar(
+      conPagos([pago('p-1', '2026-09-05', '20000', 2), pago('p-2', '2026-09-06', '5000', 0)]),
+    );
+
+    expect(leido(clip(0).querySelector('.badge-adjuntos'))).toBe('2');
+    // Sin fotos NO va un "0": un cero encima del clip se lee como un botón muerto.
+    expect(clip(1).querySelector('.badge-adjuntos')).toBeNull();
+  });
+
+  it('el clip habla en singular, en plural, y invita a anexar cuando no hay nada', async () => {
+    await armar(
+      conPagos([
+        pago('p-1', '2026-09-05', '20000', 1),
+        pago('p-2', '2026-09-06', '5000', 3),
+        pago('p-3', '2026-09-07', '1000', 0),
+      ]),
+    );
+
+    const componente = fixture.componentInstance;
+    const [uno, tres, ninguno] = componente.liq().pagos;
+    // "Ver los 1 soportes" es la clase de frase que hace que el dueño deje de leer
+    // los avisos del sistema.
+    expect(componente.rotuloSoportes(uno)).toBe('Ver el soporte de este pago (1 archivo)');
+    expect(componente.rotuloSoportes(tres)).toBe('Ver los soportes de este pago (3 archivos)');
+    expect(componente.rotuloSoportes(ninguno)).toBe(
+      'Anexar la foto de la transferencia de este pago',
+    );
+  });
+
+  it('una respuesta vieja, sin el campo, no pinta "undefined" ni un número inventado', async () => {
+    await armar(conPagos([pago('p-1', '2026-09-05', '20000')]));
+
+    const componente = fixture.componentInstance;
+    expect(componente.cuantosSoportes(componente.liq().pagos[0])).toBe(0);
+    expect(clip(0).querySelector('.badge-adjuntos')).toBeNull();
+    expect(textoEnPantalla()).not.toContain('undefined');
+  });
+
+  it('abre los soportes de ESE pago y con los permisos de liquidaciones', async () => {
+    await armar(
+      conPagos([pago('p-1', '2026-09-05', '20000', 0), pago('p-2', '2026-09-06', '5000', 0)]),
+    );
+
+    clip(1).click();
+
+    expect(aperturas.length).toBe(1);
+    expect(aperturas[0].componente).toBe(SoportesDialog);
+    // El título nombra el pago que se tocó —el SEGUNDO— con la misma fecha y la misma
+    // cifra que su fila: el dueño tiene que reconocer cuál abrió.
+    expect(comoSeLee(aperturas[0].data.titulo)).toBe('Pago del 06/09/2026 · $ 5.000');
+    // Y la línea que dice que las fotos se pegan al pago, no a la quincena.
+    expect(aperturas[0].data.ayuda).toContain('no a la liquidación entera');
+    expect(aperturas[0].data.ayuda).toContain('Alex Agudelo');
+    // Anexar pide 'administrar', EL MISMO permiso que registrar el pago: con 'crear'
+    // —el de generar la quincena— quien no puede pagar colgaría el comprobante de
+    // haber pagado. No son los de reventa aunque la pantalla sea la misma.
+    expect(aperturas[0].data.permisos).toEqual({
+      subir: 'liquidaciones:administrar',
+      compartir: 'liquidaciones:exportar',
+      eliminar: 'liquidaciones:eliminar',
+    });
+  });
+
+  it('al volver del diálogo el clip queda con el número nuevo, sin ir al servidor', async () => {
+    await armar(
+      conPagos([pago('p-1', '2026-09-05', '20000', 0), pago('p-2', '2026-09-06', '5000', 1)]),
+    );
+    respuesta = { cambiado: true, cuantos: 3 } as SoportesResultado;
+
+    clip(0).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Solo el del pago que se tocó. El otro se queda como estaba: anexar una foto en
+    // uno no puede mover el número del de al lado.
+    expect(leido(clip(0).querySelector('.badge-adjuntos'))).toBe('3');
+    expect(leido(clip(1).querySelector('.badge-adjuntos'))).toBe('1');
+    // Y las CIFRAS no se movieron: anexar una foto no es un peso más ni un peso menos.
+    expect(fixture.componentInstance.liq().pagado).toBe('20000');
+    expect(fixture.componentInstance.liq().saldo).toBe('24506.32');
+  });
+
+  it('si se cerró sin tocar nada, el clip no se mueve', async () => {
+    await armar(conPagos([pago('p-1', '2026-09-05', '20000', 2)]));
+    respuesta = { cambiado: false, cuantos: 2 } as SoportesResultado;
+
+    clip(0).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(leido(clip(0).querySelector('.badge-adjuntos'))).toBe('2');
+  });
+
+  it('explica en cristiano dónde se anexa y que la foto pesada se reduce sola', async () => {
+    await armar(conPagos([pago('p-1', '2026-09-05', '20000', 0)]));
+
+    const enPantalla = textoEnPantalla();
+    // Las cuatro cosas que el dueño tiene que saber, en la pantalla y no en un manual.
+    expect(enPantalla).toContain('guarda la foto de la transferencia');
+    expect(enPantalla).toContain('no en la liquidación entera');
+    expect(enPantalla).toContain('Caben varias fotos');
+    expect(enPantalla).toContain('se pueden quitar');
+    expect(enPantalla).toContain('el sistema la reduce solo para que ocupe menos');
+  });
+
+  it('borrar un pago avisa ANTES que se van sus fotos, y cuántas', async () => {
+    await armar(conPagos([pago('p-1', '2026-09-05', '20000', 2)]));
+    servicio.trasEliminar = conPagos([]);
+    respuesta = true;
+
+    const borrar = fixture.nativeElement.querySelector(
+      'td.col-acciones button',
+    ) as HTMLButtonElement;
+    borrar.click();
+    await fixture.whenStable();
+
+    expect(comoSeLee(aperturas[0].data.mensaje)).toContain('Se borran también sus 2 soportes');
+    expect(servicio.eliminados).toEqual(['p-1']);
+  });
+
+  it('el aviso habla de UN soporte cuando es uno solo, y calla cuando no hay ninguno', async () => {
+    await armar(
+      conPagos([pago('p-1', '2026-09-05', '20000', 1), pago('p-2', '2026-09-06', '5000', 0)]),
+    );
+    const componente = fixture.componentInstance;
+    const [uno, ninguno] = componente.liq().pagos;
+    servicio.trasEliminar = conPagos([]);
+    respuesta = false;
+
+    componente.eliminarPago(uno);
+    expect(comoSeLee(aperturas[0].data.mensaje)).toContain(
+      'Se borra también su soporte (la foto de la transferencia).',
+    );
+
+    componente.eliminarPago(ninguno);
+    // Sin fotos no se inventa una frase: el aviso queda como estaba antes de todo esto.
+    expect(comoSeLee(aperturas[1].data.mensaje)).toBe(
+      '¿Eliminar el pago de $ 5.000? El saldo volverá a subir por ese valor. Esta acción no ' +
+        'se puede deshacer.',
+    );
   });
 });

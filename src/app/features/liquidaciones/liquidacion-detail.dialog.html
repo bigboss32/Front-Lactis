@@ -308,52 +308,113 @@
 
   @if (tienePagos()) {
     <h3>Pagos registrados</h3>
-    <table mat-table [dataSource]="liq().pagos">
-      <ng-container matColumnDef="fecha">
-        <th mat-header-cell *matHeaderCellDef>Fecha</th>
-        <td mat-cell *matCellDef="let pago">{{ pago.fecha | date: 'dd/MM/yyyy' }}</td>
-      </ng-container>
+    <!--
+      LA TABLA SE DESPLAZA A LO ANCHO EN CELULAR, no se aprieta.
 
-      <ng-container matColumnDef="valor">
-        <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
-        <!-- Con centavos, como el renglón "Pagado" del resumen: pagar el saldo
-             completo de $44.506,32 deja un pago con centavos, y si acá se leyera
-             "$ 44.506" los pagos no sumarían lo pagado. -->
-        <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor | money: true }}</td>
-      </ng-container>
+      Es donde va a estar el dueño cuando anexe la foto de la transferencia —la foto
+      está en el teléfono— y en 340px de ancho seis columnas apretadas dejan la fecha
+      en tres renglones y el clip pegado al borde. Con el desplazamiento cada columna
+      conserva su ancho y el clip se alcanza con el pulgar. La de arriba (el detalle
+      diario) se queda como estaba: no se toca lo que ya funciona.
+    -->
+    <div class="tabla-pagos">
+        <table mat-table [dataSource]="liq().pagos">
+        <ng-container matColumnDef="fecha">
+          <th mat-header-cell *matHeaderCellDef>Fecha</th>
+          <td mat-cell *matCellDef="let pago">{{ pago.fecha | date: 'dd/MM/yyyy' }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="destinatario">
-        <th mat-header-cell *matHeaderCellDef>Girado a / Destinatario</th>
-        <td mat-cell *matCellDef="let pago">{{ pago.destinatario || tercero() }}</td>
-      </ng-container>
+        <ng-container matColumnDef="valor">
+          <th mat-header-cell *matHeaderCellDef class="num">Valor</th>
+          <!-- Con centavos, como el renglón "Pagado" del resumen: pagar el saldo
+               completo de $44.506,32 deja un pago con centavos, y si acá se leyera
+               "$ 44.506" los pagos no sumarían lo pagado. -->
+          <td mat-cell *matCellDef="let pago" class="num">{{ pago.valor | money: true }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="observaciones">
-        <th mat-header-cell *matHeaderCellDef>Observaciones</th>
-        <td mat-cell *matCellDef="let pago">{{ pago.observaciones || '—' }}</td>
-      </ng-container>
+        <ng-container matColumnDef="destinatario">
+          <th mat-header-cell *matHeaderCellDef>Girado a / Destinatario</th>
+          <td mat-cell *matCellDef="let pago">{{ pago.destinatario || tercero() }}</td>
+        </ng-container>
 
-      <ng-container matColumnDef="acciones">
-        <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
-        <td mat-cell *matCellDef="let pago" class="col-acciones">
-          <!--
-            'liquidaciones:eliminar', NO 'crear': borrar un pago le devuelve la
-            deuda al sistema y es la puerta para tapar una entrega de plata.
-          -->
-          <button
-            mat-icon-button
-            *hasPermission="'liquidaciones:eliminar'"
-            matTooltip="Eliminar este pago (registrado por error)"
-            [disabled]="procesando()"
-            (click)="eliminarPago(pago)"
-          >
-            <mat-icon>delete</mat-icon>
-          </button>
-        </td>
-      </ng-container>
+        <ng-container matColumnDef="observaciones">
+          <th mat-header-cell *matHeaderCellDef>Observaciones</th>
+          <td mat-cell *matCellDef="let pago">{{ pago.observaciones || '—' }}</td>
+        </ng-container>
 
-      <tr mat-header-row *matHeaderRowDef="columnasPagos"></tr>
-      <tr mat-row *matRowDef="let pago; columns: columnasPagos"></tr>
-    </table>
+        <!--
+          LA FOTO DE LA TRANSFERENCIA, PEGADA A ESTE PAGO Y NO A LA QUINCENA ENTERA.
+
+          Va en la fila del pago porque es ahí donde el dueño la busca: una quincena se
+          paga en dos o tres entregas, cada una con su transferencia, y un montón de
+          fotos colgadas del comprobante no dice cuál es de cuál. El clip sale SIEMPRE,
+          también sin soportes —si solo saliera cuando ya hay uno, no habría por dónde
+          anexar el primero— y con el número encima cuando los tiene, que es lo que
+          permite ver de un vistazo cuál pago quedó sin su respaldo.
+
+          Basta 'liquidaciones:consultar' para abrirlo (es lo mismo que ver el pago);
+          adentro cada botón pide lo suyo: anexar 'administrar' —el mismo permiso que
+          registrar el pago—, compartir 'exportar' y quitar 'eliminar'.
+        -->
+        <ng-container matColumnDef="soportes">
+          <th mat-header-cell *matHeaderCellDef class="col-soportes">Soporte</th>
+          <td mat-cell *matCellDef="let pago" class="col-soportes">
+            <button
+              mat-icon-button
+              [attr.aria-label]="rotuloSoportes(pago)"
+              [matTooltip]="rotuloSoportes(pago)"
+              [disabled]="procesando()"
+              (click)="soportesDelPago(pago)"
+            >
+              <span class="con-badge">
+                <mat-icon>attach_file</mat-icon>
+                @if (cuantosSoportes(pago) > 0) {
+                  <span class="badge-adjuntos">{{ cuantosSoportes(pago) }}</span>
+                }
+              </span>
+            </button>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="acciones">
+          <th mat-header-cell *matHeaderCellDef class="col-acciones"></th>
+          <td mat-cell *matCellDef="let pago" class="col-acciones">
+            <!--
+              'liquidaciones:eliminar', NO 'crear': borrar un pago le devuelve la
+              deuda al sistema y es la puerta para tapar una entrega de plata.
+            -->
+            <button
+              mat-icon-button
+              *hasPermission="'liquidaciones:eliminar'"
+              matTooltip="Eliminar este pago (registrado por error)"
+              [disabled]="procesando()"
+              (click)="eliminarPago(pago)"
+            >
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="columnasPagos"></tr>
+        <tr mat-row *matRowDef="let pago; columns: columnasPagos"></tr>
+      </table>
+    </div>
+
+    <!--
+      QUE EL CLIP SE ENTIENDA SIN QUE NADIE LO EXPLIQUE. Un icono nuevo en una tabla de
+      plata no se descubre solo, y esto es lo que el dueño pidió poder hacer: pegarle
+      al pago la foto de la transferencia. La frase dice las cuatro cosas que hay que
+      saber —dónde se pega, que caben varias, que se abren y se quitan, y que la foto
+      pesada se reduce sola— porque enterarse de lo último DESPUÉS, al ver el archivo
+      más liviano que el original, es lo que hace pensar que se dañó.
+    -->
+    <p class="ayuda-precio">
+      El <strong>clip</strong> de cada pago guarda la foto de la transferencia. Se anexa en
+      <strong>el pago</strong>, no en la liquidación entera: si la quincena se pagó en dos
+      partes, cada una lleva su propio soporte. Caben varias fotos (o el PDF del banco), se
+      abren tocándolas y se pueden quitar. Si la foto es pesada, el sistema la reduce solo
+      para que ocupe menos; el monto y la referencia se siguen leyendo igual.
+    </p>
   }
 
   <!--

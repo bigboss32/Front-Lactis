@@ -3,6 +3,7 @@ import { Observable, map } from 'rxjs';
 
 import { CrudService } from '../../core/api.service';
 import { Liquidacion, ModoTransporte, Monto } from '../../core/models';
+import { EnlaceSoporte, SoporteArchivo, SoportesLista } from '../../shared/soportes.model';
 
 export interface GenerarLiquidacionesPayload {
   periodo_inicio: string; // ISO 'YYYY-MM-DD'
@@ -150,6 +151,30 @@ export interface PagoPayload {
   valor: number;
   destinatario?: string | null;
   observaciones: string | null;
+}
+
+// ------------------- soportes del PAGO (la foto de la transferencia, en R2)
+/**
+ * Un soporte de UN PAGO de liquidación.
+ *
+ * SE PEGA AL PAGO, NO A LA LIQUIDACIÓN. Una quincena se puede pagar en tres partes
+ * —dos abonos y el saldo—, cada entrega tiene su propia transferencia y su propio
+ * comprobante, y colgarlos todos de la liquidación dejaría un montón de fotos sin
+ * saber cuál corresponde a cuál entrega.
+ *
+ * Sirve igual para la liquidación de LECHE y la de FLETE: las dos usan el mismo
+ * pago por dentro, así que el dueño le anexa la transferencia al pago de un
+ * productor y al de un transportador con la misma pantalla.
+ *
+ * La forma común está en `shared/soportes.model.ts`, que es la que entiende el
+ * diálogo compartido con reventa. Acá solo se agrega de cuál pago cuelga.
+ */
+export interface AdjuntoPagoLiquidacion extends SoporteArchivo {
+  pago_id: string;
+}
+
+export interface AdjuntosPagoLista extends SoportesLista {
+  adjuntos: AdjuntoPagoLiquidacion[];
 }
 
 /** Pre-liquidación: pide cómo va un tercero sin generar ni guardar nada. */
@@ -347,9 +372,58 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/pagos`, payload);
   }
 
-  /** Elimina un pago mal registrado: el backend devuelve el saldo y el estado. */
+  /**
+   * Elimina un pago mal registrado: el backend devuelve el saldo y el estado.
+   *
+   * Se lleva por delante SUS SOPORTES, también el archivo del almacenamiento: la
+   * foto de una transferencia que ya no existe no se queda cobrando espacio.
+   */
   eliminarPago(id: string, pagoId: string): Observable<Liquidacion> {
     return this.api.delete<Liquidacion>(`${this.base}/${id}/pagos/${pagoId}`);
+  }
+
+  // ------------------ soportes del pago (la foto de la transferencia)
+  /** Los soportes del pago, con enlaces firmados de corta duración (15 minutos). */
+  adjuntosDePago(id: string, pagoId: string): Observable<AdjuntosPagoLista> {
+    return this.api.get<AdjuntosPagoLista>(`${this.base}/${id}/pagos/${pagoId}/adjuntos`);
+  }
+
+  /**
+   * Sube N soportes en UNA sola petición e informa el progreso.
+   *
+   * Una petición por archivo sería más simple, pero con la señal del campo unas
+   * pasarían y otras no, y el dueño quedaría sin saber cuáles de sus fotos
+   * alcanzaron a subir. Así es todo o nada, y el backend además valida todos los
+   * archivos antes de guardar el primero.
+   *
+   * La respuesta es la LISTA COMPLETA ya actualizada y con enlaces frescos, así que
+   * no hay que volver a pedirla después de subir.
+   */
+  subirAdjuntosDePago(
+    id: string,
+    pagoId: string,
+    archivos: File[],
+  ): Observable<{ progreso: number; cuerpo?: AdjuntosPagoLista }> {
+    return this.api.uploadVarios<AdjuntosPagoLista>(
+      `${this.base}/${id}/pagos/${pagoId}/adjuntos`,
+      archivos,
+    );
+  }
+
+  /**
+   * Enlace largo para mandar UN soporte por fuera. Queda en la auditoría.
+   *
+   * Va por el id del soporte y sin la liquidación ni el pago en la ruta: es el
+   * mismo camino que en reventa, y el backend aísla por empresa con la columna que
+   * el propio soporte lleva adentro.
+   */
+  compartirAdjuntoDePago(adjuntoId: string): Observable<EnlaceSoporte> {
+    return this.api.post<EnlaceSoporte>(`${this.base}/adjuntos/${adjuntoId}/compartir`);
+  }
+
+  /** Quita el soporte y también el archivo del almacenamiento. */
+  eliminarAdjuntoDePago(adjuntoId: string): Observable<void> {
+    return this.api.delete(`${this.base}/adjuntos/${adjuntoId}`);
   }
 
   anular(id: string): Observable<Liquidacion> {

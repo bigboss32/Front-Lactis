@@ -9,25 +9,36 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { firstValueFrom } from 'rxjs';
 
-import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { ConfirmDialog } from '../../shared/confirm-dialog';
-import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
-import { SpinnerBoton } from '../../shared/spinner-boton';
-import { AdjuntoReventa, ReventaService } from './reventa.service';
-
-export interface AdjuntosDialogData {
-  /** De qué documento cuelgan los soportes. */
-  tipo: 'compra' | 'venta';
-  id: string;
-  /** Para el título: "Yeferson · 3 sep" o "Tienda La 33 · 5 sep". */
-  titulo: string;
-}
-
-/** Lo que el navegador acepta en el selector. El backend valida de verdad. */
-const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf';
+import { HasPermissionDirective } from '../core/auth/has-permission.directive';
+import { ConfirmDialog } from './confirm-dialog';
+import { avisarErrorAlGuardar, detalleDeError } from './errores-ui';
+import { SoporteArchivo, SoportesOrigen, SoportesResultado } from './soportes.model';
+import { SpinnerBoton } from './spinner-boton';
 
 /**
- * Los soportes de pago (fotos de las transferencias) de una compra o una venta.
+ * LO QUE EL NAVEGADOR OFRECE EN EL SELECTOR. El backend valida de verdad, mirándole
+ * los primeros bytes al archivo.
+ *
+ * ESTA LISTA TIENE QUE DECIR LO MISMO QUE EL SERVIDOR ACEPTA — es la copia de
+ * `TIPOS_SOPORTE_PERMITIDOS` en app/core/imagenes.py. Si se separan, se separan
+ * hacia el lado malo: ofrecer de más termina en una subida que espera y rebota,
+ * y ofrecer de menos esconde un formato que sí servía.
+ *
+ * HEIC/HEIF SÍ ESTÁN AHORA. Antes no, porque el servidor no sabía abrir las fotos
+ * de iPhone y ofrecerlas acá era prometer una subida que iba a rebotar. Con
+ * `pillow-heif` instalado en el backend ya las abre, las encoge y las guarda como
+ * JPEG, así que el dueño puede escoger la foto tal como se la dio el teléfono y no
+ * tiene que ir a los Ajustes a cambiar el formato de la cámara.
+ */
+const ACEPTADOS =
+  'image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf';
+
+/** Cuánto tiene que adelgazar la tanda para que valga la pena decirlo. */
+const AHORRO_QUE_SE_CUENTA = 0.1;
+
+/**
+ * Los soportes de pago (las fotos de las transferencias) de lo que sea que los
+ * tenga: una compra o una venta de reventa, o el pago de una liquidación.
  *
  * TODO LO QUE SE VE AQUÍ ES TEMPORAL. Las imágenes se muestran con enlaces
  * firmados que el backend acaba de crear y que caducan en minutos: no hay
@@ -39,9 +50,15 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
  * duración, que se copia al portapapeles junto con la fecha hasta la que sirve.
  * Esa fecha se muestra siempre y se copia junto al enlace: quien manda por
  * WhatsApp un comprobante de pago tiene que saber qué está repartiendo.
+ *
+ * ES UNA SOLA PANTALLA PARA LOS DOS MÓDULOS, y no una copia. Anexar la foto de una
+ * transferencia es el mismo trabajo se esté pagando una compra de queso o la
+ * quincena de un productor, y el dueño que ya lo sabe hacer en un lado no tiene
+ * por qué volver a aprenderlo en el otro. Lo que cambia entre un módulo y otro
+ * —las cuatro llamadas al servidor y los tres permisos— entra por `SoportesOrigen`.
  */
 @Component({
-  selector: 'app-reventa-adjuntos',
+  selector: 'app-soportes',
   imports: [
     DatePipe, MatButtonModule, MatDialogModule, MatIconModule, MatProgressBarModule,
     MatTooltipModule, HasPermissionDirective, SpinnerBoton,
@@ -50,6 +67,9 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
     <h2 mat-dialog-title>Soportes de pago</h2>
     <mat-dialog-content>
       <p class="sub">{{ data.titulo }}</p>
+      @if (data.ayuda) {
+        <p class="ayuda">{{ data.ayuda }}</p>
+      }
 
       @if (noDisponible()) {
         <!--
@@ -98,9 +118,9 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
                   />
                 } @else {
                   <!--
-                    PDF del banco, foto de iPhone que el navegador no dibuja, o
-                    enlace ya caducado: se muestra un icono en vez de una imagen
-                    rota, que parecería que el soporte se perdió.
+                    PDF del banco, foto que el navegador no dibuja, o enlace ya
+                    caducado: se muestra un icono en vez de una imagen rota, que
+                    parecería que el soporte se perdió.
                   -->
                   <div class="icono">
                     <mat-icon>{{ adjunto.es_imagen ? 'image' : 'picture_as_pdf' }}</mat-icon>
@@ -124,7 +144,7 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
               <div class="acciones">
                 <button
                   mat-icon-button
-                  *hasPermission="'reventa:exportar'"
+                  *hasPermission="data.permisos.compartir"
                   matTooltip="Copiar un enlace para mandarlo por WhatsApp"
                   [disabled]="!adjunto.url || compartiendo() === adjunto.id"
                   (click)="compartir(adjunto)"
@@ -133,8 +153,8 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
                 </button>
                 <button
                   mat-icon-button
-                  *hasPermission="'reventa:eliminar'"
-                  matTooltip="Borrar este soporte"
+                  *hasPermission="data.permisos.eliminar"
+                  matTooltip="Quitar este soporte"
                   [disabled]="eliminando() === adjunto.id"
                   (click)="eliminar(adjunto)"
                 >
@@ -167,6 +187,29 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
           <span>{{ errorSubida() }}</span>
         </div>
       }
+
+      @if (adelgazo(); as nota) {
+        <!--
+          LA FOTO QUEDÓ MÁS LIVIANA QUE LA QUE ESCOGIÓ, y hay que decirlo con la
+          cifra: quien sube una foto de 3,8 MB y la ve guardada en 240 KB piensa
+          que se subió a medias o que se dañó. Sale solo cuando de verdad
+          adelgazó, y con las dos cifras para que la cuenta se pueda ver.
+        -->
+        <div class="adelgazo">
+          <mat-icon>check_circle</mat-icon>
+          <span>{{ nota }}</span>
+        </div>
+      }
+
+      <!--
+        POR QUÉ LA FOTO SE VE MÁS LIVIANA, dicho antes de que pase y sin jerga. Va
+        siempre visible y no escondido en un tooltip: es la única explicación que va
+        a tener el dueño cuando note que su foto de 4 MB quedó guardada en 300 KB.
+      -->
+      <p class="nota-peso">
+        Si la foto es pesada, el sistema la reduce solo para que ocupe menos. El monto y la
+        referencia se siguen leyendo igual. Los PDF del banco se guardan tal como llegan.
+      </p>
 
       <input
         #selector
@@ -201,9 +244,9 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
       } @else {
         <button
           mat-flat-button
-          *hasPermission="'reventa:crear'"
+          *hasPermission="data.permisos.subir"
           [disabled]="sinCupo()"
-          [matTooltip]="sinCupo() ? 'Ya no caben más soportes en este documento' : ''"
+          [matTooltip]="sinCupo() ? 'Ya no caben más soportes aquí' : ''"
           (click)="selector.click()"
         >
           <mat-icon>add_a_photo</mat-icon>
@@ -213,12 +256,24 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
     </mat-dialog-actions>
   `,
   styles: `
-    .sub { margin: 0 0 12px; color: var(--mat-sys-on-surface-variant); }
+    .sub { margin: 0 0 4px; color: var(--mat-sys-on-surface-variant); }
+    .ayuda {
+      margin: 0 0 12px;
+      font-size: 0.8125rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
 
     .galeria {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       gap: 12px;
+    }
+    /* En un celular angosto caben DOS por fila y no una sola gigante: la tarjeta de
+       150px mínimos deja una sola columna por debajo de ~330px de contenido, y
+       revisar cuatro soportes obliga a bajar cuatro pantallas. */
+    @media (max-width: 480px) {
+      .galeria { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
     }
     .tarjeta {
       border: 1px solid var(--mat-sys-outline-variant);
@@ -260,7 +315,7 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
     .progreso span { font-size: 0.85rem; color: var(--mat-sys-on-surface-variant); }
     .cargando { padding: 24px 0; }
 
-    .aviso, .error-subida {
+    .aviso, .error-subida, .adelgazo {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -276,6 +331,20 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
       color: var(--mat-sys-on-error-container);
       font-size: 0.9rem;
     }
+    /* Buena noticia, no alarma: el tono tenue de la marca, el mismo con que se
+       marcan los días fijos en el comprobante. */
+    .adelgazo {
+      margin-top: 12px;
+      background: color-mix(in srgb, var(--mat-sys-primary) 12%, transparent);
+      font-size: 0.85rem;
+    }
+
+    .nota-peso {
+      margin: 12px 0 0;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
 
     .empty-state, .error-state {
       text-align: center;
@@ -285,17 +354,16 @@ const ACEPTADOS = 'image/jpeg,image/png,image/webp,image/heic,image/heif,applica
     .empty-state mat-icon, .error-state mat-icon { transform: scale(1.6); margin-bottom: 12px; }
   `,
 })
-export class AdjuntosDialog {
-  private readonly servicio = inject(ReventaService);
+export class SoportesDialog {
   private readonly dialog = inject(MatDialog);
-  private readonly dialogRef = inject(MatDialogRef<AdjuntosDialog>);
+  private readonly dialogRef = inject(MatDialogRef<SoportesDialog, SoportesResultado>);
   private readonly snackbar = inject(MatSnackBar);
   private readonly portapapeles = inject(Clipboard);
 
-  readonly data = inject<AdjuntosDialogData>(MAT_DIALOG_DATA);
+  readonly data = inject<SoportesOrigen>(MAT_DIALOG_DATA);
   readonly aceptados = ACEPTADOS;
 
-  readonly adjuntos = signal<AdjuntoReventa[]>([]);
+  readonly adjuntos = signal<SoporteArchivo[]>([]);
   readonly cargando = signal(true);
   readonly errorCarga = signal<string | null>(null);
   readonly noDisponible = signal<string | null>(null);
@@ -306,6 +374,8 @@ export class AdjuntosDialog {
   readonly errorSubida = signal<string | null>(null);
   readonly compartiendo = signal<string | null>(null);
   readonly eliminando = signal<string | null>(null);
+  /** "Se guardaron más livianas: 6,4 MB → 480 KB", cuando de verdad adelgazaron. */
+  readonly adelgazo = signal<string | null>(null);
   /** Ids cuyas miniaturas fallaron (enlace caducado o formato que el navegador no dibuja). */
   readonly rotas = signal<Set<string>>(new Set());
 
@@ -315,7 +385,17 @@ export class AdjuntosDialog {
   private cambiado = false;
 
   constructor() {
-    this.recargar();
+    // ESCAPE Y EL CLIC EN EL FONDO TAMBIÉN TIENEN QUE DEVOLVER EL RESULTADO.
+    // Sin esto cierran solos con `undefined`, y quien anexa una foto y aprieta
+    // Escape deja el clip de la pantalla de atrás mostrando el número viejo: la
+    // foto sí quedó guardada, pero parece que no. Es el patrón documentado de
+    // Material para eso (apagar el cierre automático y reencaminarlo).
+    this.dialogRef.disableClose = true;
+    this.dialogRef.backdropClick().subscribe(() => this.cerrar());
+    this.dialogRef.keydownEvents().subscribe((evento) => {
+      if (evento.key === 'Escape') this.cerrar();
+    });
+    void this.recargar();
   }
 
   // ------------------------------------------------------------------ carga
@@ -324,11 +404,7 @@ export class AdjuntosDialog {
     this.errorCarga.set(null);
     this.rotas.set(new Set());
     try {
-      const lista = await firstValueFrom(
-        this.data.tipo === 'compra'
-          ? this.servicio.adjuntosDeCompra(this.data.id)
-          : this.servicio.adjuntosDeVenta(this.data.id),
-      );
+      const lista = await firstValueFrom(this.data.listar());
       this.adjuntos.set(lista.adjuntos);
       this.cupo.set(lista.cupo_restante);
       this.noDisponible.set(lista.disponible ? null : lista.mensaje);
@@ -358,22 +434,24 @@ export class AdjuntosDialog {
     this.subiendo.set(true);
     this.progreso.set(0);
     this.errorSubida.set(null);
+    this.adelgazo.set(null);
     this.cuantasSuben.set(
       archivos.length === 1 ? '1 imagen' : `${archivos.length} imágenes`,
     );
-    const peticion =
-      this.data.tipo === 'compra'
-        ? this.servicio.subirAdjuntosDeCompra(this.data.id, archivos)
-        : this.servicio.subirAdjuntosDeVenta(this.data.id, archivos);
+    // Los que YA estaban: lo que llegue de nuevo en la respuesta es lo que acaba
+    // de subir, y es con esos con los que se compara el peso.
+    const previos = new Set(this.adjuntos().map((a) => a.id));
+    const pesoEscogido = archivos.reduce((suma, a) => suma + a.size, 0);
     try {
       await new Promise<void>((resolver, rechazar) => {
-        peticion.subscribe({
+        this.data.subir(archivos).subscribe({
           next: (evento) => {
             this.progreso.set(evento.progreso);
             if (evento.cuerpo) {
               this.adjuntos.set(evento.cuerpo.adjuntos);
               this.cupo.set(evento.cuerpo.cupo_restante);
               this.rotas.set(new Set());
+              this.adelgazo.set(this.notaDelAhorro(previos, pesoEscogido));
             }
           },
           error: rechazar,
@@ -399,8 +477,27 @@ export class AdjuntosDialog {
     }
   }
 
+  /**
+   * Cuánto adelgazó la tanda que se acaba de subir, dicho en una línea.
+   *
+   * Devuelve null cuando no hay nada que contar: cuando el ahorro no llega al 10 %
+   * —una captura que ya venía apretada, o un PDF, que pasan derecho— decirlo sería
+   * ruido, y decir "0 % menos" haría dudar de la cifra de al lado.
+   */
+  private notaDelAhorro(previos: Set<string>, pesoEscogido: number): string | null {
+    const nuevos = this.adjuntos().filter((a) => !previos.has(a.id));
+    if (nuevos.length === 0 || pesoEscogido <= 0) return null;
+    const pesoGuardado = nuevos.reduce((suma, a) => suma + a.tamano_bytes, 0);
+    if (pesoGuardado <= 0) return null;
+    if (pesoGuardado > pesoEscogido * (1 - AHORRO_QUE_SE_CUENTA)) return null;
+    return (
+      `Se guardaron más livianas: ${this.tamano(pesoEscogido)} → ` +
+      `${this.tamano(pesoGuardado)}. Se ven igual de bien.`
+    );
+  }
+
   // -------------------------------------------------------------------- ver
-  abrir(adjunto: AdjuntoReventa): void {
+  abrir(adjunto: SoporteArchivo): void {
     if (!adjunto.url) return;
     // noopener: el enlace firmado se abre en el dominio del almacenamiento y no
     // tiene por qué poder tocar esta pestaña.
@@ -408,10 +505,10 @@ export class AdjuntosDialog {
   }
 
   // -------------------------------------------------------------- compartir
-  async compartir(adjunto: AdjuntoReventa): Promise<void> {
+  async compartir(adjunto: SoporteArchivo): Promise<void> {
     this.compartiendo.set(adjunto.id);
     try {
-      const enlace = await firstValueFrom(this.servicio.compartirAdjunto(adjunto.id));
+      const enlace = await firstValueFrom(this.data.compartir(adjunto.id));
       // Se copia el enlace CON la fecha de caducidad pegada: si solo se copiara
       // la URL, el dueño pegaría en WhatsApp un enlace sin saber —ni poder
       // decirle a quien lo recibe— hasta cuándo sirve.
@@ -432,15 +529,15 @@ export class AdjuntosDialog {
   }
 
   // ----------------------------------------------------------------- borrar
-  eliminar(adjunto: AdjuntoReventa): void {
+  eliminar(adjunto: SoporteArchivo): void {
     this.dialog
       .open(ConfirmDialog, {
         data: {
-          titulo: 'Borrar soporte',
+          titulo: 'Quitar soporte',
           mensaje:
-            `¿Borrar «${adjunto.nombre_archivo}»? Se borra también el archivo ` +
+            `¿Quitar «${adjunto.nombre_archivo}»? Se borra también el archivo ` +
             `del almacenamiento y no se puede recuperar.`,
-          accion: 'Borrar',
+          accion: 'Quitar',
         },
       })
       .afterClosed()
@@ -448,13 +545,14 @@ export class AdjuntosDialog {
         if (!confirmado) return;
         this.eliminando.set(adjunto.id);
         try {
-          await firstValueFrom(this.servicio.eliminarAdjunto(adjunto.id));
+          await firstValueFrom(this.data.eliminar(adjunto.id));
           this.adjuntos.update((lista) => lista.filter((a) => a.id !== adjunto.id));
           this.cupo.update((n) => n + 1);
+          this.adelgazo.set(null);
           this.cambiado = true;
-          this.snackbar.open('Soporte borrado', 'OK', { duration: 3000 });
+          this.snackbar.open('Soporte quitado', 'OK', { duration: 3000 });
         } catch (err) {
-          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible borrar el soporte');
+          avisarErrorAlGuardar(this.snackbar, err, 'No fue posible quitar el soporte');
         } finally {
           this.eliminando.set(null);
         }
@@ -469,6 +567,6 @@ export class AdjuntosDialog {
   }
 
   cerrar(): void {
-    this.dialogRef.close(this.cambiado);
+    this.dialogRef.close({ cambiado: this.cambiado, cuantos: this.adjuntos().length });
   }
 }

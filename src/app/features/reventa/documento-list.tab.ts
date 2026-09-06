@@ -33,9 +33,10 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EnUnidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
+import { SoportesDialog } from '../../shared/soportes.dialog';
+import { SoportesResultado } from '../../shared/soportes.model';
 import { AbonoFormDialog } from './abono-form.dialog';
 import { AbonosListDialog, ParteAbonada } from './abonos-list.dialog';
-import { AdjuntosDialog } from './adjuntos.dialog';
 import { CompraFormDialog } from './compra-form.dialog';
 import { DocumentoReventaFormDialog } from './documento-form.dialog';
 import { ReventaEstadoCuentaProductorDialog } from './estado-cuenta-productor.dialog';
@@ -831,17 +832,43 @@ export class DocumentoReventaListTab {
     this.abrirAdjuntos(r.id, titulo);
   }
 
+  /**
+   * Abre la pantalla de soportes, LA MISMA que usan los pagos de una liquidación.
+   *
+   * Lo que cambia entre un módulo y otro son las cuatro llamadas al servidor y los
+   * tres permisos, y eso es justo lo que se le entrega aquí. Los permisos son los de
+   * reventa —subir con 'crear', que es lo que pide crear la compra— y no los de
+   * liquidaciones: el backend eligió cada uno por coherencia con su módulo.
+   */
   private abrirAdjuntos(renglonId: string, titulo: string): void {
+    const esVenta = this.tipo() === 'venta';
     this.dialog
-      .open(AdjuntosDialog, {
-        data: { tipo: this.tipo(), id: renglonId, titulo },
+      .open(SoportesDialog, {
+        data: {
+          titulo,
+          permisos: {
+            subir: 'reventa:crear',
+            compartir: 'reventa:exportar',
+            eliminar: 'reventa:eliminar',
+          },
+          listar: () =>
+            esVenta
+              ? this.servicio.adjuntosDeVenta(renglonId)
+              : this.servicio.adjuntosDeCompra(renglonId),
+          subir: (archivos: File[]) =>
+            esVenta
+              ? this.servicio.subirAdjuntosDeVenta(renglonId, archivos)
+              : this.servicio.subirAdjuntosDeCompra(renglonId, archivos),
+          compartir: (id: string) => this.servicio.compartirAdjunto(id),
+          eliminar: (id: string) => this.servicio.eliminarAdjunto(id),
+        },
         width: '720px',
         maxWidth: '95vw',
       })
       .afterClosed()
-      .subscribe((cambiado) => {
+      .subscribe((resultado?: SoportesResultado) => {
         // Solo si cambió algo: el contador del clip sale del listado.
-        if (cambiado) this.notificar();
+        if (resultado?.cambiado) this.notificar();
       });
   }
 

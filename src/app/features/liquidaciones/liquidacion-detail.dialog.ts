@@ -23,6 +23,8 @@ import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
+import { SoportesDialog } from '../../shared/soportes.dialog';
+import { SoportesResultado } from '../../shared/soportes.model';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { comoFecha, periodoDe } from './periodo-liquidacion';
@@ -170,6 +172,39 @@ interface RenglonComparable {
     }
     table { width: 100%; }
     .num { text-align: right; }
+    /*
+     * EL CLIP DE LOS SOPORTES, con el número encima. Es el mismo dibujo que en la
+     * lista de reventa —donde el dueño ya lo conoce— y no otro: el clip con la
+     * burbujita significa "acá hay fotos anexas" en las dos pantallas.
+     *
+     * La columna se queda angosta para no robarle espacio a Observaciones, que es
+     * la que dice de qué fue el pago.
+     */
+    .col-soportes { width: 72px; text-align: center; }
+    /*
+     * En celular la tabla de pagos se desplaza a lo ancho en vez de apretarse. Los
+     * 520px de mínimo son lo que necesitan sus seis columnas para que la fecha no se
+     * parta y el clip no quede pegado al borde; por encima de ese ancho manda el
+     * "width: 100%" de la tabla y no se ve ninguna barra.
+     */
+    .tabla-pagos { overflow-x: auto; }
+    .tabla-pagos table { min-width: 520px; }
+    .con-badge { position: relative; display: inline-flex; }
+    .badge-adjuntos {
+      position: absolute;
+      top: -4px;
+      right: -6px;
+      min-width: 14px;
+      height: 14px;
+      padding: 0 3px;
+      border-radius: 7px;
+      font-size: 0.62rem;
+      line-height: 14px;
+      font-weight: 600;
+      text-align: center;
+      background: var(--mat-sys-primary);
+      color: var(--mat-sys-on-primary);
+    }
     .sin-datos {
       color: var(--mat-sys-on-surface-variant);
       font-style: italic;
@@ -492,7 +527,14 @@ export class LiquidacionDetailDialog {
       ? ['fecha', 'ruta', 'litros', 'precio_litro', 'valor']
       : ['fecha', 'litros', 'precio_litro', 'valor'],
   );
-  readonly columnasPagos = ['fecha', 'valor', 'destinatario', 'observaciones', 'acciones'];
+  /**
+   * 'soportes' va ANTES de 'acciones' a propósito: la papelera es lo último de la
+   * fila en todas las tablas del sistema, y meterle algo después la movería de
+   * sitio justo en la columna donde un clic de más borra un pago.
+   */
+  readonly columnasPagos = [
+    'fecha', 'valor', 'destinatario', 'observaciones', 'soportes', 'acciones',
+  ];
 
   private readonly hayRutas = computed(() =>
     this.liq().detalles.some((detalle) => !!detalle.ruta_id || !!detalle.ruta_nombre),
@@ -1464,18 +1506,112 @@ export class LiquidacionDetailDialog {
     );
   }
 
+  // ------------------------------- soportes del pago (la foto de la transferencia)
+  /** Cuántas fotos tiene el pago. Con `?? 0` porque una respuesta vieja no trae el campo. */
+  cuantosSoportes(pago: PagoLiquidacion): number {
+    return pago.adjuntos_count ?? 0;
+  }
+
+  /**
+   * Lo que dice el clip, en singular o en plural y diciendo qué va a pasar al tocarlo.
+   *
+   * "Ver los 1 soportes" es la clase de frase que hace que el dueño deje de leer los
+   * avisos del sistema, y el pago sin foto necesita que el clip lo INVITE a anexarla:
+   * si dijera "Ver soportes (0)" parecería un botón muerto.
+   */
+  rotuloSoportes(pago: PagoLiquidacion): string {
+    const cuantos = this.cuantosSoportes(pago);
+    if (cuantos === 0) return 'Anexar la foto de la transferencia de este pago';
+    if (cuantos === 1) return 'Ver el soporte de este pago (1 archivo)';
+    return `Ver los soportes de este pago (${cuantos} archivos)`;
+  }
+
+  /**
+   * Abre LA MISMA pantalla de soportes que usa reventa, apuntada a ESTE pago.
+   *
+   * Los permisos son los de liquidaciones y no los de reventa: acá anexar pide
+   * 'administrar' —el mismo permiso que registrar el pago, para que quien no puede
+   * entregar la plata tampoco cuelgue el comprobante de haberla entregado—, mientras
+   * que allá pide 'crear'. Los eligió así el backend y la pantalla no puede ofrecer
+   * un botón que el servidor va a rebotar.
+   */
+  soportesDelPago(pago: PagoLiquidacion): void {
+    const id = this.liq().id;
+    this.dialog
+      .open(SoportesDialog, {
+        data: {
+          // `comoFecha` y no el DatePipe: es el mismo "dd/MM/yyyy" que pinta la
+          // columna Fecha de la fila que se acaba de tocar, y el dueño tiene que
+          // reconocer en el título el pago que abrió.
+          titulo: `Pago del ${comoFecha(pago.fecha)} · ${this.enPesos(pago.valor)}`,
+          ayuda:
+            `Estas fotos quedan pegadas a este pago —${this.tercero()}, quincena del ` +
+            `${periodoDe(this.liq())}—, no a la liquidación entera.`,
+          permisos: {
+            subir: 'liquidaciones:administrar',
+            compartir: 'liquidaciones:exportar',
+            eliminar: 'liquidaciones:eliminar',
+          },
+          listar: () => this.servicio.adjuntosDePago(id, pago.id),
+          subir: (archivos: File[]) => this.servicio.subirAdjuntosDePago(id, pago.id, archivos),
+          compartir: (adjuntoId: string) => this.servicio.compartirAdjuntoDePago(adjuntoId),
+          eliminar: (adjuntoId: string) => this.servicio.eliminarAdjuntoDePago(adjuntoId),
+        },
+        width: '720px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe((resultado?: SoportesResultado) => {
+        if (!resultado?.cambiado) return;
+        this.ponerCuantosSoportes(pago.id, resultado.cuantos);
+      });
+  }
+
+  /**
+   * Refresca el número del clip sin volver a pedir la liquidación entera.
+   *
+   * El número lo trae el propio diálogo, que acaba de contar los archivos que hay: ir
+   * a buscarlo al servidor sería una vuelta completa por un dato que ya está en la
+   * mano, y mientras tanto el clip mostraría el número viejo. Se rehace el arreglo de
+   * pagos en vez de mutarlo porque `liq` es una señal y solo repinta si cambia la
+   * referencia; las CIFRAS del pago no se tocan —anexar una foto no mueve un peso—.
+   */
+  private ponerCuantosSoportes(pagoId: string, cuantos: number): void {
+    this.liq.update((liq) => ({
+      ...liq,
+      pagos: liq.pagos.map((p) => (p.id === pagoId ? { ...p, adjuntos_count: cuantos } : p)),
+    }));
+  }
+
+  /** La media frase que avisa de las fotos que se van con el pago. Vacía si no hay. */
+  private avisoSoportesQueSeVan(pago: PagoLiquidacion): string {
+    const cuantos = this.cuantosSoportes(pago);
+    if (cuantos === 0) return '';
+    return cuantos === 1
+      ? ' Se borra también su soporte (la foto de la transferencia).'
+      : ` Se borran también sus ${cuantos} soportes (las fotos de la transferencia).`;
+  }
+
   /**
    * Elimina un pago mal registrado. El backend baja el `pagado`, devuelve el
    * saldo y recalcula el estado (de pagada a parcial, o de parcial a aprobada).
+   *
+   * Se lleva por delante SUS SOPORTES, también del almacenamiento: la foto de una
+   * transferencia que ya no existe no se queda ocupando espacio.
    */
   eliminarPago(pago: PagoLiquidacion): void {
     this.dialog
       .open(ConfirmDialog, {
         data: {
           titulo: 'Eliminar pago',
+          // SE VAN TAMBIÉN SUS SOPORTES, y hay que decirlo ANTES. El backend borra la
+          // foto de la transferencia junto con el pago —y del almacenamiento, no solo
+          // de la lista—: enterarse después es haber perdido la única prueba de una
+          // entrega de plata. Solo se dice cuando de verdad hay alguno.
           mensaje:
             `¿Eliminar el pago de ${this.enPesos(pago.valor)}? El saldo volverá a subir ` +
-            'por ese valor. Esta acción no se puede deshacer.',
+            `por ese valor.${this.avisoSoportesQueSeVan(pago)} Esta acción no se puede ` +
+            'deshacer.',
           accion: 'Eliminar',
         },
       })
