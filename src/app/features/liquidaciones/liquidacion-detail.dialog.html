@@ -7,6 +7,41 @@
     <mat-progress-bar mode="indeterminate" />
   }
 
+  <!--
+    LA BANDA DEL COMPROBANTE CORREGIDO, fija arriba y sin botón de cerrar.
+
+    Es lo PRIMERO que hay que saber de este documento: cuando la versión es mayor que 1,
+    el productor puede tener DOS hojas de la misma quincena con cifras distintas, y esta
+    pantalla tiene que decir cuál manda, cuándo cambió y por qué. Esconderla —o dejar que
+    se pierda con el scroll— es dejar que el dueño mande por WhatsApp el papel viejo
+    creyendo que es el bueno.
+
+    El motivo llega por su propia ruta (`GET /liquidaciones/{id}/correcciones`) y solo se
+    pide cuando hay algo que pedir; mientras no llegue, la banda sale igual sin él: "hay
+    una versión 2" ya es la mitad importante.
+  -->
+  @if (bandaDeCorreccion(); as banda) {
+    <div class="banda-corregida">
+      <mat-icon>history_edu</mat-icon>
+      <div>
+        <strong>
+          @if (banda.fecha) {
+            Corregido el {{ banda.fecha }} · v{{ version() }}
+          } @else {
+            Comprobante corregido · v{{ version() }}
+          }
+        </strong>
+        @if (banda.motivo) {
+          <p class="banda-motivo">motivo: {{ banda.motivo }}</p>
+        }
+        <p class="banda-motivo">
+          El papel que {{ tercero() }} tiene en la mano puede ser el anterior: entréguele
+          esta versión y recójale la vieja.
+        </p>
+      </div>
+    </div>
+  }
+
   <app-liquidacion-estado-stepper [estado]="liq().estado" />
 
   <div class="info">
@@ -454,13 +489,18 @@
 <mat-dialog-actions align="end">
   <button mat-button mat-dialog-close>Cerrar</button>
 
+  <!--
+    EL RÓTULO DEL PDF CAMBIA CUANDO HAY UNA CORRECCIÓN ENCIMA. Con dos hojas de la misma
+    quincena dando vueltas, "PDF" no dice cuál se está bajando: lo que el dueño necesita
+    mandar es EL COMPROBANTE CORREGIDO, y el que el productor tiene es el viejo.
+  -->
   <button
     mat-stroked-button
     *hasPermission="'liquidaciones:imprimir'"
     [disabled]="descargando()"
     (click)="descargarPdf()"
   >
-    <mat-icon>picture_as_pdf</mat-icon> PDF
+    <mat-icon>picture_as_pdf</mat-icon> {{ rotuloPdf() }}
   </button>
 
   <button
@@ -512,6 +552,31 @@
   } @else if (motivoNoAnular(); as motivo) {
     <span class="nota-recalcular" [matTooltip]="motivo">
       <mat-icon>lock</mat-icon> No se puede anular
+    </span>
+  }
+
+  <!--
+    CORREGIR ESTA QUINCENA: la puerta de la quincena que ya se pagó y a la que se le
+    olvidó un detalle. Lo pidió el dueño con esas palabras.
+
+    Va con el MISMO permiso que Anular ('administrar'), que en el sistema tiene
+    exactamente un rol: Administrador Empresa. Y cuando el servidor no lo va a aceptar el
+    botón no se ofrece: en su lugar queda el candado con la razón, igual que Anular y que
+    Recalcular. Ver `puedeCorregir` y `motivoNoCorregir`.
+  -->
+  @if (puedeCorregir()) {
+    <button
+      mat-stroked-button
+      *hasPermission="'liquidaciones:administrar'"
+      matTooltip="Meter un día que se quedó por fuera o corregir el precio de uno que ya está. Sale un comprobante corregido"
+      [disabled]="procesando()"
+      (click)="corregirQuincena()"
+    >
+      <mat-icon>edit_note</mat-icon> Corregir esta quincena
+    </button>
+  } @else if (motivoNoCorregir(); as motivo) {
+    <span class="nota-recalcular" [matTooltip]="motivo">
+      <mat-icon>lock</mat-icon> No se puede corregir
     </span>
   }
 

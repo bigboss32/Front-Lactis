@@ -26,6 +26,14 @@ import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { SoportesDialog } from '../../shared/soportes.dialog';
 import { SoportesResultado } from '../../shared/soportes.model';
 import { SpinnerBoton } from '../../shared/spinner-boton';
+import {
+  MENOS,
+  ROTULO_SALDO_ANTERIOR,
+  causaDeLaDeuda,
+  porQueSeLePagoDeMas,
+  precioTecleado,
+} from './cifras-de-la-quincena';
+import { CorregirQuincenaDialog } from './corregir-quincena.dialog';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { comoFecha, periodoDe } from './periodo-liquidacion';
 import {
@@ -34,21 +42,8 @@ import {
   precioDelRenglon,
   renglonDeDiaFijo,
 } from './renglon-transporte';
-import { LiquidacionesService } from './liquidaciones.service';
+import { Correccion, LiquidacionesService } from './liquidaciones.service';
 import { PagoLiquidacionFormDialog } from './pago-form.dialog';
-
-/**
- * Lee un precio escrito a la colombiana: "1.750" son mil setecientos cincuenta,
- * no uno con setenta y cinco. El punto separa miles y la coma es el decimal, al
- * revés de lo que entiende Number(). Devuelve null si lo tecleado no es un
- * precio utilizable, para no mandarle NaN al backend.
- */
-function precioTecleado(texto: string): number | null {
-  const limpio = texto.trim().replace(/\s|\$/g, '').replace(/\./g, '').replace(',', '.');
-  if (!/^\d+(\.\d+)?$/.test(limpio)) return null;
-  const numero = Number(limpio);
-  return numero > 0 ? numero : null;
-}
 
 /**
  * Los estados en los que EL SERVIDOR acepta recalcular.
@@ -67,26 +62,12 @@ function precioTecleado(texto: string): number | null {
 const ESTADOS_QUE_ACEPTAN_RECALCULO: readonly string[] = ['borrador'];
 
 /**
- * EL RÓTULO DEL RENGLÓN NUEVO, dicho como lo diría el dueño y escrito UNA sola vez.
- *
- * Es el MISMO texto que imprime el comprobante en PDF. Vive en una constante porque se
- * usa en tres lados —el resumen, la nota que explica de dónde salió el descuento y el
- * aviso del recálculo—: si en alguno dijera otra cosa, la pantalla y el papel se
- * estarían contradiciendo sobre una plata que se le quita al proveedor, y esa discusión
- * la pierde el dueño.
+ * El rótulo del renglón de la deuda vieja BAJÓ a `cifras-de-la-quincena.ts` cuando el
+ * diálogo de corregir una quincena pagada necesitó el mismo texto para su cuadre: este
+ * archivo abre a ese diálogo, así que importarlo de vuelta desde allá los habría dejado
+ * importándose en círculo. Se re-exporta para no tocar a quien ya lo pedía de acá.
  */
-export const ROTULO_SALDO_ANTERIOR = 'Lo que quedó debiendo de la quincena pasada';
-
-/**
- * El menos de los renglones que restan: U+2212 (signo de resta), NO el guion del
- * teclado.
- *
- * No es un capricho tipográfico. Estas cifras se leen y se copian, y un guion pegado a
- * la plata ("- $ 24.600") se confunde con una cifra NEGATIVA —que es justo lo que este
- * trabajo vino a evitar en el renglón del saldo—. El signo de resta se lee como una
- * operación: "al total le quito esto".
- */
-const MENOS = '−';
+export { ROTULO_SALDO_ANTERIOR };
 
 /**
  * UN RENGLÓN DEL RESUMEN, ya formateado como se lee en pantalla.
@@ -172,6 +153,30 @@ interface RenglonComparable {
     }
     table { width: 100%; }
     .num { text-align: right; }
+    /*
+      LA BANDA DEL COMPROBANTE CORREGIDO. Pegada arriba (sticky) a propósito: este
+      comprobante tiene un gemelo con otra cifra en la mano del productor, y esa
+      advertencia no se puede ir con el scroll mientras se lee el desglose.
+
+      Va con los colores de "tertiary" del tema —que ya vienen resueltos con
+      light-dark(), así que el modo oscuro sale solo— y no con los de error: no hay nada
+      malo con este documento, es el bueno; el rojo está reservado para lo que hay que
+      arreglar y gastarlo acá le quitaría fuerza donde sí importa.
+    */
+    .banda-corregida {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      background: var(--mat-sys-tertiary-container);
+      color: var(--mat-sys-on-tertiary-container);
+    }
+    .banda-motivo { margin: 2px 0 0; font-size: 0.8rem; }
     /*
      * EL CLIP DE LOS SOPORTES, con el número encima. Es el mismo dibujo que en la
      * lista de reventa —donde el dueño ya lo conoce— y no otro: el clip con la
@@ -747,12 +752,20 @@ export class LiquidacionDetailDialog {
     // LA CAUSA. Cuando esta misma quincena ya venía cargando una deuda vieja, hay que
     // nombrarla: sin ella la frase acusa a los anticipos de una diferencia que no es
     // toda suya, y el dueño suma "anticipos contra valor total" y no le da.
-    const causa = this.cobraSaldoAnterior()
-      ? `los anticipos aplicados (${this.enPesos(l.anticipos)}) más lo que ya venía ` +
-        `debiendo de antes (${this.enPesos(l.saldo_anterior)}) suman más que el valor ` +
-        `total de esta liquidación (${this.enPesos(l.valor_total)})`
-      : `los anticipos aplicados (${this.enPesos(l.anticipos)}) suman más que el valor ` +
-        `total de esta liquidación (${this.enPesos(l.valor_total)})`;
+    //
+    // Y CUANDO LA DEUDA NO LA HICIERON LOS ANTICIPOS SINO LA PLATA YA ENTREGADA —el
+    // sobrepago que deja una corrección: se le entregaron $500.000 y la quincena
+    // corregida quedó en $400.000— esta frase era FALSA de cabo a rabo. Ahí no hay
+    // anticipos que buscar, y mandar al dueño a buscarlos es peor que no decir nada.
+    const causa =
+      causaDeLaDeuda(l) !== 'anticipos'
+        ? porQueSeLePagoDeMas(l, (monto) => this.enPesos(monto))
+        : this.cobraSaldoAnterior()
+          ? `los anticipos aplicados (${this.enPesos(l.anticipos)}) más lo que ya venía ` +
+            `debiendo de antes (${this.enPesos(l.saldo_anterior)}) suman más que el valor ` +
+            `total de esta liquidación (${this.enPesos(l.valor_total)})`
+          : `los anticipos aplicados (${this.enPesos(l.anticipos)}) suman más que el valor ` +
+            `total de esta liquidación (${this.enPesos(l.valor_total)})`;
     // Y LA CADENA, cuando esta quincena cobró una deuda y volvió a quedar debiendo: lo
     // que viaja a la siguiente YA INCLUYE la vieja. Decirlo evita la pregunta que
     // seguiría —"¿entonces se le está cobrando dos veces?"— con plata de por medio.
@@ -876,7 +889,13 @@ export class LiquidacionDetailDialog {
   constructor() {
     // Recarga la liquidación para asegurar que los detalles estén completos.
     firstValueFrom(this.servicio.getById(this.data.item.id))
-      .then((liq) => this.liq.set(liq))
+      .then((liq) => {
+        this.liq.set(liq);
+        // El motivo de la corrección se pide DESPUÉS y SOLO si la versión dice que hay
+        // algo que pedir: en la inmensa mayoría de los comprobantes no hay ninguna, y
+        // preguntar siempre sería una consulta de más por cada uno que se abre.
+        this.cargarCorrecciones();
+      })
       .catch(() => undefined);
   }
 
@@ -1031,7 +1050,7 @@ export class LiquidacionDetailDialog {
    * mismas palabras que el error del backend, a propósito: si el usuario alcanza a
    * oprimir el botón desde otra pantalla, el mensaje que recibe es el mismo.
    */
-  private avisoDeudaCongelada(verbo: 'anular' | 'recalcular'): string {
+  private avisoDeudaCongelada(verbo: 'anular' | 'recalcular' | 'corregir'): string {
     const periodo = this.periodoDondeSeCobro();
     const donde = periodo ? `la liquidación del ${periodo}` : 'otra liquidación';
     return (
@@ -1062,6 +1081,152 @@ export class LiquidacionDetailDialog {
     if (!this.auth.hasPermission('liquidaciones', 'administrar')) return null;
     return this.deudaYaCobrada() ? this.avisoDeudaCongelada('anular') : null;
   });
+
+  // ------------------------------- corregir una quincena que YA SE PAGÓ
+  /**
+   * LA QUINCENA YA ESTÁ CERRADA Y SE LE OLVIDÓ UN DETALLE: acá es donde se arregla.
+   *
+   * Lo pidió el dueño con esas palabras. Las cuatro condiciones son EL CONTRATO DEL
+   * BACKEND, no un gusto de la pantalla (`_exigir_corregible` las exige en este orden):
+   *
+   *  · la deuda de esta quincena NO puede estar ya cobrada en otra. Ahí la ventana se
+   *    cierra y no se abre ni para el Administrador Empresa: el renglón de esa otra hoja
+   *    sale de una columna congelada, y mover un peso acá la hace contradecirse sola;
+   *  · solo las de LECHE. En la del flete el renglón es (día, ruta) y esos renglones son
+   *    la memoria de qué viaje ya se cobró;
+   *  · solo 'pagada' o 'parcial'. Lo demás todavía se edita por el camino normal;
+   *  · permiso 'administrar', que es el mismo de Anular y de Pagar y que en el sistema
+   *    tiene EXACTAMENTE UN ROL: Administrador Empresa. Que es literal lo que se pidió.
+   */
+  readonly puedeCorregir = computed(
+    () =>
+      (this.liq().estado === 'pagada' || this.liq().estado === 'parcial') &&
+      this.liq().tipo === 'proveedor' &&
+      !this.deudaYaCobrada() &&
+      this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * POR QUÉ NO SE PUEDE CORREGIR, cuando el botón se esperaría y no está.
+   *
+   * Se explica ÚNICAMENTE sobre una quincena ya cerrada ('pagada' o 'parcial'), que es
+   * donde el dueño lo va a buscar. En un borrador o en una aprobada no hay nada que
+   * explicar —esas se editan por el camino de siempre— y poner ahí un candado que dice
+   * "no se puede corregir" al lado de los campos que SÍ se pueden editar es la clase de
+   * aviso que enseña a no leer los avisos. Es el mismo criterio de `motivoNoPagar`.
+   *
+   * El orden es el del servidor: la deuda congelada va de primero porque es el único
+   * caso en el que la respuesta incluye qué hay que hacer primero.
+   */
+  readonly motivoNoCorregir = computed<string | null>(() => {
+    const liq = this.liq();
+    if (liq.estado !== 'pagada' && liq.estado !== 'parcial') return null;
+    if (!this.auth.hasPermission('liquidaciones', 'administrar')) return null;
+    if (this.puedeCorregir()) return null;
+    if (this.deudaYaCobrada()) return this.avisoDeudaCongelada('corregir');
+    // Queda el flete. El mensaje es el del backend, con su salida: una liquidación
+    // pagada NO reserva sus fechas, así que el día anotado tarde entra en un segundo
+    // comprobante del mismo período sin tener que tocar este.
+    return (
+      'Solo se puede corregir una quincena de leche. Para el flete, genérele un segundo ' +
+      `comprobante del período a ${this.tercero()}: una liquidación pagada no reserva sus ` +
+      'fechas, así que el día anotado tarde entra ahí.'
+    );
+  });
+
+  /**
+   * Abre el diálogo de corregir y pinta lo que respondió el servidor.
+   *
+   * La liquidación se reemplaza entera —no solo la cifra que cambió— porque al corregir
+   * se mueven a la vez el valor total, el neto, el saldo, el estado y la versión. Y el
+   * aviso del recálculo se cierra: su "antes → ahora" dejó de ser el de esta pantalla.
+   */
+  corregirQuincena(): void {
+    this.dialog
+      .open(CorregirQuincenaDialog, {
+        data: { liquidacion: this.liq() },
+        width: '760px',
+        maxWidth: '96vw',
+      })
+      .afterClosed()
+      .subscribe((corregida?: Liquidacion) => {
+        if (!corregida) return;
+        this.cambio.set(null);
+        this.liq.set(corregida);
+        // El motivo que se acaba de escribir se pide de nuevo: la banda de arriba lo
+        // muestra, y hasta acá solo llegó la liquidación.
+        this.cargarCorrecciones();
+        this.snackbar.open(
+          Number(corregida.saldo ?? 0) > 0
+            ? `Quincena corregida. Queda por entregarle ${this.enPesos(corregida.saldo)}: ` +
+                'oprima Pagar cuando le entregue esa plata'
+            : Number(corregida.le_queda_debiendo ?? 0) > 0
+              ? `Quincena corregida. Se le pagó de más ${this.enPesos(corregida.le_queda_debiendo)}: ` +
+                'se le descuenta solo en la quincena siguiente'
+              : 'Quincena corregida',
+          'OK',
+          { duration: 9000 },
+        );
+      });
+  }
+
+  // ------------------------------- la banda del comprobante corregido
+  /**
+   * LAS CORRECCIONES DE ESTA QUINCENA, o vacío mientras no se hayan pedido.
+   *
+   * NO viajan dentro de la liquidación a propósito (la relación es diferida en el
+   * backend: meterlas en el esquema dispararía una consulta POR FILA al listar una
+   * página, para un dato que en casi todas está vacío). Se piden aparte y SOLO cuando
+   * `version` es mayor que 1, que es la señal de que hay algo que mostrar.
+   */
+  readonly correcciones = signal<Correccion[]>([]);
+
+  /** Qué número de hoja es esta. `?? 1` para leer una respuesta vieja sin "vundefined". */
+  readonly version = computed(() => Number(this.liq().version ?? 1));
+
+  /** Este comprobante ya se corrigió: hay más de una hoja de la misma quincena. */
+  readonly fueCorregida = computed(() => this.version() > 1);
+
+  /**
+   * LA BANDA DEL ENCABEZADO: "Corregido el 06/09/2026 · v2 · motivo: …".
+   *
+   * Va fija arriba y no escondida en una pestaña porque es lo primero que hay que saber
+   * de este documento: el productor puede tener DOS hojas de la misma quincena y esta
+   * pantalla tiene que decir cuál manda y por qué cambió.
+   *
+   * Si la versión dice que se corrigió pero el motivo todavía no llegó (o el servidor no
+   * lo devolvió), la banda SALE IGUAL sin el motivo: "hay una versión 2" ya es la mitad
+   * importante, y callarla mientras carga sería peor.
+   */
+  readonly bandaDeCorreccion = computed<{ fecha: string | null; motivo: string | null } | null>(
+    () => {
+      if (!this.fueCorregida()) return null;
+      const ultima = this.correcciones()[this.correcciones().length - 1] ?? null;
+      return {
+        fecha: ultima ? comoFecha(ultima.created_at.slice(0, 10)) : null,
+        motivo: ultima?.motivo ?? null,
+      };
+    },
+  );
+
+  /**
+   * EL RÓTULO DEL BOTÓN DE PDF. Con una corrección encima ya no basta con "PDF": lo que
+   * el dueño necesita mandar es EL COMPROBANTE CORREGIDO, y el que el productor tiene en
+   * la mano es el viejo.
+   */
+  readonly rotuloPdf = computed(() =>
+    this.fueCorregida() ? `Descargar comprobante corregido (v${this.version()})` : 'PDF',
+  );
+
+  /** Pide el motivo de la corrección. Solo cuando hay algo que pedir; ver `version`. */
+  private cargarCorrecciones(): void {
+    if (!this.fueCorregida()) return;
+    firstValueFrom(this.servicio.correcciones(this.liq().id))
+      .then((lista) => this.correcciones.set(lista ?? []))
+      // En silencio: la banda sale igual sin el motivo (ver `bandaDeCorreccion`), y un
+      // aviso de error por un texto explicativo taparía el comprobante entero.
+      .catch(() => undefined);
+  }
 
   /**
    * PAGAR: no se le paga a quien QUEDÓ DEBIENDO. El servidor lo rebota.
@@ -1174,10 +1339,18 @@ export class LiquidacionDetailDialog {
       const cierre = this.deudaYaCobrada()
         ? 'Esa deuda ya se le cobró en otra liquidación.'
         : 'Esa deuda se le cobra en la próxima quincena que se le liquide.';
+      // LA CAUSA NO ES SIEMPRE LA MISMA, y hasta este trabajo esta frase solo sabía
+      // nombrar una. Con un sobrepago por corrección —se le entregaron $500.000 y la
+      // quincena corregida quedó en $400.000— decir "los anticipos suman más que esta
+      // quincena" es literalmente falso: no hubo anticipos, hubo plata entregada de más,
+      // y el dueño se va a ir a buscar unos anticipos que no existen.
+      const porque =
+        causaDeLaDeuda(liq) === 'anticipos'
+          ? 'porque los anticipos que se le entregaron suman más que esta quincena'
+          : `porque ${porQueSeLePagoDeMas(liq, (monto) => this.enPesos(monto))}`;
       return (
         `No hay nada que pagarle: ${this.tercero()} quedó debiendo ` +
-        `${this.enPesos(liq.le_queda_debiendo)} porque los anticipos que se le entregaron ` +
-        `suman más que esta quincena. ${cierre}`
+        `${this.enPesos(liq.le_queda_debiendo)} ${porque}. ${cierre}`
       );
     }
     // Ya no queda ningún caso por explicar: con saldo en cero hay botón (ver

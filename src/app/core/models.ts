@@ -752,6 +752,36 @@ export interface Liquidacion extends TenantFields {
    * esas palabras: una promesa sin fecha es lo que había antes.
    */
   le_queda_debiendo: Monto;
+  /**
+   * QUÉ NÚMERO DE HOJA ES ESTA. Arranca en 1 y sube CADA VEZ que se corrige la quincena
+   * después de pagada.
+   *
+   * Existe porque el productor YA TIENE UN PAPEL EN LA MANO con la cifra vieja: cuando
+   * esto vale 2, hay dos hojas de la misma quincena dando vueltas y la pantalla tiene
+   * que decirlo en voz alta —y rotular el PDF como "comprobante corregido (v2)"— para
+   * que el dueño sepa cuál de las dos manda y recoja la anterior.
+   *
+   * ES TAMBIÉN LA LLAVE QUE DECIDE SI SE PIDE EL MOTIVO. Las correcciones NO viajan
+   * dentro de la liquidación (la relación es diferida en el backend: meterlas en el
+   * esquema dispararía una consulta POR FILA al listar una página, para un dato que en
+   * casi todas está vacío), así que se piden aparte por
+   * `GET /liquidaciones/{id}/correcciones` y SOLO cuando esto es mayor que 1.
+   *
+   * OPCIONAL para leer una respuesta vieja —o un comprobante cacheado— sin que la
+   * pantalla muestre "vundefined": se lee siempre con `?? 1`, que es exactamente lo que
+   * era cierto antes de que este campo existiera.
+   */
+  version?: number;
+  /**
+   * CUÁNDO SE IMPRIMIÓ ESTE COMPROBANTE POR PRIMERA VEZ, o null si nunca se imprimió.
+   *
+   * Es el dato que separa "me equivoqué y todavía nadie vio el papel" de "el productor
+   * ya se llevó la hoja". No traba nada —corregir no lo consulta— pero es lo que
+   * permite decir, el día que haga falta, desde cuándo hay una cifra vieja circulando.
+   *
+   * Opcional por la misma razón que `version`.
+   */
+  fecha_primera_impresion?: string | null;
   observaciones: string | null;
   detalles: LiquidacionDetalle[];
   pagos: PagoLiquidacion[];

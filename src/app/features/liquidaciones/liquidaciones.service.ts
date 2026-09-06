@@ -286,6 +286,135 @@ export interface PreLiquidacion {
   anticipos_detalle: PreLiquidacionAnticipo[];
 }
 
+// ------------------------------- corregir una quincena YA PAGADA
+// Lo pidió el dueño: "que si soy administrador de empresa pueda editar la liquidación
+// que ya está pagada, es que se le olvidó un detalle y tiene que editarla". Y escogió UN
+// SOLO COMPROBANTE CORREGIDO (v2) en vez de dos papeles separados, así que todo lo de
+// abajo describe UNA operación: el comprobante sube de versión y las cifras quedan con
+// su antes y su después escritos.
+
+/** El precio nuevo de UN día que YA está en el comprobante. */
+export interface PrecioDeUnDia {
+  /** El id del renglón del detalle, que es como el servidor señala el día. */
+  detalle_id: string;
+  precio_litro: number;
+}
+
+/**
+ * LO QUE SE MANDA PARA CORREGIR, y va TODO EN UNA SOLA PETICIÓN.
+ *
+ * Los días que se quedaron sueltos y los precios que estaban mal son una sola operación:
+ * partirlas en dos llamadas dejaría el comprobante a medio corregir entre una y otra,
+ * con una versión, un papel y un saldo intermedios que nunca existieron.
+ *
+ * EL MOTIVO ES OBLIGATORIO (el servidor exige 3 caracteres): es lo único que después le
+ * explica a alguien por qué el papel que el productor guardó dice otra cifra.
+ */
+export interface CorregirQuincenaPayload {
+  motivo: string;
+  /** Los días sueltos que el dueño MARCÓ, uno por uno. Nunca "todo lo que esté suelto". */
+  recepciones_a_incluir: string[];
+  precios: PrecioDeUnDia[];
+}
+
+/**
+ * UN DÍA DEL PERÍODO QUE NO ESTÁ EN NINGUNA LIQUIDACIÓN: candidato a entrar.
+ *
+ * Viene con el valor ya calculado para que la casilla muestre la cifra puesta y el dueño
+ * reconozca el día ANTES de marcarlo.
+ */
+export interface DiaSuelto {
+  recepcion_id: string;
+  fecha: string;
+  litros: Monto;
+  precio_litro: Monto;
+  valor: Monto;
+  /**
+   * QUÉ LE VA A PASAR AL FLETE DE ESE DÍA, que es el papel de OTRA persona. Lo escribe
+   * el servidor y se muestra tal cual: el dueño que suma a mano va a preguntar por qué
+   * ese día no tiene flete, y hay que responderle en el diálogo y no en soporte.
+   */
+  nota_flete: string | null;
+}
+
+/**
+ * EL ANTES Y EL DESPUÉS DE LA CORRECCIÓN, SIN QUE SE MUEVA UN PESO.
+ *
+ * Es la calculadora del dueño puesta en la pantalla. LAS CIFRAS SALEN DE ACÁ Y NO SE
+ * CALCULAN EN EL FRONTEND: dos calculadoras terminan diciendo cifras distintas, y la que
+ * él tiene al lado es la del papel.
+ */
+export interface PrevisualizacionCorreccion {
+  dias_sueltos: DiaSuelto[];
+  valor_total_antes: Monto;
+  valor_total_despues: Monto;
+  neto_antes: Monto;
+  neto_despues: Monto;
+  /** Lo que ya se le entregó. La corrección NO lo mueve: ni un pago se toca. */
+  pagado: Monto;
+  saldo_antes: Monto;
+  saldo_despues: Monto;
+  estado_antes: string;
+  estado_despues: string;
+  /**
+   * LAS DOS PUNTAS, LAS DOS EN POSITIVO Y EN CAMPOS SEPARADOS. Son dos frases distintas
+   * ("queda por entregarle" / "se le pagó de más") y la pantalla no tiene que deducir
+   * cuál decir a partir del signo de un saldo.
+   */
+  queda_por_entregar: Monto;
+  se_le_pago_de_mas: Monto;
+  version_actual: number;
+  /**
+   * LO QUE EL SISTEMA SABE Y EL DUEÑO NO, redactado por el servidor: qué pasa con el
+   * flete, que el período queda reservado, y cuántas veces se corrigió ya esta quincena.
+   * Se muestran TAL CUAL antes de confirmar; traducirlos acá sería tener dos versiones
+   * del mismo aviso, y la de la pantalla quedaría vieja el día que el servidor agregue
+   * una razón nueva.
+   */
+  avisos: string[];
+}
+
+/** Un día que entró en una corrección, tal como quedó escrito en el renglón. */
+export interface DiaAgregadoEnCorreccion {
+  fecha: string;
+  litros: Monto;
+  precio_litro: Monto;
+  valor: Monto;
+}
+
+/** Un precio que una corrección cambió, con las dos cifras. */
+export interface PrecioCorregidoEnCorreccion {
+  fecha: string;
+  litros: Monto;
+  precio_antes: Monto;
+  precio_despues: Monto;
+  valor_antes: Monto;
+  valor_despues: Monto;
+}
+
+/**
+ * UNA CORRECCIÓN YA HECHA. Es el renglón que hace que esta operación no sirva para tapar
+ * plata: quién, cuándo, por qué, y contra qué cifra.
+ */
+export interface Correccion {
+  id: string;
+  version_nueva: number;
+  motivo: string;
+  corregido_por_nombre: string | null;
+  created_at: string;
+  valor_total_antes: Monto;
+  valor_total_despues: Monto;
+  neto_antes: Monto;
+  neto_despues: Monto;
+  pagado_al_momento: Monto;
+  saldo_antes: Monto;
+  saldo_despues: Monto;
+  estado_antes: string;
+  estado_despues: string;
+  dias_agregados: DiaAgregadoEnCorreccion[];
+  precios_corregidos: PrecioCorregidoEnCorreccion[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class LiquidacionesService extends CrudService<Liquidacion> {
   constructor() {
@@ -428,6 +557,61 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
 
   anular(id: string): Observable<Liquidacion> {
     return this.api.post<Liquidacion>(`${this.base}/${id}/anular`);
+  }
+
+  // ------------------------------- corregir una quincena YA PAGADA
+  /**
+   * CÓMO QUEDARÍA LA QUINCENA CORREGIDA, sin escribir nada.
+   *
+   * `soloLectura`: usa POST porque las casillas marcadas van en el cuerpo, pero NO GUARDA
+   * NADA. Sin la marca, un fallo de red aquí avisaría "revisa en la lista si el registro
+   * quedó guardado" sobre una operación que no guardó ni podía guardar, y encima de una
+   * quincena PAGADA: es exactamente el aviso que hace que el dueño la corrija dos veces.
+   * Es el mismo trato que `previsualizar`.
+   *
+   * OJO CON EL MOTIVO: el servidor exige el campo (3 caracteres) para poder leer el
+   * sobre, pero el avance NO lo usa ni lo guarda —solo mira los días y los precios—. El
+   * diálogo manda un texto provisional mientras el dueño no ha escrito el suyo; ver
+   * `MOTIVO_PROVISIONAL` en corregir-quincena.dialog.ts.
+   */
+  previsualizarCorreccion(
+    id: string,
+    payload: CorregirQuincenaPayload,
+  ): Observable<PrevisualizacionCorreccion> {
+    return this.api.post<PrevisualizacionCorreccion>(
+      `${this.base}/${id}/corregir/previsualizar`,
+      payload,
+      undefined,
+      { soloLectura: true },
+    );
+  }
+
+  /**
+   * CORRIGE LA QUINCENA Y EMITE LA VERSIÓN SIGUIENTE DEL COMPROBANTE.
+   *
+   * Devuelve la liquidación entera —no solo lo que cambió— porque al corregir se mueven
+   * a la vez el valor total, el neto, el saldo, el estado y la versión: pintar solo una
+   * parte dejaría la pantalla contradiciéndose a la vista, encima de un papel que el
+   * productor ya tiene en la mano.
+   *
+   * NO borra pagos ni soportes, NO suelta ninguna marca y NO pasa por borrador: si el
+   * total sube, la quincena queda en 'parcial' y el saldo se paga por la puerta de
+   * siempre; si baja, queda con saldo negativo y la quincena siguiente lo descuenta sola.
+   */
+  corregir(id: string, payload: CorregirQuincenaPayload): Observable<Liquidacion> {
+    return this.api.post<Liquidacion>(`${this.base}/${id}/corregir`, payload);
+  }
+
+  /**
+   * Las correcciones hechas a esta quincena, la más reciente de últimas.
+   *
+   * Va por su propia ruta y no dentro de la liquidación: la relación es diferida en el
+   * backend, así que meterla en el esquema dispararía una consulta POR FILA al listar
+   * una página, para un dato que en casi todas está vacío. Con `version` la pantalla ya
+   * sabe si tiene que pedirlo, y solo lo pide cuando es mayor que 1.
+   */
+  correcciones(id: string): Observable<Correccion[]> {
+    return this.api.get<Correccion[]>(`${this.base}/${id}/correcciones`);
   }
 
   descargarPdf(id: string): Observable<void> {

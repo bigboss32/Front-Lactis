@@ -28,6 +28,7 @@ import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
+import { causaDeLaDeuda, porQueSeLePagoDeMas } from './cifras-de-la-quincena';
 import { CierreGenerar, GenerarQuincenaDialog } from './generar-quincena.dialog';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import { periodoDe } from './periodo-liquidacion';
@@ -448,6 +449,11 @@ export class LiquidacionListPage implements OnInit {
   marcaLeQuedaDebiendo(fila: Liquidacion): string {
     if (this.deudaYaCobrada(fila)) return 'quedó debiendo · cobrada';
     if (fila.estado === 'anulada') return 'quedó debiendo · no se cobra';
+    // Y LA CUARTA, que llegó con la corrección de una quincena pagada: acá al productor
+    // NO se le adelantó nada, se le ENTREGÓ de más. La marca lo separa de una vez porque
+    // es plata que YA SALIÓ de la caja —no un anticipo que estaba previsto— y el dueño la
+    // busca en otro lado: en el comprobante corregido, no en la lista de anticipos.
+    if (causaDeLaDeuda(fila) !== 'anticipos') return 'se le pagó de más';
     return 'quedó debiendo';
   }
 
@@ -486,6 +492,18 @@ export class LiquidacionListPage implements OnInit {
     }
     const aunqueBorrador =
       fila.estado === 'borrador' ? '. Viaja aunque esta siga en borrador' : '';
+    // EL SOBREPAGO POR CORRECCIÓN NO ES UN ANTICIPO, y la frase de abajo lo daba por
+    // hecho. Acá la plata YA SALIÓ de la caja contra este mismo comprobante: se le
+    // entregaron $500.000 y la quincena corregida quedó en $400.000. Se recupera igual
+    // —descontándolo de la quincena siguiente— pero hay que decir de dónde salió, porque
+    // el dueño va a ir a buscar un anticipo que no existe.
+    if (causaDeLaDeuda(fila) !== 'anticipos') {
+      return (
+        `A ${quien} se le pagó de más: ${porQueSeLePagoDeMas(fila, pesosExactos)}, así que ` +
+        `quedó debiendo ${cifra}. Esa plata se le descuenta en la próxima quincena que se ` +
+        `le liquide después de esta${aunqueBorrador}`
+      );
+    }
     return (
       `${quien} quedó debiendo ${cifra}: se le cobra en la próxima quincena que se le ` +
       `liquide después de esta${aunqueBorrador}`
