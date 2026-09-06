@@ -7,6 +7,22 @@
  * fecha nunca "se corre un día" por la zona horaria.
  */
 
+/**
+ * '2026-06-16' → '16/06/2026'.
+ *
+ * Sin pasar por `new Date`: una fecha ISO pelada se interpreta en UTC y en Colombia
+ * (UTC-5) se corre UN DÍA hacia atrás. En un período de quincena eso significa mostrar
+ * "15/06/2026" en un comprobante que dice 16, que es de las cosas que hacen dudar de
+ * todo lo demás que está en la pantalla.
+ *
+ * VIVÍA EN LIQUIDACIONES y se subió acá cuando gastos necesitó lo mismo para
+ * nombrar el gasto al que se le está anexando la factura. Copiarla habría sido
+ * abrir la puerta a que una de las dos empezara a mostrar la fecha corrida.
+ */
+export function comoFecha(iso: string): string {
+  return iso.split('-').reverse().join('/');
+}
+
 /** Convierte el `Date` de un datepicker a texto `yyyy-MM-dd` (o null si vacío). */
 export function dateToIso(value: Date | string): string;
 export function dateToIso(value: Date | string | null | undefined): string | null;

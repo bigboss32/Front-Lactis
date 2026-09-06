@@ -64,7 +64,7 @@ const AHORRO_QUE_SE_CUENTA = 0.1;
     MatTooltipModule, HasPermissionDirective, SpinnerBoton,
   ],
   template: `
-    <h2 mat-dialog-title>Soportes de pago</h2>
+    <h2 mat-dialog-title>{{ data.encabezado ?? 'Soportes de pago' }}</h2>
     <mat-dialog-content>
       <p class="sub">{{ data.titulo }}</p>
       @if (data.ayuda) {
@@ -94,7 +94,7 @@ const AHORRO_QUE_SE_CUENTA = 0.1;
       } @else if (adjuntos().length === 0 && !noDisponible()) {
         <div class="empty-state">
           <mat-icon>photo_camera</mat-icon>
-          <p>Todavía no hay soportes. Anexe la foto de la transferencia.</p>
+          <p>{{ data.vacio ?? 'Todavía no hay soportes. Anexe la foto de la transferencia.' }}</p>
         </div>
       }
 

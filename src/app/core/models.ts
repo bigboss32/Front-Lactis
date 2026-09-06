@@ -946,7 +946,14 @@ export interface Gasto extends TenantFields {
   valor: Monto;
   numero_factura: string | null;
   observaciones: string | null;
+  /**
+   * LA FACTURA VIEJA, la que quedó en la carpeta pública `uploads/` del servidor.
+   * Ya no se escribe —las nuevas van al bucket privado, ver `adjuntos_count`—
+   * pero se sigue mostrando cuando trae algo: son facturas que el dueño ya subió.
+   */
   adjunto_url: string | null;
+  /** Cuántas facturas tiene colgadas en el almacenamiento privado. */
+  adjuntos_count: number;
   sucursal_id: string | null;
 }
 

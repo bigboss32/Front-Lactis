@@ -74,6 +74,18 @@ export interface SoportesPermisos {
  * saber— si son los de una compra de queso o los del pago de una quincena.
  */
 export interface SoportesOrigen {
+  /**
+   * EL ENCABEZADO DE LA PANTALLA. Por defecto "Soportes de pago", que es lo que
+   * son en reventa y en liquidaciones: la foto de una transferencia.
+   *
+   * En gastos NO lo son —una factura no es la prueba de que se pagó, es lo que hay
+   * que pagar— y llamarla "soporte de pago" ahí sería decirle al dueño que ese
+   * gasto ya está saldado. El texto es lo único que cambia entre un módulo y otro,
+   * así que entra por aquí y no por una copia entera de la pantalla.
+   */
+  encabezado?: string;
+  /** Qué se ofrece cuando todavía no hay nada. Por defecto, la transferencia. */
+  vacio?: string;
   /** El subtítulo, para que se sepa a qué se le está pegando la foto. */
   titulo: string;
   /**

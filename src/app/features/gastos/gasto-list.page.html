@@ -33,6 +33,18 @@
   </mat-form-field>
   <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
   <span class="spacer"></span>
+
+  <!--
+    EL TOTAL DE LO FILTRADO, no el de la página. Lo pidió el dueño con estas
+    palabras: "que se vea el valor total dependiendo los filtros". Va pegado a los
+    filtros y no debajo de la tabla porque es la respuesta a lo que se acabó de
+    filtrar, y porque ahí no se lo lleva el desplazamiento de la tabla.
+  -->
+  <div class="total-filtrado">
+    <span class="rotulo">Total gastos:</span>
+    <span class="num cifra">{{ sumaTotal() | money }}</span>
+  </div>
+
   <button mat-flat-button *hasPermission="'gastos:crear'" (click)="abrirFormulario()">
     <mat-icon>add</mat-icon> Nuevo gasto
   </button>
@@ -78,20 +90,45 @@
         <td mat-cell *matCellDef="let fila" class="num" [attr.data-label]="'Valor'">{{ fila.valor | money }}</td>
       </ng-container>
 
+      <!--
+        LA FACTURA DEL GASTO.
+
+        EL CLIP SALE SIEMPRE, también cuando el gasto no tiene factura: si solo
+        apareciera con una ya subida, no habría por dónde subir la primera. El
+        número encima es lo que permite ver de un vistazo a cuáles les falta —que
+        es justo lo que el dueño va buscando cuando repasa la lista.
+
+        AL LADO, Y SOLO CUANDO EXISTE, la factura VIEJA: la que quedó en la
+        carpeta `uploads/` del servidor antes de este cambio. Se sigue pudiendo
+        abrir para no esconderle nada de lo que ya había subido, pero no se
+        escriben más por ahí — esa carpeta está publicada sin clave.
+      -->
       <ng-container matColumnDef="adjunto">
-        <th mat-header-cell *matHeaderCellDef>Adjunto</th>
-        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Adjunto'">
+        <th mat-header-cell *matHeaderCellDef>Factura</th>
+        <td mat-cell *matCellDef="let fila" [attr.data-label]="'Factura'">
+          <button
+            mat-icon-button
+            [attr.aria-label]="rotuloFacturas(fila)"
+            [matTooltip]="rotuloFacturas(fila)"
+            (click)="facturasDel(fila)"
+          >
+            <span class="con-badge">
+              <mat-icon>attach_file</mat-icon>
+              @if (fila.adjuntos_count > 0) {
+                <span class="badge-adjuntos">{{ fila.adjuntos_count }}</span>
+              }
+            </span>
+          </button>
           @if (fila.adjunto_url) {
             <a
               mat-icon-button
+              class="factura-vieja"
               [href]="uploadsBase + '/' + fila.adjunto_url"
               target="_blank"
-              matTooltip="Ver adjunto"
+              matTooltip="Factura subida antes, guardada en el servidor"
             >
-              <mat-icon>attach_file</mat-icon>
+              <mat-icon>history</mat-icon>
             </a>
-          } @else {
-            —
           }
         </td>
       </ng-container>

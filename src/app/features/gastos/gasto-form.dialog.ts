@@ -3,7 +3,12 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import {
+  MAT_DIALOG_DATA,
+  MatDialog,
+  MatDialogModule,
+  MatDialogRef,
+} from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -12,12 +17,13 @@ import { firstValueFrom, merge } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { CategoriaGasto, Gasto, Page } from '../../core/models';
-import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
+import { comoFecha, dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { GastosService } from './gastos.service';
 import { MilesInputDirective } from '../../shared/miles-input.directive';
 import { protegerCambios } from '../../shared/proteger-cambios';
 import { SelectBuscable } from '../../shared/select-buscable';
+import { SoportesDialog } from '../../shared/soportes.dialog';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 
 @Component({
@@ -92,12 +98,18 @@ import { SpinnerBoton } from '../../shared/spinner-boton';
           </mat-form-field>
         </form>
       } @else {
-        <p>Gasto guardado. Si lo desea, adjunte la factura o soporte:</p>
-        <input
-          type="file"
-          accept="image/*,.pdf"
-          (change)="seleccionarArchivo($event)"
-        />
+        <!--
+          SEGUNDO PASO: la factura. Ya no se sube desde aquí con un campo de
+          archivo suelto —eso guardaba el archivo en una carpeta pública del
+          servidor— sino que se abre la misma pantalla de soportes que usan
+          reventa y las liquidaciones: bucket privado, varias hojas, y la foto
+          pesada se reduce sola. Ver AdjuntoGasto en el backend.
+        -->
+        <p>Gasto guardado. Si tiene la factura a mano, adjúntela ahora:</p>
+        <p class="ayuda">
+          Queda guardada <strong>dentro del sistema</strong>, no en una dirección pública.
+          Caben varias hojas o el PDF, y si la foto es pesada se reduce sola.
+        </p>
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -117,38 +129,35 @@ import { SpinnerBoton } from '../../shared/spinner-boton';
         </button>
       } @else {
         <button mat-button type="button" (click)="finalizar()">Omitir</button>
-        <button
-          mat-flat-button
-          type="button"
-          [disabled]="!archivo() || subiendo()"
-          (click)="subirAdjunto()"
-        >
-          <!-- El icono/spinner va SOLO en su rama: si comparte raíz con el texto,
-               MatButton no lo proyecta en su ranura de icono (NG8011). -->
-          @if (subiendo()) {
-            <app-spinner-boton />
-          } @else {
-            <mat-icon>attach_file</mat-icon>
-          }
-          {{ subiendo() ? 'Subiendo adjunto…' : 'Subir adjunto' }}
+        <button mat-flat-button type="button" (click)="adjuntarFactura()">
+          <mat-icon>attach_file</mat-icon>
+          Adjuntar factura
         </button>
       }
     </mat-dialog-actions>
   `,
+  styles: [
+    `
+      .ayuda {
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.85rem;
+        margin: 0;
+      }
+    `,
+  ],
 })
 export class GastoFormDialog {
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly servicio = inject(GastosService);
   private readonly api = inject(ApiService);
   private readonly dialogRef = inject(MatDialogRef<GastoFormDialog>);
+  private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
 
   readonly data = inject<{ item?: Gasto } | null>(MAT_DIALOG_DATA, { optional: true });
   readonly categorias = signal<CategoriaGasto[]>([]);
   readonly guardando = signal(false);
   readonly gastoGuardado = signal<Gasto | null>(null);
-  readonly archivo = signal<File | null>(null);
-  readonly subiendo = signal(false);
 
   readonly form = this.fb.group({
     fecha: [
@@ -242,25 +251,42 @@ export class GastoFormDialog {
     }
   }
 
-  seleccionarArchivo(evento: Event): void {
-    const input = evento.target as HTMLInputElement;
-    this.archivo.set(input.files?.[0] ?? null);
-  }
-
-  async subirAdjunto(): Promise<void> {
+  /**
+   * Abre la pantalla de facturas del gasto que se acabó de guardar.
+   *
+   * Se cierra este formulario CUANDO SE CIERRA LA DE FACTURAS, y no antes: si se
+   * cerrara de una, la lista de gastos se recargaría por debajo mientras el dueño
+   * todavía está escogiendo el archivo, y el clip saldría en cero aunque la haya
+   * subido.
+   */
+  adjuntarFactura(): void {
     const gasto = this.gastoGuardado();
-    const archivo = this.archivo();
-    if (!gasto || !archivo) return;
-    this.subiendo.set(true);
-    try {
-      await firstValueFrom(this.servicio.adjuntar(gasto.id, archivo));
-      this.snackbar.open('Adjunto subido', 'OK', { duration: 3000 });
-      this.dialogRef.close(true);
-    } catch (err) {
-      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible subir el adjunto');
-    } finally {
-      this.subiendo.set(false);
-    }
+    if (!gasto) return;
+    this.dialog
+      .open(SoportesDialog, {
+        data: {
+          encabezado: 'Factura del gasto',
+          vacio: 'Todavía no hay factura. Anéxela como foto o PDF.',
+          titulo: `${gasto.concepto} · ${comoFecha(gasto.fecha)}`,
+          ayuda:
+            'La factura queda guardada dentro del sistema, no en una dirección ' +
+            'pública: se abre desde aquí y el enlace caduca solo. Caben varias ' +
+            '(las hojas de una misma factura) o el PDF.',
+          permisos: {
+            subir: 'gastos:editar',
+            compartir: 'gastos:exportar',
+            eliminar: 'gastos:eliminar',
+          },
+          listar: () => this.servicio.adjuntos(gasto.id),
+          subir: (archivos: File[]) => this.servicio.subirAdjuntos(gasto.id, archivos),
+          compartir: (adjuntoId: string) => this.servicio.compartirAdjunto(adjuntoId),
+          eliminar: (adjuntoId: string) => this.servicio.eliminarAdjunto(adjuntoId),
+        },
+        width: '720px',
+        maxWidth: '95vw',
+      })
+      .afterClosed()
+      .subscribe(() => this.dialogRef.close(true));
   }
 
   finalizar(): void {

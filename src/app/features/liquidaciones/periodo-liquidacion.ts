@@ -1,16 +1,12 @@
 import { LiquidacionReferencia } from '../../core/models';
+import { comoFecha } from '../../shared/date-utils';
 
 /**
- * '2026-06-16' → '16/06/2026'.
- *
- * Sin pasar por `new Date`: una fecha ISO pelada se interpreta en UTC y en Colombia
- * (UTC-5) se corre UN DÍA hacia atrás. En un período de quincena eso significa mostrar
- * "15/06/2026" en un comprobante que dice 16, que es de las cosas que hacen dudar de
- * todo lo demás que está en la pantalla.
+ * '2026-06-16' → '16/06/2026'. SUBIÓ A `shared/date-utils` cuando gastos necesitó
+ * lo mismo para nombrar el gasto al que se le anexa la factura; se re-exporta desde
+ * aquí para no tocar a las tres pantallas que ya la importaban de este archivo.
  */
-export function comoFecha(iso: string): string {
-  return iso.split('-').reverse().join('/');
-}
+export { comoFecha };
 
 /**
  * "16/06/2026 al 30/06/2026" — CÓMO SE NOMBRA UNA LIQUIDACIÓN DELANTE DEL DUEÑO.
