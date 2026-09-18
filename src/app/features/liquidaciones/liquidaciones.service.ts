@@ -301,11 +301,25 @@ export interface PrecioDeUnDia {
 }
 
 /**
+ * EL VALOR NUEVO DE UN ADELANTO que va a quedar descontado en esta quincena.
+ *
+ * Ojo con lo que esta cifra ES: plata que YA SE LE ENTREGÓ EN LA MANO al productor.
+ * Corregirla no es corregir un cálculo, es corregir el registro de una entrega — por eso
+ * entra por la puerta de la corrección, con motivo y versión nueva del comprobante, y no
+ * por la pantalla de anticipos.
+ */
+export interface ValorDeUnAnticipo {
+  anticipo_id: string;
+  valor: number;
+}
+
+/**
  * LO QUE SE MANDA PARA CORREGIR, y va TODO EN UNA SOLA PETICIÓN.
  *
- * Los días que se quedaron sueltos y los precios que estaban mal son una sola operación:
- * partirlas en dos llamadas dejaría el comprobante a medio corregir entre una y otra,
- * con una versión, un papel y un saldo intermedios que nunca existieron.
+ * Los días que se quedaron sueltos, los precios que estaban mal y los adelantos que hay
+ * que mover son una sola operación: partirlas en dos llamadas dejaría el comprobante a
+ * medio corregir entre una y otra, con una versión, un papel y un saldo intermedios que
+ * nunca existieron.
  *
  * EL MOTIVO ES OBLIGATORIO (el servidor exige 3 caracteres): es lo único que después le
  * explica a alguien por qué el papel que el productor guardó dice otra cifra.
@@ -315,6 +329,44 @@ export interface CorregirQuincenaPayload {
   /** Los días sueltos que el dueño MARCÓ, uno por uno. Nunca "todo lo que esté suelto". */
   recepciones_a_incluir: string[];
   precios: PrecioDeUnDia[];
+  /**
+   * LOS ADELANTOS, con las TRES cosas que se les pueden hacer, en listas separadas y no
+   * en una sola con un campo "acción": cada una tiene consecuencias distintas.
+   *
+   * · INCLUIR uno que quedó suelto: se le descuenta a ESTA quincena. Baja lo que hay que
+   *   entregarle.
+   * · SOLTAR uno que no iba aquí: sube lo que hay que entregarle en esta, y el adelanto
+   *   queda libre para que se lo descuente la quincena SIGUIENTE. NO SE BORRA: esa plata
+   *   ya se le entregó en la mano.
+   * · CORREGIR el valor de uno que va a quedar descontado aquí: quedó mal anotado.
+   */
+  anticipos_a_incluir: string[];
+  anticipos_a_soltar: string[];
+  valores_de_anticipos: ValorDeUnAnticipo[];
+  /**
+   * · ANULAR uno que NUNCA EXISTIÓ: se digitó dos veces, o se le anotó al productor
+   *   equivocado. Es la CUARTA operación y la única que sí borra.
+   *
+   * LA DIFERENCIA CON SOLTAR ES LA PLATA DE QUIÉN, y no es un matiz:
+   *
+   *  · SACAR dice "no iba en esta quincena". La plata SÍ se le entregó en la mano, así
+   *    que el adelanto sigue vivo y la quincena SIGUIENTE se lo descuenta.
+   *  · ANULAR dice "esto nunca pasó". No se le descuenta en ninguna quincena.
+   *
+   * Confundirlas cuesta plata en las dos direcciones: anular uno que sí se entregó le
+   * regala esa plata al productor; sacar uno que nunca existió se la quita de una
+   * quincena que sí es suya.
+   *
+   * POR QUÉ ENTRA POR ACÁ Y NO POR LA PANTALLA DE ANTICIPOS: al sacar un adelanto, el
+   * comprobante v2 que el productor tiene en la mano imprime "se le descuenta en la
+   * siguiente". Ese adelanto queda trabado contra Anticipos —allá no dejaría ni motivo
+   * ni versión nueva—, y sin esta puerta un adelanto fantasma se le descontaría al
+   * productor de plata que SÍ es suya.
+   *
+   * OPCIONAL en el tipo porque el servidor le pone lista vacía por omisión: una pantalla
+   * vieja que no lo mande sigue corrigiendo igual, sin anular nada.
+   */
+  anticipos_a_borrar?: string[];
 }
 
 /**
@@ -338,6 +390,33 @@ export interface DiaSuelto {
 }
 
 /**
+ * UN ADELANTO DEL TERCERO: o descontado en esta quincena, o suelto esperando.
+ *
+ * Viene con la fecha y con las observaciones porque es con eso —y no con el id— que el
+ * dueño reconoce cuál adelanto fue: "el del 12 que le di para la droga".
+ */
+export interface AnticipoDeLaQuincena {
+  anticipo_id: string;
+  fecha: string;
+  valor: Monto;
+  observaciones: string | null;
+  /** True si HOY está descontado en esta quincena; false si está suelto esperando. */
+  aplicado: boolean;
+  /**
+   * LO QUE HAY QUE SABER DE ESE ADELANTO ANTES DE TOCARLO, escrito por el servidor y
+   * pintado TAL CUAL. Viene en dos sitios y dice dos cosas distintas:
+   *
+   *  · En los SUELTOS: un adelanto VIEJO, de antes del período, que aparece como
+   *    candidato porque nunca se le descontó a nadie. Marcarlo se lo descuenta aquí.
+   *  · En los que ESTA QUINCENA SACÓ: que su comprobante promete descontarlo en la
+   *    siguiente, y que si nunca existió esta es la única pantalla que lo puede anular.
+   *
+   * Null cuando no hace falta decir nada.
+   */
+  aviso: string | null;
+}
+
+/**
  * EL ANTES Y EL DESPUÉS DE LA CORRECCIÓN, SIN QUE SE MUEVA UN PESO.
  *
  * Es la calculadora del dueño puesta en la pantalla. LAS CIFRAS SALEN DE ACÁ Y NO SE
@@ -346,8 +425,37 @@ export interface DiaSuelto {
  */
 export interface PrevisualizacionCorreccion {
   dias_sueltos: DiaSuelto[];
+  /**
+   * LOS QUE HOY SE LE DESCUENTAN EN ESTA QUINCENA, y LOS QUE ESTÁN SUELTOS esperando.
+   *
+   * Las dos listas vienen SIEMPRE con lo que hay guardado hoy —no con lo que el dueño
+   * lleva marcado en la pantalla—: el avance no escribe nada, así que un adelanto que se
+   * acaba de marcar sigue apareciendo en `anticipos_sueltos`. Lo que está marcado, sacado
+   * o con el valor corregido lo pinta la pantalla encima de estas listas; las cifras del
+   * cuadre salen de `anticipos_antes` y `anticipos_despues`.
+   */
+  anticipos_aplicados: AnticipoDeLaQuincena[];
+  anticipos_sueltos: AnticipoDeLaQuincena[];
+  /**
+   * LOS QUE ESTA MISMA QUINCENA SACÓ en una corrección anterior y siguen sueltos.
+   *
+   * Vienen APARTE de los sueltos porque son los únicos que esta pantalla puede ANULAR:
+   * son los que ella imprimió, y su comprobante es el que promete descontarlos en la
+   * siguiente, así que es el que tiene que poder desdecirlo —con motivo y versión nueva—.
+   *
+   * Sin esta lista, el adelanto que nunca existió y que ya se sacó de aquí no tenía
+   * NINGUNA pantalla donde anularse: se le iba a descontar al productor en la quincena
+   * siguiente, de plata que sí es suya.
+   */
+  anticipos_soltados_por_esta: AnticipoDeLaQuincena[];
   valor_total_antes: Monto;
   valor_total_despues: Monto;
+  /**
+   * Lo que se le adelantó, antes y después de la corrección. Van aparte del valor total
+   * porque en el comprobante son renglones distintos y el dueño los suma por separado.
+   */
+  anticipos_antes: Monto;
+  anticipos_despues: Monto;
   neto_antes: Monto;
   neto_despues: Monto;
   /** Lo que ya se le entregó. La corrección NO lo mueve: ni un pago se toca. */
@@ -413,6 +521,25 @@ export interface Correccion {
   estado_despues: string;
   dias_agregados: DiaAgregadoEnCorreccion[];
   precios_corregidos: PrecioCorregidoEnCorreccion[];
+  /**
+   * Lo que se le adelantó, antes y después. VAN OPCIONALES a propósito: las correcciones
+   * hechas antes de que los adelantos se pudieran mover no registraron esta cifra, y un
+   * cero ahí sería afirmar que no había adelantos.
+   */
+  anticipos_antes?: Monto | null;
+  anticipos_despues?: Monto | null;
+  /** Qué adelanto se movió y a cuánto: entró, salió, o le cambió la cifra. */
+  anticipos_cambiados?: AnticipoCambiadoEnCorreccion[];
+}
+
+/** Un adelanto que una corrección movió, tal como quedó escrito en el renglón. */
+export interface AnticipoCambiadoEnCorreccion {
+  accion: 'entro' | 'salio' | 'valor';
+  fecha: string;
+  valor: Monto;
+  /** Solo en 'valor': por cuánto estaba anotado antes. */
+  valor_antes?: Monto;
+  observaciones?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })

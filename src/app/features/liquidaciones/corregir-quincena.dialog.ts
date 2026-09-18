@@ -18,9 +18,11 @@ import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { MENOS, ROTULO_SALDO_ANTERIOR, precioTecleado } from './cifras-de-la-quincena';
 import {
+  AnticipoDeLaQuincena,
   DiaSuelto,
   LiquidacionesService,
   PrevisualizacionCorreccion,
+  ValorDeUnAnticipo,
 } from './liquidaciones.service';
 
 /**
@@ -285,6 +287,314 @@ export interface CierreDelCuadre {
           </div>
         }
 
+        <!-- ---------------------------------------- los adelantos que ya se le restaron -->
+        <h3>Los adelantos que se le descontaron</h3>
+        @if (p.anticipos_aplicados.length === 0) {
+          <p class="vacio">
+            A {{ tercero() }} no se le descontó ningún adelanto en esta quincena.
+          </p>
+        } @else {
+          <!--
+            LAS DOS ACCIONES SE EXPLICAN ANTES DE OFRECERLAS, y la de sacar en una línea
+            entera: no es obvia y es plata. El dueño tiene que leer, antes de oprimirla,
+            que el adelanto NO se borra —esa plata se la entregó en la mano— y que se le
+            descuenta en la quincena siguiente.
+          -->
+          <p class="ayuda">
+            Si un adelanto quedó anotado por otra cifra, corríjalo con el lápiz. Y si no
+            iba en esta quincena, sáquelo: no se borra —esa plata ya se le entregó—, sube
+            lo que hay que entregarle ahora y se le descuenta en la quincena siguiente.
+          </p>
+          <!--
+            LA FRASE QUE DECIDE SI ESA PLATA SE LE DESCUENTA DESPUÉS O NO. Va escrita
+            antes de ofrecer los dos botones, porque confundirlos cuesta plata en las dos
+            direcciones: anular uno que sí se entregó se la regala al productor, y sacar
+            uno que nunca existió se la quita de una quincena que sí es suya.
+          -->
+          <p class="ayuda distincion">
+            <mat-icon>help_outline</mat-icon>
+            <span>
+              <b>Sacar</b> es decir “no iba aquí”: esa plata sí se le entregó y se le
+              descuenta en la quincena siguiente. <b>Anular</b> es decir “ese adelanto no
+              existió” —se anotó dos veces, o al productor equivocado—: no se le descuenta
+              en ninguna quincena.
+            </span>
+          </p>
+          <div class="tabla-envuelta">
+            <table class="tabla tabla-anticipos">
+              <tr>
+                <th>Fecha</th>
+                <th>Para qué fue</th>
+                <th class="num">Lo que se le adelantó</th>
+                <th class="acc"></th>
+              </tr>
+              @for (ade of p.anticipos_aplicados; track ade.anticipo_id) {
+                <tr
+                  [class.marcado]="tieneValorNuevo(ade.anticipo_id)"
+                  [class.sacado]="estaSacado(ade.anticipo_id)"
+                  [class.anulado]="estaAnulado(ade.anticipo_id)"
+                >
+                  <td>{{ ade.fecha | date: 'dd/MM/yyyy' }}</td>
+                  <td>{{ ade.observaciones || '—' }}</td>
+                  <td class="num">
+                    @if (editandoAnticipoId() === ade.anticipo_id) {
+                      <input
+                        class="precio"
+                        type="text"
+                        inputmode="decimal"
+                        [value]="textoValor()"
+                        [attr.aria-label]="
+                          'Lo que se le adelantó el ' + (ade.fecha | date: 'dd/MM/yyyy')
+                        "
+                        (input)="alEscribirValor($any($event.target).value)"
+                        (keydown.enter)="aplicarValor(ade)"
+                        (keydown.escape)="cancelarValor()"
+                        (blur)="aplicarValor(ade)"
+                        autofocus
+                      />
+                    } @else {
+                      {{ valorQueValdria(ade) | money: true }}
+                    }
+                  </td>
+                  <td class="acc">
+                    @if (estaAnulado(ade.anticipo_id)) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        matTooltip="No anularlo: ese adelanto sí existió"
+                        aria-label="No anularlo: ese adelanto sí existió"
+                        [disabled]="guardando()"
+                        (click)="desanularAnticipo(ade.anticipo_id)"
+                      >
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    } @else if (estaSacado(ade.anticipo_id)) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        matTooltip="Volver a descontarlo en esta quincena"
+                        aria-label="Volver a descontarlo en esta quincena"
+                        [disabled]="guardando()"
+                        (click)="devolverAnticipo(ade.anticipo_id)"
+                      >
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    } @else {
+                      @if (tieneValorNuevo(ade.anticipo_id)) {
+                        <button
+                          mat-icon-button
+                          type="button"
+                          matTooltip="Dejar este adelanto como estaba"
+                          aria-label="Dejar este adelanto como estaba"
+                          [disabled]="guardando()"
+                          (click)="quitarValor(ade.anticipo_id)"
+                        >
+                          <mat-icon>undo</mat-icon>
+                        </button>
+                      } @else if (editandoAnticipoId() !== ade.anticipo_id) {
+                        <button
+                          mat-icon-button
+                          type="button"
+                          matTooltip="Corregir lo que se le adelantó"
+                          aria-label="Corregir lo que se le adelantó"
+                          [disabled]="guardando()"
+                          (click)="editarValor(ade)"
+                        >
+                          <mat-icon>edit</mat-icon>
+                        </button>
+                      }
+                      <button
+                        mat-icon-button
+                        type="button"
+                        matTooltip="Sacar este adelanto de esta quincena: sí se le entregó, y se le descuenta en la siguiente"
+                        aria-label="Sacar este adelanto de esta quincena"
+                        [disabled]="guardando()"
+                        (click)="sacarAnticipo(ade)"
+                      >
+                        <mat-icon>remove_circle_outline</mat-icon>
+                      </button>
+                      <!--
+                        ANULAR NO ES SACAR, y el botón tiene que verse distinto porque la
+                        consecuencia es otra: pide confirmación, va en rojo y su tooltip
+                        dice la frase entera. Ver el método anularAnticipo.
+                      -->
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="anular"
+                        matTooltip="Anular este adelanto: nunca existió y no se le descuenta en ninguna quincena"
+                        aria-label="Anular este adelanto: nunca existió"
+                        [disabled]="guardando()"
+                        (click)="anularAnticipo(ade)"
+                      >
+                        <mat-icon>delete_forever</mat-icon>
+                      </button>
+                    }
+                  </td>
+                </tr>
+                @if (notaDelAnticipo(ade); as nota) {
+                  <!--
+                    LO QUE ACABA DE HACER, DICHO EN PLATA. Como la resta de los días: no
+                    es una cifra del documento —el total sale del servidor— sino la cuenta
+                    que le explica al dueño qué cambió con lo que acaba de oprimir.
+                  -->
+                  <tr class="nota">
+                    <td></td>
+                    <td colspan="3"><mat-icon>calculate</mat-icon> {{ nota }}</td>
+                  </tr>
+                }
+              }
+            </table>
+          </div>
+        }
+
+        <!-- ---------------------------------------- los adelantos que quedaron sueltos -->
+        <h3>Adelantos que se le dieron y no se le han descontado</h3>
+        @if (p.anticipos_sueltos.length === 0) {
+          <p class="vacio">
+            No hay adelantos sueltos de {{ tercero() }}: todo lo que se le ha adelantado ya
+            está descontado en alguna quincena.
+          </p>
+        } @else {
+          <p class="ayuda">
+            Marque UNO POR UNO los que haya que descontarle en ESTA quincena: al marcarlos
+            baja lo que hay que entregarle. Los que deje sin marcar no se pierden, se
+            quedan esperando la quincena siguiente.
+          </p>
+          <div class="tabla-envuelta">
+            <table class="tabla tabla-anticipos-sueltos">
+              <tr>
+                <th class="chk"></th>
+                <th>Fecha</th>
+                <th>Para qué fue</th>
+                <th class="num">Lo que se le adelantó</th>
+              </tr>
+              @for (ade of p.anticipos_sueltos; track ade.anticipo_id) {
+                <tr [class.marcado]="estaIncluido(ade.anticipo_id)">
+                  <td class="chk">
+                    <mat-checkbox
+                      [checked]="estaIncluido(ade.anticipo_id)"
+                      [disabled]="guardando()"
+                      (change)="incluirAnticipo(ade.anticipo_id, $event.checked)"
+                      [attr.aria-label]="
+                        'Descontar el adelanto del ' + (ade.fecha | date: 'dd/MM/yyyy')
+                      "
+                    />
+                  </td>
+                  <td>{{ ade.fecha | date: 'dd/MM/yyyy' }}</td>
+                  <td>{{ ade.observaciones || '—' }}</td>
+                  <td class="num">{{ ade.valor | money: true }}</td>
+                </tr>
+                @if (ade.aviso; as aviso) {
+                  <!--
+                    EL ADELANTO VIEJO VA SEÑALADO. El servidor lo manda porque es de ANTES
+                    de este período y nunca se le descontó a nadie: si el dueño lo marca
+                    sin verlo, le descuenta aquí una plata de hace meses.
+                  -->
+                  <tr class="nota senalada">
+                    <td></td>
+                    <td colspan="3"><mat-icon>history</mat-icon> {{ aviso }}</td>
+                  </tr>
+                }
+                @if (notaDelAnticipoSuelto(ade); as nota) {
+                  <tr class="nota">
+                    <td></td>
+                    <td colspan="3"><mat-icon>calculate</mat-icon> {{ nota }}</td>
+                  </tr>
+                }
+              }
+            </table>
+          </div>
+        }
+
+        <!-- ---------------------------------------- los que esta misma quincena sacó
+          NO SE PINTA VACÍA, al revés que las otras dos. Las otras dos son preguntas que
+          el dueño trae ("¿qué se le descontó?", "¿qué quedó suelto?") y su vacío es una
+          respuesta. Esta lista solo existe cuando ESTA quincena ya sacó un adelanto en
+          una corrección anterior, que es el caso raro: pintarla vacía en toda corrección
+          le pondría delante una sección que no puede entender —y con el único botón que
+          borra plata— justo cuando no tiene nada que hacer con ella.
+        -->
+        @if (soltadosPorEsta().length > 0) {
+          <h3>Adelantos que esta quincena sacó</h3>
+          <p class="ayuda">
+            Estos salieron de esta quincena en una corrección anterior y están esperando
+            que la siguiente se los descuente. Si alguno NUNCA EXISTIÓ —se anotó dos
+            veces, o al productor equivocado— anúlelo: esta es la única pantalla que
+            puede, porque es la que lo imprimió.
+          </p>
+          <p class="ayuda distincion">
+            <mat-icon>help_outline</mat-icon>
+            <span>
+              <b>Sacar</b> es decir “no iba aquí” y esa plata se le descuenta en la
+              quincena siguiente. <b>Anular</b> es decir “ese adelanto no existió” y no se
+              le descuenta en ninguna. Si sí se le entregó la plata, no lo anule.
+            </span>
+          </p>
+          <div class="tabla-envuelta">
+            <table class="tabla tabla-anticipos-soltados">
+              <tr>
+                <th>Fecha</th>
+                <th>Para qué fue</th>
+                <th class="num">Lo que se le adelantó</th>
+                <th class="acc"></th>
+              </tr>
+              @for (ade of soltadosPorEsta(); track ade.anticipo_id) {
+                <tr [class.anulado]="estaAnulado(ade.anticipo_id)">
+                  <td>{{ ade.fecha | date: 'dd/MM/yyyy' }}</td>
+                  <td>{{ ade.observaciones || '—' }}</td>
+                  <td class="num">{{ ade.valor | money: true }}</td>
+                  <td class="acc">
+                    @if (estaAnulado(ade.anticipo_id)) {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        matTooltip="No anularlo: ese adelanto sí existió"
+                        aria-label="No anularlo: ese adelanto sí existió"
+                        [disabled]="guardando()"
+                        (click)="desanularAnticipo(ade.anticipo_id)"
+                      >
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    } @else {
+                      <button
+                        mat-icon-button
+                        type="button"
+                        class="anular"
+                        matTooltip="Anular este adelanto: nunca existió y no se le descuenta en ninguna quincena"
+                        aria-label="Anular este adelanto: nunca existió"
+                        [disabled]="guardando()"
+                        (click)="anularAnticipo(ade)"
+                      >
+                        <mat-icon>delete_forever</mat-icon>
+                      </button>
+                    }
+                  </td>
+                </tr>
+                @if (ade.aviso; as aviso) {
+                  <!--
+                    EL AVISO DEL SERVIDOR, TAL CUAL: dice que el comprobante que el
+                    productor tiene en la mano promete descontarle ese adelanto en la
+                    siguiente, y que si nunca existió esta es la única pantalla que lo
+                    puede anular. Traducirlo acá sería tener dos versiones del mismo
+                    aviso, y la de la pantalla quedaría vieja.
+                  -->
+                  <tr class="nota senalada">
+                    <td></td>
+                    <td colspan="3"><mat-icon>receipt_long</mat-icon> {{ aviso }}</td>
+                  </tr>
+                }
+                @if (notaDeAnulado(ade); as nota) {
+                  <tr class="nota">
+                    <td></td>
+                    <td colspan="3"><mat-icon>calculate</mat-icon> {{ nota }}</td>
+                  </tr>
+                }
+              }
+            </table>
+          </div>
+        }
+
         <!-- ---------------------------------------- el motivo -->
         <h3>Por qué se corrige</h3>
         <form [formGroup]="form" id="form-corregir-quincena" (ngSubmit)="corregir()">
@@ -448,7 +758,54 @@ export interface CierreDelCuadre {
     }
     .tabla .chk { width: 40px; }
     .tabla .acc { width: 48px; text-align: right; }
+    /* Tres botones —el lápiz, el de sacarlo y el de anularlo— en el mismo renglón. */
+    .tabla-anticipos .acc { width: 144px; white-space: nowrap; }
     .tabla tr.marcado > td { background: var(--mat-sys-secondary-container); }
+    /*
+      EL ADELANTO QUE SALE se ve tachado y apagado, pero SIGUE AHÍ: es exactamente lo que
+      pasa con esa plata. No se borró —se le entregó en la mano—, solo dejó de ir en esta
+      quincena.
+    */
+    .tabla tr.sacado > td { opacity: 0.6; }
+    .tabla tr.sacado > td.num { text-decoration: line-through; }
+    /*
+      EL ADELANTO ANULADO SE VE DISTINTO DEL QUE SALE, y a propósito: el que sale sigue
+      vivo —se le descuenta en la siguiente— y solo se apaga; el anulado nunca existió, y
+      va tachado ENTERO y en rojo. Son dos consecuencias distintas para la plata del
+      productor y no se pueden ver iguales.
+    */
+    .tabla tr.anulado > td {
+      opacity: 0.65;
+      text-decoration: line-through;
+      text-decoration-color: var(--mat-sys-error);
+    }
+    /* El botón que sí borra va en rojo: es el único de esta pantalla que lo hace. */
+    .tabla button.anular { color: var(--mat-sys-error); }
+    /*
+      LA FRASE QUE SEPARA SACAR DE ANULAR. Va señalada como un aviso y no como texto de
+      ayuda corriente: es la que decide si esa plata se le descuenta después o no.
+    */
+    .ayuda.distincion {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--mat-sys-surface-container);
+      color: var(--mat-sys-on-surface);
+    }
+    .ayuda.distincion mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      flex: none;
+    }
+    /* El adelanto viejo, el de antes del período: se señala para que no pase de largo. */
+    .tabla tr.nota.senalada > td {
+      color: var(--mat-sys-on-error-container);
+      background: var(--mat-sys-error-container);
+      border-radius: 4px;
+    }
     .tabla tr.nota > td {
       border-bottom: none;
       padding-top: 0;
@@ -565,12 +922,43 @@ export class CorregirQuincenaDialog {
   /** El precio nuevo de cada día ya incluido, por id del renglón del detalle. */
   private readonly preciosNuevos = signal<ReadonlyMap<string, number>>(new Map());
 
+  /**
+   * LOS ADELANTOS QUE EL DUEÑO MOVIÓ, en cuatro listas separadas y no en una sola con una
+   * "acción": son cuatro cosas con consecuencias distintas y la pantalla las pinta
+   * distinto. Van con la misma forma que los días —marcados y precios— porque son la
+   * misma clase de decisión: uno por uno, y nada se manda hasta el botón.
+   *
+   *  · `anticiposIncluidos` — sueltos que se le descuentan en ESTA quincena.
+   *  · `anticiposSacados` — los que ya estaban y no iban aquí. NO SE BORRAN.
+   *  · `valoresDeAnticipos` — el valor corregido de los que se quedan.
+   *  · `anticiposAnulados` — los que NUNCA EXISTIERON. Estos sí se borran.
+   *
+   * LAS DOS ÚLTIMAS PALABRAS NO SON SINÓNIMOS: sacar dice "no iba aquí" y esa plata sigue
+   * viva —se le descuenta en la quincena siguiente—; anular dice "no pasó" y no se le
+   * descuenta en ninguna. Por eso van en listas distintas y no en un campo "acción":
+   * confundirlas cuesta plata en las dos direcciones.
+   */
+  private readonly anticiposIncluidos = signal<ReadonlySet<string>>(new Set<string>());
+  private readonly anticiposSacados = signal<ReadonlySet<string>>(new Set<string>());
+  private readonly valoresDeAnticipos = signal<ReadonlyMap<string, number>>(new Map());
+  private readonly anticiposAnulados = signal<ReadonlySet<string>>(new Set<string>());
+
   /** Día cuyo precio se está tecleando (su id), o null si no hay ninguno. */
   readonly editandoId = signal<string | null>(null);
   /** Lo tecleado en el campo abierto, tal cual, sin interpretar todavía. */
   readonly textoPrecio = signal('');
   /** Escape cierra el campo; esta marca evita que el blur guarde lo que se canceló. */
   private cancelando = false;
+
+  /**
+   * Adelanto cuyo valor se está tecleando, con su propio campo y su propia marca de
+   * cancelar. VA APARTE del de los días a propósito: son dos listas distintas y un solo
+   * par de señales dejaría abierto el camino a que un blur de un día escribiera sobre un
+   * adelanto, que es plata entregada en la mano.
+   */
+  readonly editandoAnticipoId = signal<string | null>(null);
+  readonly textoValor = signal('');
+  private cancelandoValor = false;
 
   readonly form = this.fb.group({
     motivo: ['', [Validators.required, Validators.minLength(LARGO_MINIMO_DEL_MOTIVO)]],
@@ -581,6 +969,17 @@ export class CorregirQuincenaDialog {
   );
 
   readonly detalles = computed<LiquidacionDetalle[]>(() => this.liq().detalles ?? []);
+
+  /**
+   * LOS ADELANTOS QUE ESTA MISMA QUINCENA SACÓ, y que siguen esperando.
+   *
+   * Sale del avance como todo lo demás. El `?? []` no sobra: un servidor que todavía no
+   * mande la lista dejaría la pantalla reventada en una quincena PAGADA, y lo que se
+   * pierde sin ella es solo poder anular —corregir sigue funcionando—.
+   */
+  readonly soltadosPorEsta = computed<AnticipoDeLaQuincena[]>(
+    () => this.previa()?.anticipos_soltados_por_esta ?? [],
+  );
 
   readonly versionSiguiente = computed(() => Number(this.liq().version ?? 1) + 1);
 
@@ -602,7 +1001,15 @@ export class CorregirQuincenaDialog {
     };
     this.dialogRef.backdropClick().subscribe(() => intentarCerrar());
     this.dialogRef.keydownEvents().subscribe((evento) => {
-      if (evento.key === 'Escape' && this.editandoId() === null) intentarCerrar();
+      // Escape con un campo abierto cierra el campo, no el diálogo: son los dos campos
+      // que se teclean acá, el precio de un día y lo que se le adelantó.
+      if (
+        evento.key === 'Escape' &&
+        this.editandoId() === null &&
+        this.editandoAnticipoId() === null
+      ) {
+        intentarCerrar();
+      }
     });
   }
 
@@ -715,14 +1122,310 @@ export class CorregirQuincenaDialog {
     );
   }
 
+  // ------------------------------------------------- los adelantos
+  /**
+   * QUÉ ES UN ADELANTO Y POR QUÉ SE PUEDE TOCAR ACÁ.
+   *
+   * Es plata que YA SE LE ENTREGÓ EN LA MANO al productor, y el comprobante se la resta:
+   * `lo que hay que entregarle = valor total − adelantos − lo que venía debiendo`. Por
+   * eso mover un adelanto mueve la cifra grande igual que un día de leche, y por eso
+   * entra por esta puerta —con motivo escrito, la cifra a la vista y la versión del
+   * comprobante que sube— y no por la pantalla de anticipos, que para una quincena ya
+   * pagada está cerrada con candado.
+   *
+   * LAS CUATRO ACCIONES, dichas en plata:
+   *  · MARCAR uno suelto: se le descuenta aquí, baja lo que hay que entregarle.
+   *  · SACAR uno que ya estaba: sube lo que hay que entregarle en esta quincena, y ese
+   *    adelanto queda libre para que la SIGUIENTE se lo descuente. No se borra.
+   *  · CORREGIRLE EL VALOR: quedó mal anotado lo que se le entregó.
+   *  · ANULARLO: ese adelanto NUNCA EXISTIÓ, y no se le descuenta en ninguna quincena.
+   *    Es la única que sí borra, y la única que pide confirmación. Ver `anularAnticipo`.
+   */
+  estaIncluido(anticipoId: string): boolean {
+    return this.anticiposIncluidos().has(anticipoId);
+  }
+
+  incluirAnticipo(anticipoId: string, entra: boolean): void {
+    const siguiente = new Set(this.anticiposIncluidos());
+    if (entra) siguiente.add(anticipoId);
+    else siguiente.delete(anticipoId);
+    this.anticiposIncluidos.set(siguiente);
+    void this.refrescarPrevia();
+  }
+
+  estaSacado(anticipoId: string): boolean {
+    return this.anticiposSacados().has(anticipoId);
+  }
+
+  /**
+   * SACA EL ADELANTO DE ESTA QUINCENA. No lo borra: esa plata se le entregó.
+   *
+   * Y LE QUITA DE PASO EL VALOR CORREGIDO, si se le había tecleado uno. El servidor
+   * rebota mandar las dos cosas juntas —corregirle la cifra a un adelanto que se está
+   * sacando no significaría nada, porque se va a descontar en OTRA quincena— y ese rebote
+   * llegaría después de oprimir el botón, encima de una quincena pagada. Acá no se puede
+   * llegar a armar ese sobre.
+   */
+  sacarAnticipo(anticipo: AnticipoDeLaQuincena): void {
+    if (this.guardando() || this.estaAnulado(anticipo.anticipo_id)) return;
+    if (this.editandoAnticipoId() === anticipo.anticipo_id) this.cancelarValor();
+    const siguiente = new Set(this.anticiposSacados());
+    siguiente.add(anticipo.anticipo_id);
+    this.anticiposSacados.set(siguiente);
+    if (this.valoresDeAnticipos().has(anticipo.anticipo_id)) {
+      const valores = new Map(this.valoresDeAnticipos());
+      valores.delete(anticipo.anticipo_id);
+      this.valoresDeAnticipos.set(valores);
+    }
+    void this.refrescarPrevia();
+  }
+
+  devolverAnticipo(anticipoId: string): void {
+    if (!this.anticiposSacados().has(anticipoId)) return;
+    const siguiente = new Set(this.anticiposSacados());
+    siguiente.delete(anticipoId);
+    this.anticiposSacados.set(siguiente);
+    void this.refrescarPrevia();
+  }
+
+  // ------------------------------------------------- anular uno que NUNCA EXISTIÓ
+  /**
+   * ANULA UN ADELANTO PORQUE NO PASÓ: se digitó dos veces, o se le anotó al productor
+   * equivocado. ESTE SÍ SE BORRA, y es la única acción de esta pantalla que lo hace.
+   *
+   * POR QUÉ HACE FALTA, con el caso medido. Al SACAR un adelanto, el comprobante v2 que
+   * el productor tiene en la mano imprime "se le descuenta en la siguiente", y por eso la
+   * pantalla de Anticipos lo traba: allá no quedaría ni motivo ni versión nueva. Pero eso
+   * abría un callejón sin salida: si el adelanto nunca existió y el productor dejó de
+   * entregar leche, no había NINGUNA pantalla donde borrarlo, y ese fantasma de $300.000
+   * se le iba a descontar de plata que SÍ era suya.
+   *
+   * PIDE CONFIRMACIÓN, y la pregunta dice la diferencia entera. No es ceremonia: sacar y
+   * anular quedan a un botón de distancia el uno del otro y se equivocan en las dos
+   * direcciones —anular uno que sí se entregó le regala esa plata al productor; sacar uno
+   * que nunca existió se la quita de una quincena que sí es suya—. Y a diferencia de
+   * sacar, esto no lo deshace la quincena siguiente.
+   *
+   * Le quita de paso lo que se le haya hecho antes al mismo adelanto: el servidor rebota
+   * anularlo y a la vez sacarlo o incluirlo —el resultado dependería del orden— y ese
+   * rebote llegaría DESPUÉS de oprimir el botón, encima de una quincena pagada. Ese sobre
+   * no se puede ni armar acá.
+   */
+  anularAnticipo(anticipo: AnticipoDeLaQuincena): void {
+    if (this.guardando() || this.estaAnulado(anticipo.anticipo_id)) return;
+    if (!confirm(this.preguntaAlAnular(anticipo))) return;
+    if (this.editandoAnticipoId() === anticipo.anticipo_id) this.cancelarValor();
+
+    const anulados = new Set(this.anticiposAnulados());
+    anulados.add(anticipo.anticipo_id);
+    this.anticiposAnulados.set(anulados);
+
+    if (this.anticiposSacados().has(anticipo.anticipo_id)) {
+      const sacados = new Set(this.anticiposSacados());
+      sacados.delete(anticipo.anticipo_id);
+      this.anticiposSacados.set(sacados);
+    }
+    if (this.anticiposIncluidos().has(anticipo.anticipo_id)) {
+      const incluidos = new Set(this.anticiposIncluidos());
+      incluidos.delete(anticipo.anticipo_id);
+      this.anticiposIncluidos.set(incluidos);
+    }
+    if (this.valoresDeAnticipos().has(anticipo.anticipo_id)) {
+      const valores = new Map(this.valoresDeAnticipos());
+      valores.delete(anticipo.anticipo_id);
+      this.valoresDeAnticipos.set(valores);
+    }
+    void this.refrescarPrevia();
+  }
+
+  /**
+   * LA PREGUNTA QUE SE LE HACE ANTES DE ANULAR, con la cifra y con la diferencia dicha.
+   *
+   * Va aparte para poder leerla en una prueba: es el texto que evita el error caro, y un
+   * texto que nadie mide se cambia sin darse cuenta.
+   */
+  preguntaAlAnular(anticipo: AnticipoDeLaQuincena): string {
+    return (
+      `¿Anular el adelanto de ${pesosExactos(anticipo.valor)}?\n\n` +
+      'ANULAR no es lo mismo que SACAR. Sacar dice "no iba en esta quincena": esa plata ' +
+      'sí se le entregó y se le descuenta en la siguiente. Anular dice "ese adelanto no ' +
+      'existió": no se le descuenta en ninguna quincena.\n\n' +
+      'Anúlelo solo si esa plata NUNCA se le entregó.'
+    );
+  }
+
+  estaAnulado(anticipoId: string): boolean {
+    return this.anticiposAnulados().has(anticipoId);
+  }
+
+  desanularAnticipo(anticipoId: string): void {
+    if (!this.anticiposAnulados().has(anticipoId)) return;
+    const siguiente = new Set(this.anticiposAnulados());
+    siguiente.delete(anticipoId);
+    this.anticiposAnulados.set(siguiente);
+    void this.refrescarPrevia();
+  }
+
+  /**
+   * LO QUE PASA AL ANULARLO, DICHO EN PLATA, y con la cuenta hecha cuando la hay.
+   *
+   * Hermana de `notaDelAnticipo`: no es una cifra del documento —el total, el neto y el
+   * saldo salen todos del servidor— sino la cuenta que le explica al dueño qué acaba de
+   * oprimir. Null cuando ese adelanto no se está anulando.
+   *
+   * SON DOS FRASES PORQUE SON DOS SITUACIONES DE PLATA:
+   *
+   *  · EL QUE HOY ESTÁ DESCONTADO AQUÍ: al anularlo deja de restarse, y por eso SUBE lo
+   *    que hay que entregarle en esta quincena. Se dice con la cifra.
+   *  · EL QUE ESTA QUINCENA YA HABÍA SACADO: esta cuenta no se mueve —ya había salido—;
+   *    lo que cambia es que la quincena siguiente ya no se lo descuenta. Callarlo dejaría
+   *    al dueño buscando en el cuadre un cambio que no está.
+   */
+  notaDeAnulado(anticipo: AnticipoDeLaQuincena): string | null {
+    if (!this.estaAnulado(anticipo.anticipo_id)) return null;
+    const base = 'Se anula: ese adelanto no existió y no se le descuenta en ninguna quincena';
+    if (anticipo.aplicado) {
+      return (
+        `${base}. Hoy está descontado en esta quincena, así que por eso sube lo que hay ` +
+        `que entregarle: se le entregan ${pesosExactos(anticipo.valor)} más`
+      );
+    }
+    return (
+      `${base}. Esta quincena ya lo había sacado, así que su cuenta no cambia: lo que ` +
+      `cambia es que ya no se le descuentan esos ${pesosExactos(anticipo.valor)} en la ` +
+      `quincena siguiente`
+    );
+  }
+
+  tieneValorNuevo(anticipoId: string): boolean {
+    return this.valoresDeAnticipos().has(anticipoId);
+  }
+
+  /** Lo que se va a mandar para ese adelanto: lo tecleado, o lo que ya tenía. */
+  valorQueValdria(anticipo: AnticipoDeLaQuincena): Monto {
+    return this.valoresDeAnticipos().get(anticipo.anticipo_id) ?? anticipo.valor;
+  }
+
+  editarValor(anticipo: AnticipoDeLaQuincena): void {
+    if (this.guardando() || this.estaSacado(anticipo.anticipo_id)) return;
+    // Corregirle la cifra a un adelanto que se está anulando no significaría nada: se va
+    // a borrar. Y el sobre saldría con las dos cosas puestas sobre el mismo adelanto.
+    if (this.estaAnulado(anticipo.anticipo_id)) return;
+    this.cancelandoValor = false;
+    this.textoValor.set(String(Number(this.valorQueValdria(anticipo))));
+    this.editandoAnticipoId.set(anticipo.anticipo_id);
+  }
+
+  cancelarValor(): void {
+    this.cancelandoValor = true;
+    this.editandoAnticipoId.set(null);
+  }
+
+  alEscribirValor(valor: string): void {
+    this.textoValor.set(valor);
+  }
+
+  /**
+   * Al salir del campo se guarda lo tecleado, igual que con el precio de un día. Acá
+   * tampoco se manda nada al servidor todavía: la corrección es un solo botón.
+   */
+  aplicarValor(anticipo: AnticipoDeLaQuincena): void {
+    if (this.cancelandoValor) {
+      this.cancelandoValor = false;
+      return;
+    }
+    if (this.editandoAnticipoId() !== anticipo.anticipo_id) return;
+    // `precioTecleado` lee la plata a la colombiana ("50.000" son cincuenta mil) y
+    // devuelve null si no se entiende o si no es mayor que cero, que es justo lo que el
+    // servidor exige de esta cifra.
+    const valor = precioTecleado(this.textoValor());
+    if (valor === null) {
+      this.snackbar.open(
+        'Escriba en pesos lo que se le adelantó, por ejemplo 50000',
+        'OK',
+        { duration: 4000 },
+      );
+      return; // el campo se queda abierto para corregir lo tecleado
+    }
+    this.editandoAnticipoId.set(null);
+    // Volver a la cifra que ya tenía NO es una corrección: se quita de la lista para que
+    // el comprobante no suba de versión por un adelanto que quedó igual.
+    if (valor === Number(anticipo.valor)) {
+      this.quitarValor(anticipo.anticipo_id);
+      return;
+    }
+    if (valor === this.valoresDeAnticipos().get(anticipo.anticipo_id)) return;
+    const siguiente = new Map(this.valoresDeAnticipos());
+    siguiente.set(anticipo.anticipo_id, valor);
+    this.valoresDeAnticipos.set(siguiente);
+    void this.refrescarPrevia();
+  }
+
+  quitarValor(anticipoId: string): void {
+    if (!this.valoresDeAnticipos().has(anticipoId)) return;
+    const siguiente = new Map(this.valoresDeAnticipos());
+    siguiente.delete(anticipoId);
+    this.valoresDeAnticipos.set(siguiente);
+    void this.refrescarPrevia();
+  }
+
+  /**
+   * LO QUE ACABA DE HACERLE A ESE ADELANTO, dicho en plata y en la dirección que le
+   * importa al dueño: cuánto más (o cuánto menos) hay que entregarle ahora.
+   *
+   * Es la hermana de `restaDelDia` y vale lo mismo: NO es una cifra del documento —el
+   * total, el neto y el saldo salen todos del servidor—, es la cuenta que explica lo que
+   * acaba de oprimir. Null cuando ese adelanto no se ha tocado.
+   */
+  notaDelAnticipo(anticipo: AnticipoDeLaQuincena): string | null {
+    // Anular va de primero: es la única que borra, y su frase tiene que ganarle a
+    // cualquier otra que hubiera quedado escrita sobre el mismo adelanto.
+    const anulado = this.notaDeAnulado(anticipo);
+    if (anulado !== null) return anulado;
+    if (this.estaSacado(anticipo.anticipo_id)) {
+      return (
+        `Sale de esta quincena: se le entregan ${pesosExactos(anticipo.valor)} más ahora, ` +
+        `y ese adelanto se le descuenta en la quincena siguiente. No se borra: esa plata ` +
+        `ya se le entregó`
+      );
+    }
+    const nuevo = this.valoresDeAnticipos().get(anticipo.anticipo_id);
+    if (nuevo === undefined) return null;
+    const viejo = Number(anticipo.valor);
+    // A dos decimales, como la plata del backend (Numeric(14,2)): sin esto la cuenta de
+    // la pantalla se desviaría del total del servidor por fracciones de centavo.
+    const diferencia = Math.round((nuevo - viejo) * 100) / 100;
+    const haciaDonde = diferencia > 0 ? 'menos' : 'más';
+    return (
+      `Estaba anotado por ${pesosExactos(viejo)} y se le adelantaron ` +
+      `${pesosExactos(nuevo)}: se le entregan ${pesosExactos(Math.abs(diferencia))} ` +
+      `${haciaDonde} en esta quincena`
+    );
+  }
+
+  /** Lo mismo para un adelanto suelto: marcarlo baja lo que hay que entregarle. */
+  notaDelAnticipoSuelto(anticipo: AnticipoDeLaQuincena): string | null {
+    if (!this.estaIncluido(anticipo.anticipo_id)) return null;
+    return (
+      `Se le descuenta en esta quincena: se le entregan ` +
+      `${pesosExactos(anticipo.valor)} menos`
+    );
+  }
+
   // ------------------------------------------------- el cuadre en vivo
   /**
    * LOS RENGLONES DE LA CUENTA, y las DOS columnas suman de arriba abajo.
    *
    * `valor_total − anticipos − lo que venía debiendo = neto`, y `neto − lo entregado` da
-   * la cifra grande de abajo. Los anticipos y la deuda vieja salen de la liquidación y no
-   * del avance porque la corrección NO LOS TOCA —quedaron aplicados cuando se generó la
-   * quincena—, y el servidor arma el neto con esas mismas dos columnas.
+   * la cifra grande de abajo. La deuda vieja sale de la liquidación porque la corrección
+   * NO LA TOCA —esa plata la arrastró OTRA quincena—, y el servidor arma el neto con esas
+   * mismas dos columnas.
+   *
+   * LOS ADELANTOS SÍ SE MUEVEN, y por eso su renglón sale del AVANCE y no de la
+   * liquidación: `anticipos_antes` y `anticipos_despues`. Hasta que se pudieron corregir,
+   * este renglón pintaba la misma cifra en las dos columnas; ahora que marcar un adelanto
+   * mueve la cifra grande, repetirla sería un desglose que no suma la columna de "ahora"
+   * —la regla de la casa rota justo en el renglón que cambió—.
    *
    * Los renglones que valen cero y no aportan nada (anticipos, deuda vieja) no se pintan:
    * un renglón de "$ 0" en una columna que se suma a mano es ruido que hace perder el
@@ -755,8 +1458,12 @@ export class CorregirQuincenaDialog {
     poner('valor_total', 'VALOR TOTAL de la quincena', p.valor_total_antes, p.valor_total_despues, {
       destacado: true,
     });
-    if (Number(l.anticipos ?? 0) > 0) {
-      poner('anticipos', 'Anticipos aplicados', l.anticipos, l.anticipos, { resta: true });
+    // El renglón se pinta si había adelantos O si van a quedar: uno que entra con la
+    // corrección tiene que aparecer, y uno que sale tiene que verse bajar hasta cero.
+    if (Number(p.anticipos_antes ?? 0) > 0 || Number(p.anticipos_despues ?? 0) > 0) {
+      poner('anticipos', 'Anticipos aplicados', p.anticipos_antes, p.anticipos_despues, {
+        resta: true,
+      });
     }
     if (Number(l.saldo_anterior ?? 0) > 0) {
       poner('saldo_anterior', ROTULO_SALDO_ANTERIOR, l.saldo_anterior ?? 0, l.saldo_anterior ?? 0, {
@@ -804,9 +1511,25 @@ export class CorregirQuincenaDialog {
   });
 
   // ------------------------------------------------- mandar la corrección
-  /** ¿Hay algo que corregir? Un día marcado o un precio cambiado; el motivo no basta. */
+  /**
+   * ¿HAY ALGO QUE CORREGIR? Un día marcado, un precio cambiado o un adelanto movido; el
+   * motivo escrito no basta.
+   *
+   * Sin los adelantos en esta cuenta, el dueño que entra SOLO a sacar un adelanto se
+   * queda con el botón apagado y sin saber por qué, encima de una quincena que sí se
+   * puede corregir.
+   */
   readonly hayAlgoQueCorregir = computed(
-    () => this.marcados().size > 0 || this.preciosNuevos().size > 0,
+    () =>
+      this.marcados().size > 0 ||
+      this.preciosNuevos().size > 0 ||
+      this.anticiposIncluidos().size > 0 ||
+      this.anticiposSacados().size > 0 ||
+      this.valoresDeAnticipos().size > 0 ||
+      // Los anulados cuentan igual que todo lo demás. Sin esto, el dueño que entra SOLO
+      // a anular un adelanto que nunca existió —que es justo para lo que se hizo esta
+      // cuarta operación— se queda con el botón apagado y sin salida.
+      this.anticiposAnulados().size > 0,
   );
 
   private hayCambios(): boolean {
@@ -826,7 +1549,9 @@ export class CorregirQuincenaDialog {
    */
   readonly motivoNoCorregirYa = computed<string | null>(() => {
     if (this.cargando() || this.errorAlAbrir()) return null;
-    if (!this.hayAlgoQueCorregir()) return 'Marque un día o corrija un precio';
+    if (!this.hayAlgoQueCorregir()) {
+      return 'Marque un día o corrija un precio, o mueva un adelanto, o anule uno que no existió';
+    }
     return null;
   });
 
@@ -870,7 +1595,15 @@ export class CorregirQuincenaDialog {
    * el campo para leer el sobre pero el avance no lo usa ni lo guarda. Ver
    * `MOTIVO_PROVISIONAL`.
    */
-  private payload(): { motivo: string; recepciones_a_incluir: string[]; precios: PrecioEnviado[] } {
+  private payload(): {
+    motivo: string;
+    recepciones_a_incluir: string[];
+    precios: PrecioEnviado[];
+    anticipos_a_incluir: string[];
+    anticipos_a_soltar: string[];
+    valores_de_anticipos: ValorDeUnAnticipo[];
+    anticipos_a_borrar: string[];
+  } {
     const motivo = this.form.controls.motivo.value.trim();
     return {
       motivo: motivo.length >= LARGO_MINIMO_DEL_MOTIVO ? motivo : MOTIVO_PROVISIONAL,
@@ -879,6 +1612,23 @@ export class CorregirQuincenaDialog {
         detalle_id,
         precio_litro,
       })),
+      anticipos_a_incluir: [...this.anticiposIncluidos()],
+      // `sacarAnticipo` ya le quita el valor corregido al que sale, así que estas dos
+      // listas no se pueden cruzar: el servidor rebota esa mezcla y el rebote llegaría
+      // después de oprimir el botón, encima de una quincena pagada.
+      anticipos_a_soltar: [...this.anticiposSacados()],
+      valores_de_anticipos: [...this.valoresDeAnticipos()].map(([anticipo_id, valor]) => ({
+        anticipo_id,
+        valor,
+      })),
+      // LOS QUE NUNCA EXISTIERON. Van SIEMPRE, también en el avance: el cuadre en vivo
+      // sale de la previsualización como todo lo demás, y anular uno que hoy está
+      // descontado aquí sube lo que hay que entregarle. Acá no se calcula ni un peso.
+      //
+      // `anularAnticipo` ya le quita al anulado lo que se le hubiera hecho antes, así que
+      // esta lista no se cruza con las otras tres: el servidor rebota esa mezcla y el
+      // rebote llegaría después de oprimir el botón, encima de una quincena pagada.
+      anticipos_a_borrar: [...this.anticiposAnulados()],
     };
   }
 

@@ -10,6 +10,7 @@ import { Liquidacion, LiquidacionDetalle } from '../../core/models';
 import { CorregirQuincenaDialog, MOTIVO_PROVISIONAL } from './corregir-quincena.dialog';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import {
+  AnticipoDeLaQuincena,
   Correccion,
   CorregirQuincenaPayload,
   DiaSuelto,
@@ -121,6 +122,67 @@ const EL_OTRO_DIA_SUELTO: DiaSuelto = {
 };
 
 /**
+ * LOS ADELANTOS: plata que YA SE LE ENTREGÓ EN LA MANO a Henri, y que el comprobante le
+ * resta. Por eso moverlos mueve la cifra grande igual que un día de leche.
+ *
+ * El del 12 es el que YA se le descontó en esta quincena —el que el dueño reconoce por
+ * las observaciones, "el que le di para la droga"—. Los otros dos están sueltos: uno de
+ * dentro del período y otro de hace meses, que el servidor manda SEÑALADO porque nunca
+ * se le descontó a nadie.
+ */
+const EL_ADELANTO_DE_LA_DROGA: AnticipoDeLaQuincena = {
+  anticipo_id: 'a-12',
+  fecha: '2026-06-12',
+  valor: '120000',
+  observaciones: 'el que le di para la droga',
+  aplicado: true,
+  aviso: null,
+};
+
+const EL_ADELANTO_SUELTO: AnticipoDeLaQuincena = {
+  anticipo_id: 'a-20',
+  fecha: '2026-06-10',
+  valor: '40000',
+  observaciones: 'para el mercado',
+  aplicado: false,
+  aviso: null,
+};
+
+const EL_ADELANTO_VIEJO: AnticipoDeLaQuincena = {
+  anticipo_id: 'a-99',
+  fecha: '2025-12-20',
+  valor: '30000',
+  observaciones: 'diciembre',
+  aplicado: false,
+  aviso:
+    'Este adelanto es de antes de este período y nunca se le descontó: si lo marca, se ' +
+    'le descuenta aquí',
+};
+
+/**
+ * EL ADELANTO FANTASMA: el que ESTA MISMA quincena sacó en una corrección anterior.
+ *
+ * Es el caso que existe la cuarta operación. Al sacarlo, el comprobante v2 que Henri
+ * tiene en la mano quedó diciendo "se le descuenta en la siguiente", así que la pantalla
+ * de Anticipos lo traba. Pero si ese adelanto NUNCA EXISTIÓ —se digitó dos veces— y Henri
+ * dejó de entregar leche, sin esta pantalla ese fantasma de $300.000 se le iba a
+ * descontar de plata que SÍ es suya.
+ *
+ * El `aviso` es el que escribe el servidor, y se pinta TAL CUAL.
+ */
+const EL_ADELANTO_FANTASMA: AnticipoDeLaQuincena = {
+  anticipo_id: 'a-77',
+  fecha: '2026-06-08',
+  valor: '300000',
+  observaciones: 'se digitó dos veces',
+  aplicado: false,
+  aviso:
+    'Esta quincena lo sacó en una corrección y su comprobante dice que se le descuenta ' +
+    'en la siguiente. Si ese adelanto NUNCA existió, bórrelo desde aquí: es la única ' +
+    'pantalla que puede',
+};
+
+/**
  * UN SERVIDOR FALSO QUE SÍ HACE LA CUENTA, y hace la del backend de verdad:
  *
  *   valor_total = lo que ya estaba + los días MARCADOS + la diferencia de los precios
@@ -137,6 +199,25 @@ class ServicioFalso {
 
   liquidacion = laQuincena();
   sueltos: DiaSuelto[] = [EL_DIA_OLVIDADO, EL_OTRO_DIA_SUELTO];
+  /**
+   * Los adelantos que HOY se le descuentan en esta quincena.
+   *
+   * En null significa "la prueba no dice cuáles fueron": entonces se inventa UNO que
+   * suma exacto la cifra guardada en la liquidación, que es lo que hace el servidor de
+   * verdad —`liquidacion.anticipos` nunca es un número suelto, siempre es la suma de los
+   * adelantos marcados—. Sin eso, una prueba de otra cosa que solo pone `anticipos` se
+   * quedaría con un desglose que no suma su propia cifra.
+   */
+  anticiposAplicados: AnticipoDeLaQuincena[] | null = null;
+  anticiposSueltos: AnticipoDeLaQuincena[] = [];
+  /**
+   * Los que ESTA MISMA quincena sacó en una corrección anterior y siguen esperando.
+   *
+   * Son los únicos que esta pantalla puede ANULAR además de los que hoy están
+   * descontados: los imprimió ella, y su comprobante es el que promete descontarlos en la
+   * siguiente.
+   */
+  anticiposSoltadosPorEsta: AnticipoDeLaQuincena[] = [];
   avisos: string[] = [];
   /** Si se pone, el avance falla con esto (es como el servidor rebota una no corregible). */
   fallaAlPrevisualizar: unknown = null;
@@ -161,19 +242,50 @@ class ServicioFalso {
       return suma + Number(dia.litros) * (precio.precio_litro - Number(dia.precio_litro));
     }, 0);
 
+    // LOS ADELANTOS SE VUELVEN A SUMAR DESDE LOS QUE QUEDAN MARCADOS, igual que el
+    // servidor de verdad: nunca sumándole o restándole a la cifra guardada, que es como
+    // una petición repetida termina descontando dos veces.
+    const valorDe = (ade: AnticipoDeLaQuincena): number =>
+      payload.valores_de_anticipos.find((v) => v.anticipo_id === ade.anticipo_id)?.valor ??
+      Number(ade.valor);
+    // Y EL QUE SE ANULA TAMPOCO QUEDA: el servidor lo borra, así que deja de restarse.
+    // Anular uno que hoy está descontado aquí SUBE lo que hay que entregarle, igual que
+    // sacarlo; anular uno que esta quincena ya había sacado no mueve esta cuenta.
+    const aBorrar = payload.anticipos_a_borrar ?? [];
+    const quedan = [
+      ...this.aplicados().filter(
+        (a) =>
+          !payload.anticipos_a_soltar.includes(a.anticipo_id) &&
+          !aBorrar.includes(a.anticipo_id),
+      ),
+      ...this.anticiposSueltos.filter((a) =>
+        payload.anticipos_a_incluir.includes(a.anticipo_id),
+      ),
+    ];
+    const anticiposAntes = this.aplicados().reduce((suma, a) => suma + Number(a.valor), 0);
+    const anticiposDespues = quedan.reduce((suma, a) => suma + valorDe(a), 0);
+
     const totalAntes = Number(l.valor_total);
     const totalDespues = totalAntes + entran + diferencias;
-    const descuentos = Number(l.anticipos ?? 0) + Number(l.saldo_anterior ?? 0);
-    const netoAntes = totalAntes - descuentos;
-    const netoDespues = totalDespues - descuentos;
+    const viejo = Number(l.saldo_anterior ?? 0);
+    const netoAntes = totalAntes - anticiposAntes - viejo;
+    const netoDespues = totalDespues - anticiposDespues - viejo;
     const pagado = Number(l.pagado ?? 0);
     const saldoAntes = netoAntes - pagado;
     const saldoDespues = netoDespues - pagado;
 
     return of({
       dias_sueltos: this.sueltos,
+      // Las dos listas van con lo que hay GUARDADO HOY, no con lo que el dueño lleva
+      // marcado: el avance no escribe nada, así que un adelanto recién marcado sigue
+      // saliendo en los sueltos. Es como responde el servidor.
+      anticipos_aplicados: this.aplicados(),
+      anticipos_sueltos: this.anticiposSueltos,
+      anticipos_soltados_por_esta: this.anticiposSoltadosPorEsta,
       valor_total_antes: String(totalAntes),
       valor_total_despues: String(totalDespues),
+      anticipos_antes: String(anticiposAntes),
+      anticipos_despues: String(anticiposDespues),
       neto_antes: String(netoAntes),
       neto_despues: String(netoDespues),
       pagado: String(pagado),
@@ -186,6 +298,14 @@ class ServicioFalso {
       version_actual: Number(l.version ?? 1),
       avisos: this.avisos,
     });
+  }
+
+  /** Los que hoy se le descuentan: los que puso la prueba, o uno que suma la cifra. */
+  private aplicados(): AnticipoDeLaQuincena[] {
+    if (this.anticiposAplicados !== null) return this.anticiposAplicados;
+    const total = Number(this.liquidacion.anticipos ?? 0);
+    if (total <= 0) return [];
+    return [{ ...EL_ADELANTO_DE_LA_DROGA, valor: String(total) }];
   }
 
   corregir(_id: string, payload: CorregirQuincenaPayload): Observable<Liquidacion> {
@@ -561,6 +681,12 @@ describe('CorregirQuincenaDialog: la quincena que ya se pagó', () => {
       motivo: 'se le olvidó la leche del 12 de junio',
       recepciones_a_incluir: ['r-12'],
       precios: [{ detalle_id: 'd-1', precio_litro: 1850 }],
+      // Los adelantos van en el mismo sobre, y vacíos cuando no se tocó ninguno: esta
+      // corrección no mueve un peso de lo que ya se le había adelantado.
+      anticipos_a_incluir: [],
+      anticipos_a_soltar: [],
+      valores_de_anticipos: [],
+      anticipos_a_borrar: [],
     });
     // Y se devuelve LA LIQUIDACIÓN QUE RESPONDIÓ EL SERVIDOR, no una calculada acá.
     expect(cerradoCon).toEqual([servicio.corregida]);
@@ -665,6 +791,615 @@ describe('CorregirQuincenaDialog: la quincena que ya se pagó', () => {
     expect(cuenta).toBe(centavos(cuadre['neto'].ahora));
     expect(cuenta - centavos(cuadre['pagado'].ahora)).toBe(centavos(cierre.cifra));
     expect(cierre.rotulo).toBe('QUEDA POR ENTREGARLE');
+  });
+
+  // ==========================================================================
+  // LOS ADELANTOS: plata que YA SE LE ENTREGÓ EN LA MANO
+  // ==========================================================================
+  /**
+   * Lo pidió el dueño: "cuando le dé corregir, que también me deje corregir los
+   * anticipos; cuando ya se cerró, entonces toca corregir también los anticipos".
+   *
+   * LA QUINCENA DE ESTAS PRUEBAS: $500.000 de leche, $120.000 que ya se le habían
+   * adelantado (el del 12, "el que le di para la droga"), neto $380.000 y esos $380.000
+   * ya entregados. Y dos adelantos sueltos esperando: el del 10 por $40.000 y uno viejo
+   * de diciembre por $30.000 que nunca se le descontó a nadie.
+   *
+   * LA CUENTA QUE MANDA SOBRE TODO, en las dos columnas:
+   *   neto = valor total − adelantos − lo que venía debiendo,  y  neto = pagado + saldo.
+   */
+  const armarConAdelantos = (cifras: Partial<Liquidacion> = {}): Promise<void> =>
+    armar(
+      laQuincena({
+        anticipos: '120000',
+        neto_a_pagar: '380000',
+        pagado: '380000',
+        saldo: '0',
+        ...cifras,
+      }),
+      (falso) => {
+        falso.anticiposAplicados = [EL_ADELANTO_DE_LA_DROGA];
+        falso.anticiposSueltos = [EL_ADELANTO_SUELTO, EL_ADELANTO_VIEJO];
+      },
+    );
+
+  const botonConEtiqueta = (etiqueta: string): HTMLButtonElement | null =>
+    fixture.nativeElement.querySelector(`button[aria-label="${etiqueta}"]`);
+
+  it('los adelantos descontados se leen con su fecha, su cifra y PARA QUÉ FUERON', async () => {
+    await armarConAdelantos();
+
+    const filas = filasDe('.tabla-anticipos');
+    expect(filas[0]).toEqual(['Fecha', 'Para qué fue', 'Lo que se le adelantó', '']);
+    // Las observaciones son con lo que el dueño reconoce cuál adelanto fue; sin ellas
+    // tendría que adivinar entre dos cifras iguales de la misma semana.
+    expect(filas[1].slice(0, 3)).toEqual([
+      '12/06/2026',
+      'el que le di para la droga',
+      '$ 120.000',
+    ]);
+  });
+
+  it('SACAR un adelanto sube lo que hay que entregarle, y dice que NO se borra', async () => {
+    await armarConAdelantos();
+
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    const cuadre = leerCuadre();
+    // El renglón de los adelantos ya NO pinta la misma cifra en las dos columnas.
+    expect(cuadre['anticipos']).toEqual({ antes: '$ 120.000', ahora: '$ 0' });
+    expect(cuadre['valor_total']).toEqual({ antes: '$ 500.000', ahora: '$ 500.000' });
+    expect(cuadre['neto']).toEqual({ antes: '$ 380.000', ahora: '$ 500.000' });
+
+    const cierre = leerCierres()[1];
+    expect(cierre.rotulo).toBe('QUEDA POR ENTREGARLE');
+    expect(cierre.cifra).toBe('$ 120.000');
+
+    // Y LA LÍNEA QUE LO EXPLICA, que es la mitad de esta función: el dueño tiene que
+    // leer que esa plata no desaparece, que se le entregó en la mano, y que se le
+    // descuenta en la quincena siguiente.
+    const nota = comoSeLee(dialogo.notaDelAnticipo(EL_ADELANTO_DE_LA_DROGA));
+    expect(nota).toContain('se le entregan $ 120.000 más ahora');
+    expect(nota).toContain('se le descuenta en la quincena siguiente');
+    expect(nota).toContain('No se borra');
+    expect(filasDe('.tabla-anticipos').some((fila) => fila.join(' ').includes('No se borra')))
+      .toBeTrue();
+  });
+
+  it('SACAR y devolver: el desglose suma exacto la cifra grande en las dos columnas', async () => {
+    await armarConAdelantos();
+
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    const cuadre = leerCuadre();
+    const cierres = leerCierres();
+    for (const [columna, cierre] of [
+      ['antes', cierres[0]],
+      ['ahora', cierres[1]],
+    ] as const) {
+      const cuenta =
+        centavos(cuadre['valor_total'][columna]) - centavos(cuadre['anticipos'][columna]);
+      expect(cuenta).toBe(centavos(cuadre['neto'][columna]));
+      expect(cuenta - centavos(cuadre['pagado'][columna])).toBe(centavos(cierre.cifra));
+    }
+
+    // Y se puede volver atrás: la quincena queda otra vez como estaba.
+    dialogo.devolverAnticipo(EL_ADELANTO_DE_LA_DROGA.anticipo_id);
+    await asentar();
+    expect(dialogo.estaSacado(EL_ADELANTO_DE_LA_DROGA.anticipo_id)).toBeFalse();
+    expect(leerCuadre()['anticipos'].ahora).toBe('$ 120.000');
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+  });
+
+  it('el botón de verdad, el que se oprime, saca el adelanto y mueve la cifra grande', async () => {
+    await armarConAdelantos();
+
+    botonConEtiqueta('Sacar este adelanto de esta quincena')!.click();
+    await asentar();
+
+    expect(leerCierres()[1].cifra).toBe('$ 120.000');
+    expect(fixture.nativeElement.querySelector('.tabla-anticipos tr.sacado')).not.toBeNull();
+  });
+
+  it('MARCAR un adelanto suelto baja lo que hay que entregarle', async () => {
+    await armarConAdelantos();
+
+    // Los dos sueltos se ofrecen con su casilla, pero solo entra el que se marca.
+    const sueltos = filasDe('.tabla-anticipos-sueltos');
+    expect(sueltos[0]).toEqual(['', 'Fecha', 'Para qué fue', 'Lo que se le adelantó']);
+    expect(sueltos[1]).toEqual(['', '10/06/2026', 'para el mercado', '$ 40.000']);
+
+    const casilla = fixture.nativeElement.querySelector(
+      '.tabla-anticipos-sueltos input[type="checkbox"]',
+    ) as HTMLInputElement;
+    casilla.click();
+    await asentar();
+
+    const cuadre = leerCuadre();
+    expect(cuadre['anticipos']).toEqual({ antes: '$ 120.000', ahora: '$ 160.000' });
+    expect(cuadre['neto'].ahora).toBe('$ 340.000');
+    // Se le entregaron $380.000 contra un neto de $340.000: se le pagó de más $40.000.
+    const cierre = leerCierres()[1];
+    expect(cierre.rotulo).toBe('SE LE PAGÓ DE MÁS');
+    expect(cierre.cifra).toBe('$ 40.000');
+    expect(comoSeLee(dialogo.notaDelAnticipoSuelto(EL_ADELANTO_SUELTO))).toContain(
+      'se le entregan $ 40.000 menos',
+    );
+
+    // Y el que no se marcó no entró: los $30.000 viejos se quedaron esperando.
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.anticipos_a_incluir).toEqual([EL_ADELANTO_SUELTO.anticipo_id]);
+  });
+
+  it('el adelanto VIEJO sale señalado: es de antes del período y nunca se descontó', async () => {
+    await armarConAdelantos();
+
+    const senalado = leido(
+      fixture.nativeElement.querySelector('.tabla-anticipos-sueltos tr.nota.senalada'),
+    );
+    expect(senalado).toContain(EL_ADELANTO_VIEJO.aviso!);
+    // El del período, que no trae aviso, no inventa ninguno.
+    expect(fixture.nativeElement.querySelectorAll('.tabla-anticipos-sueltos tr.senalada').length)
+      .toBe(1);
+  });
+
+  it('CORREGIR la cifra de un adelanto: la nota dice cuánto más se le entrega', async () => {
+    await armarConAdelantos();
+
+    // Se le habían anotado $120.000 y fueron $100.000.
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('100.000');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    expect(dialogo.tieneValorNuevo('a-12')).toBeTrue();
+    expect(comoSeLee(dialogo.notaDelAnticipo(EL_ADELANTO_DE_LA_DROGA))).toBe(
+      'Estaba anotado por $ 120.000 y se le adelantaron $ 100.000: se le entregan ' +
+        '$ 20.000 más en esta quincena',
+    );
+
+    const cuadre = leerCuadre();
+    expect(cuadre['anticipos']).toEqual({ antes: '$ 120.000', ahora: '$ 100.000' });
+    expect(cuadre['neto'].ahora).toBe('$ 400.000');
+    expect(leerCierres()[1].cifra).toBe('$ 20.000');
+
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.valores_de_anticipos).toEqual([{ anticipo_id: 'a-12', valor: 100000 }]);
+  });
+
+  it('volver a escribir la misma cifra del adelanto NO cuenta como corrección', async () => {
+    await armarConAdelantos();
+
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('100000');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+    expect(dialogo.tieneValorNuevo('a-12')).toBeTrue();
+
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('120000');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // Sin esto el comprobante subiría de versión por un adelanto que quedó igual, y el
+    // productor tendría dos papeles con números distintos de hoja y la misma cifra.
+    expect(dialogo.tieneValorNuevo('a-12')).toBeFalse();
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+  });
+
+  it('una cifra que no se entiende no se manda: el campo se queda abierto y avisa', async () => {
+    await armarConAdelantos();
+
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('como cien mil');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    expect(dialogo.editandoAnticipoId()).toBe('a-12');
+    expect(dialogo.tieneValorNuevo('a-12')).toBeFalse();
+    expect(avisos.join(' ')).toContain('Escriba en pesos lo que se le adelantó');
+  });
+
+  it('sacar un adelanto al que se le había corregido la cifra NO manda las dos cosas', async () => {
+    await armarConAdelantos();
+
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('100000');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // El servidor rebota corregirle la cifra a un adelanto que se está sacando —se va a
+    // descontar en OTRA quincena—, y ese rebote llegaría DESPUÉS de oprimir el botón,
+    // encima de una quincena pagada. Ese sobre no se puede ni armar.
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.anticipos_a_soltar).toEqual(['a-12']);
+    expect(ultimo.valores_de_anticipos).toEqual([]);
+    expect(dialogo.tieneValorNuevo('a-12')).toBeFalse();
+    // Y la cifra vuelve a ser la que estaba anotada, que es la que sale de la quincena.
+    expect(leerCuadre()['anticipos'].ahora).toBe('$ 0');
+  });
+
+  it('mover SOLO un adelanto ya es algo que corregir: el botón se ofrece', async () => {
+    await armarConAdelantos();
+
+    // Sin nada tocado el botón está apagado y se dice qué le falta, nombrando también
+    // los adelantos: un botón muerto sin razón es lo que hace que el dueño llame.
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+    expect(leido(fixture.nativeElement.querySelector('.falta'))).toContain('mueva un adelanto');
+
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    expect(dialogo.sePuedeCorregir()).toBeTrue();
+    expect(botonLlamado('Corregir la quincena')?.disabled).toBeFalse();
+  });
+
+  it('manda los adelantos en el MISMO sobre que los días y los precios', async () => {
+    await armarConAdelantos();
+    servicio.corregida = laQuincena({ version: 2 });
+
+    dialogo.marcarDia(EL_DIA_OLVIDADO.recepcion_id, true);
+    dialogo.incluirAnticipo(EL_ADELANTO_SUELTO.anticipo_id, true);
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.form.controls.motivo.setValue('el adelanto del 12 no iba en esta quincena');
+    await asentar();
+
+    await dialogo.corregir();
+    await asentar();
+
+    // UNA sola petición: partirla dejaría el comprobante a medio corregir entre las dos,
+    // con un saldo intermedio que nunca existió.
+    expect(servicio.correcciones_hechas.length).toBe(1);
+    expect(servicio.correcciones_hechas[0]).toEqual({
+      motivo: 'el adelanto del 12 no iba en esta quincena',
+      recepciones_a_incluir: ['r-12'],
+      precios: [],
+      anticipos_a_incluir: ['a-20'],
+      anticipos_a_soltar: ['a-12'],
+      valores_de_anticipos: [],
+      anticipos_a_borrar: [],
+    });
+    expect(cerradoCon).toEqual([servicio.corregida]);
+  });
+
+  it('sin adelantos, las dos listas lo dicen en vez de quedar vacías sin explicación', async () => {
+    await armar();
+
+    const vacios = Array.from(fixture.nativeElement.querySelectorAll('.vacio')).map((p) =>
+      leido(p as Element),
+    );
+    expect(vacios.join(' | ')).toContain('no se le descontó ningún adelanto');
+    expect(vacios.join(' | ')).toContain('No hay adelantos sueltos');
+    // Y el renglón de los adelantos no se pinta: un "$ 0" en una columna que se suma a
+    // mano es ruido que hace perder el hilo.
+    expect(leerCuadre()['anticipos']).toBeUndefined();
+  });
+
+  // ==========================================================================
+  // ANULAR UN ADELANTO QUE NUNCA EXISTIÓ — la cuarta operación
+  // ==========================================================================
+  /**
+   * POR QUÉ EXISTE, con el caso medido. Al SACAR un adelanto, el comprobante v2 que el
+   * productor tiene en la mano imprime "se le descuenta en la siguiente", y por eso la
+   * pantalla de Anticipos lo traba: allá no quedaría ni motivo ni versión nueva. Eso
+   * abría un callejón sin salida: si el adelanto NUNCA EXISTIÓ —se digitó dos veces, o
+   * se le anotó al productor equivocado— y el productor dejó de entregar leche, no había
+   * NINGUNA pantalla donde borrarlo, y ese fantasma de $300.000 se le iba a descontar de
+   * plata que SÍ es suya.
+   *
+   * Y LO QUE ESTAS PRUEBAS CUIDAN POR ENCIMA DE LA MECÁNICA: que SACAR y ANULAR no se
+   * confundan. Sacar dice "no iba aquí" y la plata sigue viva; anular dice "no pasó" y se
+   * borra. Confundirlas cuesta plata en las dos direcciones, y en el cuadre se ven igual
+   * —las dos suben lo que hay que entregarle—: lo único que las separa es lo que dice la
+   * pantalla.
+   */
+  const armarConFantasma = (): Promise<void> =>
+    armar(
+      laQuincena({
+        anticipos: '120000',
+        neto_a_pagar: '380000',
+        pagado: '380000',
+        saldo: '0',
+      }),
+      (falso) => {
+        falso.anticiposAplicados = [EL_ADELANTO_DE_LA_DROGA];
+        falso.anticiposSueltos = [];
+        falso.anticiposSoltadosPorEsta = [EL_ADELANTO_FANTASMA];
+      },
+    );
+
+  /** Anular pide confirmación: esta es la respuesta del dueño a esa pregunta. */
+  const elDuenoResponde = (respuesta: boolean): jasmine.Spy =>
+    spyOn(window, 'confirm').and.returnValue(respuesta);
+
+  it('los que ESTA quincena sacó salen en su propia lista, con el aviso del servidor tal cual', async () => {
+    await armarConFantasma();
+
+    const filas = filasDe('.tabla-anticipos-soltados');
+    expect(filas[0]).toEqual(['Fecha', 'Para qué fue', 'Lo que se le adelantó', '']);
+    // Con su fecha, PARA QUÉ FUE y la cifra: es con eso —y no con el id— que el dueño
+    // reconoce cuál adelanto fue.
+    expect(filas[1].slice(0, 3)).toEqual(['08/06/2026', 'se digitó dos veces', '$ 300.000']);
+
+    // Y el aviso del servidor SIN TRADUCIR: dice que el comprobante promete descontarlo
+    // en la siguiente, y que esta es la única pantalla que lo puede anular.
+    const senalado = leido(
+      fixture.nativeElement.querySelector('.tabla-anticipos-soltados tr.nota.senalada'),
+    );
+    expect(senalado).toContain(EL_ADELANTO_FANTASMA.aviso!);
+
+    // El título es el del dueño, no el del backend.
+    const titulos = Array.from(fixture.nativeElement.querySelectorAll('h3')).map((h) =>
+      leido(h as Element),
+    );
+    expect(titulos).toContain('Adelantos que esta quincena sacó');
+  });
+
+  it('la pantalla DICE la diferencia entre sacar y anular, que es la que decide si esa plata se descuenta', async () => {
+    await armarConFantasma();
+
+    const frases = Array.from(fixture.nativeElement.querySelectorAll('.distincion')).map((p) =>
+      leido(p as Element),
+    );
+    expect(frases.length).toBeGreaterThan(0);
+    const dicho = frases.join(' | ');
+    expect(dicho).toContain('no iba aquí');
+    expect(dicho).toContain('se le descuenta en la quincena siguiente');
+    expect(dicho).toContain('ese adelanto no existió');
+    expect(dicho).toContain('no se le descuenta en ninguna');
+    // Y en las palabras del dueño: nada de "borrado lógico" ni "desvincular".
+    expect(dicho.toLowerCase()).not.toContain('desvincular');
+    expect(dicho.toLowerCase()).not.toContain('lógico');
+  });
+
+  it('ANULAR pregunta antes, y la pregunta dice la diferencia con SACAR', async () => {
+    await armarConFantasma();
+    const pregunta = elDuenoResponde(true);
+
+    dialogo.anularAnticipo(EL_ADELANTO_FANTASMA);
+    await asentar();
+
+    expect(pregunta).toHaveBeenCalled();
+    const texto = comoSeLee(pregunta.calls.mostRecent().args[0] as string);
+    expect(texto).toContain('$ 300.000');
+    expect(texto).toContain('ANULAR no es lo mismo que SACAR');
+    expect(texto).toContain('esa plata sí se le entregó y se le descuenta en la siguiente');
+    expect(texto).toContain('no se le descuenta en ninguna quincena');
+    expect(texto).toContain('NUNCA se le entregó');
+  });
+
+  it('si el dueño dice que NO a la pregunta, no se anula nada y no sale ni un avance', async () => {
+    await armarConFantasma();
+    elDuenoResponde(false);
+    const avancesAntes = servicio.avances.length;
+
+    dialogo.anularAnticipo(EL_ADELANTO_FANTASMA);
+    await asentar();
+
+    expect(dialogo.estaAnulado('a-77')).toBeFalse();
+    expect(servicio.avances.length).toBe(avancesAntes);
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+  });
+
+  it('anular uno que esta quincena YA SACÓ: la cuenta no cambia, y la línea dice por qué', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    dialogo.anularAnticipo(EL_ADELANTO_FANTASMA);
+    await asentar();
+
+    // LA LÍNEA EXPLICATIVA, en las palabras del dueño.
+    const nota = comoSeLee(dialogo.notaDeAnulado(EL_ADELANTO_FANTASMA));
+    expect(nota).toContain('Se anula: ese adelanto no existió y no se le descuenta en ninguna quincena');
+    expect(nota).toContain('ya no se le descuentan esos $ 300.000 en la quincena siguiente');
+    // Y se lee en la tabla, no solo en el método.
+    expect(
+      filasDe('.tabla-anticipos-soltados').some((fila) =>
+        fila.join(' ').includes('Se anula: ese adelanto no existió'),
+      ),
+    ).toBeTrue();
+
+    // ESTA quincena no se mueve —ese adelanto ya había salido de ella—, y decirlo es la
+    // mitad de la función: si no, el dueño busca en el cuadre un cambio que no está.
+    const cuadre = leerCuadre();
+    expect(cuadre['anticipos']).toEqual({ antes: '$ 120.000', ahora: '$ 120.000' });
+    expect(leerCierres()[1].cifra).toBe('$ 0');
+
+    // Pero SÍ hay algo que corregir, y viaja en el sobre.
+    expect(dialogo.sePuedeCorregir()).toBeTrue();
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.anticipos_a_borrar).toEqual(['a-77']);
+  });
+
+  it('anular uno que HOY está descontado sube lo que hay que entregarle, y la línea lo dice', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    dialogo.anularAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // EL CUADRE SALE DE LA PREVISUALIZACIÓN: acá no se calcula ni un peso.
+    const cuadre = leerCuadre();
+    expect(cuadre['anticipos']).toEqual({ antes: '$ 120.000', ahora: '$ 0' });
+    expect(cuadre['neto']).toEqual({ antes: '$ 380.000', ahora: '$ 500.000' });
+    const cierre = leerCierres()[1];
+    expect(cierre.rotulo).toBe('QUEDA POR ENTREGARLE');
+    expect(cierre.cifra).toBe('$ 120.000');
+
+    // Y LA LÍNEA TIENE QUE DECIR POR QUÉ SUBE: en el cuadre, anular y sacar se ven
+    // IGUAL —las dos cifras son las mismas—, así que lo único que las separa es esto.
+    const nota = comoSeLee(dialogo.notaDelAnticipo(EL_ADELANTO_DE_LA_DROGA));
+    expect(nota).toContain('Se anula: ese adelanto no existió y no se le descuenta en ninguna quincena');
+    expect(nota).toContain('por eso sube lo que hay que entregarle');
+    expect(nota).toContain('se le entregan $ 120.000 más');
+    // Y NO dice lo de sacar: que esa plata se le descuenta en la siguiente. Sería falso.
+    expect(nota).not.toContain('quincena siguiente');
+
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.anticipos_a_borrar).toEqual(['a-12']);
+    expect(ultimo.anticipos_a_soltar).toEqual([]);
+  });
+
+  it('anular y sacar SON DISTINTOS: el desglose suma exacto, y se puede volver atrás', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    dialogo.anularAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // LA REGLA DE LA CASA: las dos columnas suman exacto la cifra grande.
+    const cuadre = leerCuadre();
+    const cierres = leerCierres();
+    for (const [columna, cierre] of [
+      ['antes', cierres[0]],
+      ['ahora', cierres[1]],
+    ] as const) {
+      const cuenta =
+        centavos(cuadre['valor_total'][columna]) - centavos(cuadre['anticipos'][columna]);
+      expect(cuenta).toBe(centavos(cuadre['neto'][columna]));
+      expect(cuenta - centavos(cuadre['pagado'][columna])).toBe(centavos(cierre.cifra));
+    }
+    // El renglón se ve tachado, y distinto del que solo sale.
+    expect(fixture.nativeElement.querySelector('.tabla-anticipos tr.anulado')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.tabla-anticipos tr.sacado')).toBeNull();
+
+    // Y se puede deshacer: la quincena queda otra vez como estaba.
+    dialogo.desanularAnticipo('a-12');
+    await asentar();
+    expect(dialogo.estaAnulado('a-12')).toBeFalse();
+    expect(leerCuadre()['anticipos'].ahora).toBe('$ 120.000');
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+  });
+
+  it('anular un adelanto que estaba SACADO no manda las dos cosas sobre el mismo', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    dialogo.sacarAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+    dialogo.anularAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // El servidor rebota anular y a la vez sacar el mismo adelanto —el resultado
+    // dependería del orden—, y ese rebote llegaría DESPUÉS de oprimir el botón, encima
+    // de una quincena pagada. Ese sobre no se puede ni armar.
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.anticipos_a_borrar).toEqual(['a-12']);
+    expect(ultimo.anticipos_a_soltar).toEqual([]);
+    expect(dialogo.estaSacado('a-12')).toBeFalse();
+    // Y lo que se lee es lo de anular, que es lo que va a pasar.
+    expect(comoSeLee(dialogo.notaDelAnticipo(EL_ADELANTO_DE_LA_DROGA))).toContain(
+      'ese adelanto no existió',
+    );
+  });
+
+  it('anular un adelanto al que le habían corregido la cifra le quita el valor nuevo', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    dialogo.editarValor(EL_ADELANTO_DE_LA_DROGA);
+    dialogo.alEscribirValor('100000');
+    dialogo.aplicarValor(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+    expect(dialogo.tieneValorNuevo('a-12')).toBeTrue();
+
+    dialogo.anularAnticipo(EL_ADELANTO_DE_LA_DROGA);
+    await asentar();
+
+    // Corregirle la cifra a un adelanto que se va a borrar no significaría nada.
+    expect(dialogo.tieneValorNuevo('a-12')).toBeFalse();
+    const ultimo = servicio.avances[servicio.avances.length - 1];
+    expect(ultimo.valores_de_anticipos).toEqual([]);
+    expect(ultimo.anticipos_a_borrar).toEqual(['a-12']);
+  });
+
+  it('el botón de verdad, el que se oprime, anula y mueve la cifra grande', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    const botones = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'button[aria-label="Anular este adelanto: nunca existió"]',
+      ),
+    ) as HTMLButtonElement[];
+    // Uno en los que se descontaron y otro en los que esta quincena sacó: el dueño puede
+    // anular en los dos sitios, y en el backend son los dos únicos que puede borrar.
+    expect(botones.length).toBe(2);
+
+    botones[0].click();
+    await asentar();
+
+    expect(leerCierres()[1].cifra).toBe('$ 120.000');
+    expect(fixture.nativeElement.querySelector('.tabla-anticipos tr.anulado')).not.toBeNull();
+  });
+
+  it('anular SOLO eso ya es algo que corregir, y el letrero del candado lo menciona', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+
+    // Sin nada tocado el botón está apagado, y el letrero nombra también anular: un
+    // botón muerto sin razón es lo que hace que el dueño llame a preguntar.
+    expect(dialogo.sePuedeCorregir()).toBeFalse();
+    const candado = leido(fixture.nativeElement.querySelector('.falta'));
+    expect(candado).toContain('mueva un adelanto');
+    expect(candado).toContain('anule uno que no existió');
+
+    dialogo.anularAnticipo(EL_ADELANTO_FANTASMA);
+    await asentar();
+
+    expect(dialogo.sePuedeCorregir()).toBeTrue();
+    expect(botonLlamado('Corregir la quincena')?.disabled).toBeFalse();
+  });
+
+  it('los anulados viajan en el MISMO sobre que todo lo demás, en una sola petición', async () => {
+    await armarConFantasma();
+    elDuenoResponde(true);
+    servicio.corregida = laQuincena({ version: 2 });
+
+    dialogo.marcarDia(EL_DIA_OLVIDADO.recepcion_id, true);
+    dialogo.anularAnticipo(EL_ADELANTO_FANTASMA);
+    dialogo.form.controls.motivo.setValue('ese adelanto se digitó dos veces: nunca existió');
+    await asentar();
+
+    await dialogo.corregir();
+    await asentar();
+
+    expect(servicio.correcciones_hechas.length).toBe(1);
+    expect(servicio.correcciones_hechas[0]).toEqual({
+      motivo: 'ese adelanto se digitó dos veces: nunca existió',
+      recepciones_a_incluir: ['r-12'],
+      precios: [],
+      anticipos_a_incluir: [],
+      anticipos_a_soltar: [],
+      valores_de_anticipos: [],
+      anticipos_a_borrar: ['a-77'],
+    });
+    expect(cerradoCon).toEqual([servicio.corregida]);
+  });
+
+  it('la quincena que nunca sacó un adelanto no muestra esa lista: no tendría qué anular', async () => {
+    await armarConAdelantos();
+
+    // A diferencia de las otras dos, esta no se pinta vacía: ponerle delante al dueño una
+    // sección que no puede entender —y con el único botón que borra plata— justo cuando
+    // no tiene nada que hacer con ella es peor que no mostrarla.
+    expect(fixture.nativeElement.querySelector('.tabla-anticipos-soltados')).toBeNull();
+    const titulos = Array.from(fixture.nativeElement.querySelectorAll('h3')).map((h) =>
+      leido(h as Element),
+    );
+    expect(titulos).not.toContain('Adelantos que esta quincena sacó');
+    // Pero el botón de anular sigue estando donde sí hace falta: en los que se le
+    // descontaron, que el backend también deja borrar.
+    expect(
+      fixture.nativeElement.querySelector(
+        '.tabla-anticipos button[aria-label="Anular este adelanto: nunca existió"]',
+      ),
+    ).not.toBeNull();
   });
 });
 
