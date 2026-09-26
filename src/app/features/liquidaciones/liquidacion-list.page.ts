@@ -33,6 +33,7 @@ import { CierreGenerar, GenerarQuincenaDialog } from './generar-quincena.dialog'
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import { periodoDe } from './periodo-liquidacion';
 import { LiquidacionesService } from './liquidaciones.service';
+import { estadoComoSeLee } from './estado-como-se-lee';
 import { PreLiquidacionDialog } from './preliquidacion.dialog';
 
 /** Conteos y saldos por estado para las tarjetas resumen. */
@@ -251,8 +252,13 @@ export class LiquidacionListPage implements OnInit {
       valor_total: (f) => Number(f.valor_total),
       anticipos: (f) => Number(f.anticipos),
       saldo: (f) => Number(f.saldo),
+      // Se ordena por lo que dice el chip: ordenada por `estado`, una "pagada · quedó
+      // debiendo" caería entre las aprobadas y la columna se vería desordenada.
+      estado: (f) => estadoComoSeLee(f),
     }),
   );
+  /** SOLO para el chip: `esPorPagar`, el borde de la fila y las marcas leen `estado`. */
+  readonly estadoComoSeLee = estadoComoSeLee;
   readonly total = signal(0);
   readonly cargando = signal(false);
   /**
@@ -336,6 +342,13 @@ export class LiquidacionListPage implements OnInit {
    * estados: nace en un BORRADOR (así se genera la quincena) y las 'pagada' viejas del
    * cliente quedaron con saldo negativo por el botón Pagar de antes. Contándola solo en
    * las aprobadas, la tarjeta se dejaría por fuera justo la deuda recién nacida.
+   *
+   * LAS TARJETAS CUENTAN LO QUE DICE EL CHIP porque cuentan con el filtro DEL SERVIDOR,
+   * nunca mirando `fila.estado` aquí: la quincena en firme en la que el tercero quedó
+   * debiendo se pinta "pagada · quedó debiendo", y el `?estado=` del backend la mete en
+   * "pagada" y la saca de "aprobada"/"parcial". Contar aquí por `estado` la devolvería a
+   * "Aprobadas por pagar", que era la queja del dueño. Y como cada fila sale en UNA sola
+   * de las cuatro consultas, la deuda de abajo no se cuenta dos veces.
    *
    * LAS ANULADAS NO SE PIDEN, y eso es la regla del servidor: la deuda de una liquidación
    * anulada no viaja a ninguna parte (ver `deudas_sin_cobrar` en el backend), así que

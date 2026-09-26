@@ -651,7 +651,7 @@ export interface CierreDelCuadre {
         </div>
 
         <p class="estado-que-queda">
-          La quincena queda en <b>{{ p.estado_despues }}</b> y el comprobante pasa a ser la
+          La quincena queda en <b>{{ p.estado_visible_despues || p.estado_despues }}</b> y el comprobante pasa a ser la
           <b>versión {{ versionSiguiente() }}</b>.
         </p>
 

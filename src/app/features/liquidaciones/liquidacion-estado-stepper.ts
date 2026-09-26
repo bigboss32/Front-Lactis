@@ -26,6 +26,10 @@ const PASO_DE_ESTADO: Record<string, number> = {
   aprobada: 1,
   parcial: 2,
   pagada: 2,
+  // El estado COMO SE LEE (ver `estadoComoSeLee`): la quincena en firme en la que el
+  // tercero quedó debiendo. Está en el último paso porque no hay nada que entregarle;
+  // dejarla en "Aprobada" decía "falta pagarla", que es justo lo que el dueño reclamó.
+  'pagada · quedó debiendo': 2,
 };
 
 /** Texto de ayuda de una línea según el estado actual. */
@@ -34,6 +38,11 @@ const AYUDAS: Record<string, string> = {
   aprobada: 'Los valores quedaron en firme: usa "Pagar" cuando entregues el dinero.',
   parcial: 'Se le abonó una parte y todavía queda debiendo: usa "Pagar" para el resto.',
   pagada: 'El pago quedó registrado; esta liquidación está completa.',
+  // Sin "usa Pagar": ese botón no está (el servidor lo rebota). Y sin decir de dónde salió
+  // la deuda ni si ya se cobró: pueden ser anticipos o un pago de más por una corrección,
+  // y eso lo dice con cifras el resumen de abajo.
+  'pagada · quedó debiendo':
+    'No hay nada que entregarle: el tercero quedó debiendo. El resumen dice cuánto y si ya se le cobró.',
   anulada: 'Las recepciones y anticipos del período quedaron libres para volver a liquidar.',
 };
 

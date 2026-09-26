@@ -465,6 +465,13 @@ export interface PrevisualizacionCorreccion {
   estado_antes: string;
   estado_despues: string;
   /**
+   * Cómo se va a LEER después de corregir: "pagada · quedó debiendo" si la corrección
+   * deja al tercero debiendo. Es lo que se pinta; `estado_despues` es lo que se guarda.
+   * Opcional porque un backend anterior no lo manda: consumir con `||`, porque llega en
+   * "" cuando falta.
+   */
+  estado_visible_despues?: string;
+  /**
    * LAS DOS PUNTAS, LAS DOS EN POSITIVO Y EN CAMPOS SEPARADOS. Son dos frases distintas
    * ("queda por entregarle" / "se le pagó de más") y la pantalla no tiene que deducir
    * cuál decir a partir del signo de un saldo.
@@ -534,7 +541,14 @@ export interface Correccion {
 
 /** Un adelanto que una corrección movió, tal como quedó escrito en el renglón. */
 export interface AnticipoCambiadoEnCorreccion {
-  accion: 'entro' | 'salio' | 'valor';
+  /**
+   * 'borrado' FALTABA, y el servidor lo escribe: es el adelanto que se ANULÓ porque
+   * nunca existió (se digitó dos veces, o se le anotó al productor equivocado). No es lo
+   * mismo que 'salio' —el que sale sigue vivo y se le descuenta en la quincena
+   * siguiente— y sin él en el tipo, la pantalla que lee estos renglones no tenía cómo
+   * distinguirlos y le habría prometido al productor un descuento que no va a pasar.
+   */
+  accion: 'entro' | 'salio' | 'valor' | 'borrado';
   fecha: string;
   valor: Monto;
   /** Solo en 'valor': por cuánto estaba anotado antes. */

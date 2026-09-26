@@ -11,6 +11,17 @@ const COLORES: Record<string, string> = {
   aprobada: 'azul',
   abierta: 'azul',
   anulada: 'rojo',
+  // Liquidaciones: la quincena en firme en la que el TERCERO quedó debiendo (el backend
+  // manda este texto en `estado_visible`). VERDE, como una pagada, porque el color del
+  // chip responde "¿tengo algo que hacer con esta?" y la respuesta es NO: no hay nada
+  // que entregarle, y la deuda se le cobra sola en su próxima quincena. Cualquier otro
+  // tono mentía: el azul es justo el de "aprobada, falta pagarla" —la queja del dueño—,
+  // el ámbar es el de "revísela" (borrador) y el rojo es el de anulada.
+  // Lo que la separa de una pagada limpia NO lo carga el color, lo cargan las palabras:
+  // el chip dice "quedó debiendo" en la misma línea, y la columna Saldo de la lista ya
+  // pinta la cifra en rojo con su marca ("quedó debiendo · cobrada"). Un segundo rojo
+  // aquí solo repetiría esa alarma en la columna que responde otra pregunta.
+  'pagada · quedó debiendo': 'verde',
   // Transporte: viajes (el backend manda 'en_curso'; la vista pasa la etiqueta
   // legible de ETIQUETAS_ESTADO_VIAJE) y vigencia de documentos del vehículo.
   'en curso': 'azul',
@@ -36,7 +47,7 @@ const COLORES: Record<string, string> = {
 /** Chip de color según el estado del registro o del flujo de trabajo. */
 @Component({
   selector: 'app-estado-chip',
-  template: `<span class="chip {{ color() }}">{{ estado() }}</span>`,
+  template: `<span class="chip {{ color() }}" [class.frase]="esFrase()">{{ estado() }}</span>`,
   styles: `
     .chip {
       display: inline-block;
@@ -47,6 +58,11 @@ const COLORES: Record<string, string> = {
       text-transform: capitalize;
       white-space: nowrap;
     }
+    // UN ESTADO QUE ES UNA FRASE se escribe como frase: mayúscula solo al arrancar.
+    // 'capitalize' sube la inicial de CADA palabra, y "pagada · quedó debiendo" salía
+    // "Pagada · Quedó Debiendo". Los de siempre ('por vencer' → "Por Vencer") no se tocan.
+    .chip.frase { text-transform: none; }
+    .chip.frase::first-letter { text-transform: uppercase; }
     .verde  { background: color-mix(in srgb, #2e7d32 18%, transparent); color: #2e7d32; }
     .azul   { background: color-mix(in srgb, #1565c0 18%, transparent); color: #1565c0; }
     .ambar  { background: color-mix(in srgb, #b26a00 18%, transparent); color: #b26a00; }
@@ -63,4 +79,6 @@ const COLORES: Record<string, string> = {
 export class EstadoChip {
   readonly estado = input.required<string>();
   readonly color = computed(() => COLORES[this.estado()] ?? 'neutro');
+  /** Dos hechos unidos por el punto medio, como "pagada · quedó debiendo". */
+  readonly esFrase = computed(() => this.estado().includes(' · '));
 }

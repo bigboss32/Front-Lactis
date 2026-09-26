@@ -10,7 +10,7 @@ import { ConfirmData } from '../../shared/confirm-dialog';
 import { SoportesDialog } from '../../shared/soportes.dialog';
 import { SoportesResultado } from '../../shared/soportes.model';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
-import { LiquidacionesService } from './liquidaciones.service';
+import { Correccion, LiquidacionesService } from './liquidaciones.service';
 
 /**
  * El comprobante del TRANSPORTADOR: sus renglones son por DÍA Y RUTA.
@@ -2258,5 +2258,616 @@ describe('LiquidacionDetailDialog: los soportes de cada pago', () => {
       '¿Eliminar el pago de $ 5.000? El saldo volverá a subir por ese valor. Esta acción no ' +
         'se puede deshacer.',
     );
+  });
+});
+
+/**
+ * EL HISTORIAL DE CORRECCIONES: las TRES hojas de la misma quincena.
+ *
+ * El caso del dueño, tal como llega al mostrador: la quincena se corrigió tres veces, el
+ * productor aparece con una hoja en la mano —puede ser cualquiera de las tres— y hay que
+ * emparejarla. Hasta este trabajo la pantalla solo mostraba el motivo de la ÚLTIMA, así
+ * que las dos versiones intermedias no existían para nadie y la discusión se cerraba con
+ * la palabra del que tuviera el papel.
+ *
+ * Lo que estas pruebas cuidan, en orden de importancia:
+ *  · que las TRES se lean, cada una con su versión, su fecha, su nombre y su motivo;
+ *  · que QUÉ CAMBIÓ salga en frases y no en JSON, con las mismas palabras del papel;
+ *  · que las cifras CUADREN: la de cierre de una corrección es la de arranque de la
+ *    siguiente, y la última cae exacto en el resumen que esta misma pantalla muestra;
+ *  · que en una corrección de PURO ADELANTO no se muestre solo el valor total —que ahí
+ *    no se mueve—, porque eso dice "no cambió nada" y esconde lo que sí cambió.
+ */
+describe('LiquidacionDetailDialog: el historial de correcciones', () => {
+  let fixture: Fixture;
+
+  /** El servidor que SÍ responde el detalle y las correcciones. */
+  class ServicioConCorrecciones {
+    constructor(
+      private readonly item: Liquidacion,
+      private readonly lista: Correccion[],
+    ) {}
+    /** Cuántas veces se pidió la lista: no se pide sin necesidad. */
+    pedidas = 0;
+
+    getById(): Observable<Liquidacion> {
+      return of(this.item);
+    }
+
+    correcciones(): Observable<Correccion[]> {
+      this.pedidas += 1;
+      return of(this.lista);
+    }
+  }
+
+  /**
+   * La quincena de Marleny después de las tres correcciones: $630.000 de leche, $150.000
+   * de adelanto descontado y $480.000 entregados.
+   */
+  const LA_QUINCENA: Partial<Liquidacion> = {
+    estado: 'pagada',
+    version: 4,
+    total_litros: '350',
+    precio_promedio: '1800',
+    valor_bruto: '630000',
+    valor_transporte: '0',
+    anticipos: '150000',
+    valor_total: '630000',
+    neto_a_pagar: '480000',
+    pagado: '480000',
+    saldo: '0',
+  };
+
+  /**
+   * LA PRIMERA (v2): entró un día que se había quedado sin anotar.
+   *
+   * VIENE SIN `anticipos_antes`/`anticipos_despues` a propósito: es una corrección de las
+   * viejas, hechas antes de que los adelantos se pudieran mover. No tocó ningún adelanto,
+   * así que no hay nada que aclarar; lo que no puede pasar es que la pantalla se invente
+   * un cero.
+   */
+  const ENTRO_UN_DIA: Correccion = {
+    id: 'c-1',
+    version_nueva: 2,
+    motivo: 'Se quedó sin anotar la leche del viernes',
+    corregido_por_nombre: 'Miguel Garzón',
+    // 09:30 de la mañana en Colombia.
+    created_at: '2026-06-20T14:30:00Z',
+    valor_total_antes: '500000',
+    valor_total_despues: '680000',
+    neto_antes: '500000',
+    neto_despues: '680000',
+    pagado_al_momento: '500000',
+    saldo_antes: '0',
+    saldo_despues: '180000',
+    estado_antes: 'pagada',
+    estado_despues: 'parcial',
+    dias_agregados: [
+      { fecha: '2026-06-12', litros: '100', precio_litro: '1800', valor: '180000' },
+    ],
+    precios_corregidos: [],
+  };
+
+  /** LA SEGUNDA (v3): el precio de un día estaba mal tecleado. */
+  const SE_CORRIGIO_UN_PRECIO: Correccion = {
+    id: 'c-2',
+    version_nueva: 3,
+    motivo: 'El precio del lunes se tecleó a $2.000 y era $1.500',
+    corregido_por_nombre: 'Miguel Garzón',
+    created_at: '2026-07-01T16:05:00Z',
+    valor_total_antes: '680000',
+    valor_total_despues: '630000',
+    neto_antes: '680000',
+    neto_despues: '630000',
+    pagado_al_momento: '500000',
+    saldo_antes: '180000',
+    saldo_despues: '130000',
+    estado_antes: 'parcial',
+    estado_despues: 'parcial',
+    dias_agregados: [],
+    precios_corregidos: [
+      {
+        fecha: '2026-06-08',
+        litros: '100',
+        precio_antes: '2000',
+        precio_despues: '1500',
+        valor_antes: '200000',
+        valor_despues: '150000',
+      },
+    ],
+  };
+
+  /**
+   * LA TERCERA (v4): PURO ADELANTO. El valor total NO se mueve.
+   *
+   * Es el caso que ya fue un defecto en el papel: cerrar diciendo "el VALOR TOTAL pasó de
+   * $630.000 a $630.000" es una tautología que esconde los $150.000 que sí cambiaron, y
+   * que son justo por los que el productor reclama.
+   *
+   * La hora es de las que cruzan el día: 02:04 UTC es 21:04 del día ANTERIOR en Colombia.
+   */
+  const ENTRO_UN_ADELANTO: Correccion = {
+    id: 'c-3',
+    version_nueva: 4,
+    motivo: 'Faltaba descontarle el adelanto que se le dio para la droga',
+    corregido_por_nombre: 'Marleny Ríos',
+    created_at: '2026-09-07T02:04:00Z',
+    valor_total_antes: '630000',
+    valor_total_despues: '630000',
+    neto_antes: '630000',
+    neto_despues: '480000',
+    pagado_al_momento: '480000',
+    saldo_antes: '150000',
+    saldo_despues: '0',
+    estado_antes: 'parcial',
+    estado_despues: 'pagada',
+    dias_agregados: [],
+    precios_corregidos: [],
+    anticipos_antes: '0',
+    anticipos_despues: '150000',
+    anticipos_cambiados: [{ accion: 'entro', fecha: '2026-06-10', valor: '150000' }],
+  };
+
+  const LAS_TRES = [ENTRO_UN_DIA, SE_CORRIGIO_UN_PRECIO, ENTRO_UN_ADELANTO];
+
+  let servicio: ServicioConCorrecciones;
+
+  const armar = async (
+    lista: Correccion[],
+    cifras: Partial<Liquidacion> = LA_QUINCENA,
+  ): Promise<void> => {
+    const item = liquidacion(
+      [det('d-1', '2026-06-12', '100', '1800', '180000')],
+      'proveedor',
+      cifras,
+    );
+    servicio = new ServicioConCorrecciones(item, lista);
+    await TestBed.configureTestingModule({
+      imports: [LiquidacionDetailDialog, NoopAnimationsModule],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: { item } },
+        { provide: LiquidacionesService, useValue: servicio },
+        { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(null) }) } },
+        {
+          provide: AuthService,
+          useValue: { hasPermission: () => true, perfil: () => null, esSuperadmin: () => false },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(LiquidacionDetailDialog);
+    fixture.detectChanges();
+    // Dos vueltas: la primera resuelve el detalle y la segunda la lista de correcciones,
+    // que solo se pide DESPUÉS de saber la versión.
+    await fixture.whenStable();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  const banda = (): string => leido(fixture.nativeElement.querySelector('.banda-corregida'));
+
+  const enlaceHistorial = (): HTMLButtonElement | null =>
+    fixture.nativeElement.querySelector('.ver-historial');
+
+  const abrirHistorial = async (): Promise<void> => {
+    enlaceHistorial()!.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  /** Cada corrección como se lee: versión, cuándo, quién, qué cambió, cifras y motivo. */
+  const renglones = (): HTMLElement[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('.correccion'));
+
+  const leerRenglon = (
+    bloque: HTMLElement,
+  ): {
+    version: string;
+    encabezado: string;
+    cambios: string[];
+    cifras: string[];
+    motivo: string;
+  } => ({
+    version: leido(bloque.querySelector('.correccion-version')),
+    encabezado: leido(bloque.querySelector('.correccion-cuando')),
+    cambios: Array.from(bloque.querySelectorAll('.correccion-cambios li')).map((li) => leido(li)),
+    // Celda por celda y no del renglón entero: los huecos entre cifras los pone la
+    // rejilla (gap), así que el texto pegado de `textContent` diría "$ 0→$ 150.000".
+    cifras: Array.from(bloque.querySelectorAll('.correccion-cifra')).map((fila) => {
+      const [antes, despues] = Array.from(fila.querySelectorAll('.num')).map((celda) =>
+        leido(celda),
+      );
+      return `${leido(fila.firstElementChild)} ${antes} → ${despues}`;
+    }),
+    motivo: leido(bloque.querySelector('.correccion-motivo')),
+  });
+
+  // ------------------------------------------------------------- LA BANDA, COMPACTA
+
+  it('la banda sigue mostrando SOLO la última, y ofrece abrir las tres', async () => {
+    await armar(LAS_TRES);
+
+    const arriba = banda();
+    // La última es la que explica el papel vigente: esa se queda a la vista.
+    expect(arriba).toContain('v4');
+    expect(arriba).toContain('Faltaba descontarle el adelanto');
+    // Y las otras dos NO se le meten encima a la banda: siguen guardadas.
+    expect(arriba).not.toContain('Se quedó sin anotar');
+    expect(arriba).not.toContain('se tecleó a $2.000');
+    // El enlace dice CUÁNTAS son: con tres hojas dando vueltas, saber el número es la
+    // mitad del aviso.
+    expect(leido(enlaceHistorial())).toContain('ver las 3 correcciones');
+  });
+
+  it('la fecha de la banda es la de Colombia, no la de UTC', async () => {
+    await armar(LAS_TRES);
+
+    // 02:04 UTC del 7 son las 21:04 del 6 acá. Antes se recortaban los diez primeros
+    // caracteres del instante y la banda decía "07/09/2026": un día que no fue, y que
+    // además no coincide con el que imprime el papel.
+    expect(banda()).toContain('Corregido el 06/09/2026');
+    expect(banda()).not.toContain('07/09/2026');
+  });
+
+  it('el historial arranca cerrado: la pantalla ya es densa', async () => {
+    await armar(LAS_TRES);
+
+    expect(renglones().length).toBe(0);
+    expect(enlaceHistorial()!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  // ------------------------------------------- LAS TRES CORRECCIONES, DE TRES CLASES
+
+  it('las tres se leen, de la más vieja a la más nueva y con quién las hizo', async () => {
+    await armar(LAS_TRES);
+    await abrirHistorial();
+
+    const leidos = renglones().map(leerRenglon);
+    expect(leidos.length).toBe(3);
+
+    // EL ORDEN ES EL DEL PAPEL: v2, v3, v4. El productor llega con una hoja y el dueño
+    // recorre las dos listas en paralelo para emparejarla.
+    expect(leidos.map((r) => r.version)).toEqual(['v2', 'v3', 'v4']);
+
+    // Cuándo (en hora de Colombia) y quién, en cada renglón.
+    expect(leidos[0].encabezado).toContain('20/06/2026 09:30');
+    expect(leidos[0].encabezado).toContain('Miguel Garzón');
+    expect(leidos[1].encabezado).toContain('01/07/2026 11:05');
+    expect(leidos[2].encabezado).toContain('06/09/2026 21:04');
+    expect(leidos[2].encabezado).toContain('Marleny Ríos');
+
+    // Y el motivo de CADA una, que es lo que la banda solo daba de la última.
+    expect(leidos[0].motivo).toBe('Motivo: Se quedó sin anotar la leche del viernes');
+    expect(leidos[1].motivo).toContain('El precio del lunes se tecleó');
+    expect(leidos[2].motivo).toContain('Faltaba descontarle el adelanto');
+  });
+
+  it('qué cambió se lee en frases, no en JSON: un día, un precio y un adelanto', async () => {
+    await armar(LAS_TRES);
+    await abrirHistorial();
+
+    const leidos = renglones().map(leerRenglon);
+
+    // Las MISMAS palabras que imprime la letra chica del comprobante: las dos hojas se
+    // ponen sobre la mesa y tienen que decir lo mismo.
+    expect(leidos[0].cambios).toEqual([
+      'entró el día del 12/06/2026 (100 L a $ 1.800 = $ 180.000)',
+    ]);
+    expect(leidos[1].cambios).toEqual(['el día del 08/06/2026 pasó de $ 2.000 a $ 1.500 el litro']);
+    expect(leidos[2].cambios).toEqual(['se le descontó el adelanto del 10/06/2026 ($ 150.000)']);
+
+    // Y en ninguna parte asoma el idioma de la base de datos.
+    const historial = leido(fixture.nativeElement.querySelector('.historial'));
+    for (const palabra of ['version_nueva', 'anticipos_cambiados', 'payload', 'accion']) {
+      expect(historial).not.toContain(palabra);
+    }
+  });
+
+  // ------------------------------------------------------------------ LAS CIFRAS
+
+  it('la corrección de PURO ADELANTO muestra lo que SÍ se movió, no el valor total', async () => {
+    await armar(LAS_TRES);
+    await abrirHistorial();
+
+    const ultima = leerRenglon(renglones()[2]);
+    // El valor total NO se movió ($630.000 → $630.000): mostrarlo diría "no cambió nada".
+    expect(ultima.cifras.some((fila) => fila.startsWith('Valor total'))).toBe(false);
+    // Lo que sí cambió: el adelanto descontado y, con él, lo que hay que entregarle.
+    expect(ultima.cifras).toEqual([
+      'Adelantos descontados $ 0 → $ 150.000',
+      'Lo que hay que entregarle $ 630.000 → $ 480.000',
+    ]);
+  });
+
+  it('las cifras cuadran: cada una arranca donde terminó la anterior y la última cae en el resumen', async () => {
+    await armar(LAS_TRES);
+    await abrirHistorial();
+
+    // Las cifras tal como se LEEN, en centavos enteros: es la cuenta que hace el dueño
+    // con la pantalla puesta, no la que mandó el backend.
+    const cifrasDe = (bloque: HTMLElement): Record<string, [number, number]> => {
+      const filas: Record<string, [number, number]> = {};
+      for (const fila of Array.from(bloque.querySelectorAll('.correccion-cifra'))) {
+        const etiqueta = leido(fila.firstElementChild);
+        const [antes, despues] = Array.from(fila.querySelectorAll('.num')).map((celda) =>
+          centavos(leido(celda)),
+        );
+        filas[etiqueta] = [antes, despues];
+      }
+      return filas;
+    };
+
+    const [v2, v3, v4] = renglones().map(cifrasDe);
+
+    // LA CADENA: el "después" de una es el "antes" de la siguiente. Si un eslabón no
+    // cuadra, entre las dos hojas hay plata que nadie explica.
+    expect(v2['Valor total']).toEqual([50000000, 68000000]);
+    expect(v3['Valor total'][0]).toBe(v2['Valor total'][1]);
+    expect(v3['Lo que hay que entregarle'][1]).toBe(v4['Lo que hay que entregarle'][0]);
+
+    // Y LA ÚLTIMA CAE EN EL RESUMEN DE ESTA MISMA PANTALLA: valor total menos los
+    // adelantos es lo que hay que entregarle. Por eso el historial va acá abajo y no en
+    // otra ventana: estas dos cuentas se comparan con los ojos.
+    const resumen = leerResumen(fixture);
+    const valorTotal = centavos(resumen['Valor total']);
+    const adelantos = centavos(resumen['Anticipos aplicados']);
+    expect(valorTotal).toBe(63000000);
+    expect(adelantos).toBe(v4['Adelantos descontados'][1]);
+    expect(valorTotal - adelantos).toBe(v4['Lo que hay que entregarle'][1]);
+  });
+
+  // ------------------------------------------------- SACAR, ANULAR Y LOS NULOS
+
+  it('sacar un adelanto y ANULARLO no se dicen igual: es plata distinta', async () => {
+    const MOVIO_ADELANTOS: Correccion = {
+      ...ENTRO_UN_ADELANTO,
+      id: 'c-9',
+      anticipos_cambiados: [
+        { accion: 'salio', fecha: '2026-06-05', valor: '300000' },
+        { accion: 'borrado', fecha: '2026-06-03', valor: '300000' },
+        { accion: 'valor', fecha: '2026-06-07', valor: '120000', valor_antes: '100000' },
+      ],
+    };
+    await armar([MOVIO_ADELANTOS]);
+    await abrirHistorial();
+
+    const cambios = leerRenglon(renglones()[0]).cambios;
+    // El que SALE sigue vivo: se le descuenta en la quincena siguiente.
+    expect(cambios[0]).toBe(
+      'el adelanto del 05/06/2026 ($ 300.000) ya NO se descuenta en esta quincena: se le ' +
+        'descuenta en la siguiente',
+    );
+    // El ANULADO nunca existió: prometerle un descuento sería quitarle plata que es suya.
+    expect(cambios[1]).toBe(
+      'el adelanto del 03/06/2026 ($ 300.000) se ANULÓ: no existió, y no se le descuenta ' +
+        'en ninguna quincena',
+    );
+    expect(cambios[2]).toBe('el adelanto del 07/06/2026 pasó de $ 100.000 a $ 120.000');
+  });
+
+  it('una corrección vieja que tocó adelantos dice que no se sabe cuánto sumaban', async () => {
+    // Las correcciones hechas antes de que los adelantos se pudieran mover no guardaron
+    // esa cifra. Un cero ahí afirmaría que no había ningún adelanto descontado, que es
+    // una afirmación sobre la plata del productor que nadie hizo.
+    const VIEJA: Correccion = {
+      ...ENTRO_UN_ADELANTO,
+      id: 'c-8',
+      anticipos_antes: null,
+      anticipos_despues: null,
+    };
+    await armar([VIEJA]);
+    await abrirHistorial();
+
+    const renglon = renglones()[0];
+    expect(leerRenglon(renglon).cifras.some((fila) => fila.includes('Adelantos'))).toBe(false);
+    expect(leido(renglon.querySelector('.correccion-nota'))).toContain(
+      'no quedó anotado cuánto sumaban los adelantos',
+    );
+    // Y NO se muestra un cero inventado en ninguna parte del renglón.
+    expect(leido(renglon)).not.toContain('$ 0');
+  });
+
+  // ----------------------------------------------------------- UNA SOLA, Y NINGUNA
+
+  it('con una sola corrección el enlace no dice "las 1"', async () => {
+    await armar([ENTRO_UN_DIA], { ...LA_QUINCENA, version: 2 });
+
+    expect(leido(enlaceHistorial())).toContain('ver qué cambió');
+  });
+
+  it('sin correcciones cargadas no hay enlace que abra una lista vacía', async () => {
+    await armar([]);
+
+    // La banda sale igual —la versión ya dice que hay otra hoja—, pero el enlace no:
+    // abriría una lista sin renglones.
+    expect(banda()).toContain('Comprobante corregido');
+    expect(enlaceHistorial()).toBeNull();
+  });
+
+  it('en una quincena sin corregir no se le pide la lista al servidor', async () => {
+    await armar(LAS_TRES, { estado: 'pagada' });
+
+    expect(fixture.nativeElement.querySelector('.banda-corregida')).toBeNull();
+    expect(servicio.pedidas).toBe(0);
+  });
+});
+
+// =============================================================================
+// "PAGADA · QUEDÓ DEBIENDO" CAMBIA LO QUE EL DUEÑO VE, NO LO QUE PUEDE HACER.
+//
+// El backend manda `estado_visible` para pintar el chip y la línea de estados. Los
+// botones (Pagar, Anular, Corregir, Recalcular, Aprobar) y los candados siguen leyendo
+// `estado`: es el que el servidor usa para aceptar o rebotar cada acción. La prueba de
+// fondo ARMA DOS VECES la misma quincena —con el campo y sin él— y exige que la barra de
+// acciones salga idéntica. Si algún día un botón empieza a mirar `estado_visible`, esa
+// comparación se rompe aquí y no en la mano del dueño.
+// =============================================================================
+describe('LiquidacionDetailDialog: el estado como se lee no mueve ningún botón', () => {
+  let fixture: ComponentFixture<LiquidacionDetailDialog>;
+  const PAGADA_DEBIENDO = 'pagada · quedó debiendo';
+
+  /** La quincena de Henri: $180.000 de leche contra $300.000 ya adelantados. */
+  const HENRI_DEBE: Partial<Liquidacion> = {
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Henri Castaño',
+    transportador_id: null,
+    transportador_nombre: null,
+    total_litros: '100',
+    precio_promedio: '1800',
+    valor_bruto: '180000',
+    valor_transporte: '0',
+    valor_total: '180000',
+    anticipos: '300000',
+    neto_a_pagar: '-120000',
+    saldo: '-120000',
+    le_queda_debiendo: '120000',
+    estado_visible: PAGADA_DEBIENDO,
+  };
+  const DETALLE_HENRI = [det('d-1', '2026-07-03', '100', '1800', '180000')];
+
+  const armar = async (item: Liquidacion): Promise<void> => {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [LiquidacionDetailDialog, NoopAnimationsModule],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: { item } },
+        { provide: LiquidacionesService, useValue: new ServicioFalso() },
+        { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(null) }) } },
+        {
+          provide: AuthService,
+          useValue: { hasPermission: () => true, perfil: () => null, esSuperadmin: () => false },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(LiquidacionDetailDialog);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  /** Todo lo que el dueño PUEDE hacer con esta quincena, como la pantalla lo ofrece. */
+  const loQuePuedeHacer = () => {
+    const c = fixture.componentInstance;
+    return {
+      botones: Array.from(fixture.nativeElement.querySelectorAll('button'))
+        .map((boton) => leido(boton as Element))
+        .filter((texto) => texto !== ''),
+      candados: Array.from(fixture.nativeElement.querySelectorAll('.nota-recalcular')).map(
+        (nota) => leido(nota as Element),
+      ),
+      puedePagar: c.puedePagar(),
+      puedeCerrarSinPago: c.puedeCerrarSinPago(),
+      puedeAnular: c.puedeAnular(),
+      puedeCorregir: c.puedeCorregir(),
+      puedeRecalcular: c.puedeRecalcular(),
+      puedeEditarPrecio: c.puedeEditarPrecio(),
+      motivoNoPagar: c.motivoNoPagar(),
+      motivoNoAnular: c.motivoNoAnular(),
+      motivoNoCorregir: c.motivoNoCorregir(),
+      motivoNoRecalcular: c.motivoNoRecalcular(),
+    };
+  };
+
+  /** Arma la quincena con el campo y sin él, y devuelve lo que se puede hacer en cada una. */
+  const conYSinElCampo = async (cifras: Partial<Liquidacion>) => {
+    await armar(liquidacion(DETALLE_HENRI, 'proveedor', cifras));
+    const conElCampo = loQuePuedeHacer();
+    const chipConElCampo = leido(fixture.nativeElement.querySelector('app-estado-chip'));
+    await armar(liquidacion(DETALLE_HENRI, 'proveedor', { ...cifras, estado_visible: undefined }));
+    const sinElCampo = loQuePuedeHacer();
+    return { conElCampo, sinElCampo, chipConElCampo };
+  };
+
+  const boton = (acciones: { botones: string[] }, texto: string): boolean =>
+    acciones.botones.some((b) => b.includes(texto));
+
+  it('el chip y la línea de estados dicen "pagada · quedó debiendo"', async () => {
+    await armar(liquidacion(DETALLE_HENRI, 'proveedor', { ...HENRI_DEBE, estado: 'aprobada' }));
+
+    expect(leido(fixture.nativeElement.querySelector('app-estado-chip'))).toBe(PAGADA_DEBIENDO);
+    // La línea se para en el último paso —no queda nada que entregarle— y la ayuda NO
+    // manda a "usar Pagar", que es un botón que aquí no está.
+    const actual = leido(fixture.nativeElement.querySelector('.paso.actual'));
+    expect(actual).toContain('Pagada');
+    const ayuda = leido(fixture.nativeElement.querySelector('app-liquidacion-estado-stepper .ayuda'));
+    expect(ayuda).toContain('No hay nada que entregarle');
+    expect(ayuda).not.toContain('Pagar');
+  });
+
+  it('una respuesta vieja, sin el campo, pinta el estado de siempre', async () => {
+    await armar(
+      liquidacion(DETALLE_HENRI, 'proveedor', {
+        ...HENRI_DEBE,
+        estado: 'aprobada',
+        estado_visible: undefined,
+      }),
+    );
+    expect(leido(fixture.nativeElement.querySelector('app-estado-chip'))).toBe('aprobada');
+  });
+
+  it('APROBADA que quedó debiendo: los mismos botones con el campo y sin él', async () => {
+    const r = await conYSinElCampo({ ...HENRI_DEBE, estado: 'aprobada' });
+
+    expect(r.chipConElCampo).toBe(PAGADA_DEBIENDO);
+    expect(r.conElCampo).toEqual(r.sinElCampo);
+    // Y lo que eso significa, dicho con nombre: el chip dice "pagada" pero la quincena
+    // SIGUE siendo una aprobada para el servidor, así que se puede anular (la deuda aún
+    // no se cobró) y no se puede pagar (no hay nada que entregar).
+    expect(r.conElCampo.puedeAnular).toBeTrue();
+    expect(boton(r.conElCampo, 'Anular')).toBeTrue();
+    expect(r.conElCampo.puedePagar).toBeFalse();
+    expect(boton(r.conElCampo, 'Pagar')).toBeFalse();
+    expect(r.conElCampo.candados.join(' ')).toContain('No hay nada que pagar');
+  });
+
+  it('PAGADA que quedó debiendo (se le pagó de más): "Corregir" sigue ahí', async () => {
+    // Si "Corregir" mirara el chip ("pagada · quedó debiendo" no es 'pagada') se
+    // escondería justo en la quincena que el dueño tiene que poder arreglar.
+    const r = await conYSinElCampo({
+      ...HENRI_DEBE,
+      estado: 'pagada',
+      anticipos: '0',
+      pagado: '300000',
+      pagos: [{ id: 'p-1', fecha: '2026-07-16', valor: '300000', observaciones: null }],
+    });
+
+    expect(r.chipConElCampo).toBe(PAGADA_DEBIENDO);
+    expect(r.conElCampo).toEqual(r.sinElCampo);
+    expect(r.conElCampo.puedeCorregir).toBeTrue();
+    expect(boton(r.conElCampo, 'Corregir esta quincena')).toBeTrue();
+  });
+
+  it('PARCIAL que quedó debiendo: tampoco cambia nada de lo que se puede hacer', async () => {
+    const r = await conYSinElCampo({
+      ...HENRI_DEBE,
+      estado: 'parcial',
+      anticipos: '200000',
+      pagado: '100000',
+      pagos: [{ id: 'p-1', fecha: '2026-07-16', valor: '100000', observaciones: null }],
+    });
+
+    expect(r.chipConElCampo).toBe(PAGADA_DEBIENDO);
+    expect(r.conElCampo).toEqual(r.sinElCampo);
+    expect(r.conElCampo.puedeCorregir).toBeTrue();
+  });
+
+  it('con la deuda ya cobrada en otra, los candados son los mismos con el campo y sin él', async () => {
+    const r = await conYSinElCampo({
+      ...HENRI_DEBE,
+      estado: 'aprobada',
+      deuda_trasladada_a_id: 'l-siguiente',
+      deuda_trasladada_a: {
+        id: 'l-siguiente',
+        periodo_inicio: '2026-07-16',
+        periodo_fin: '2026-07-31',
+        periodo_texto: '16/07/2026 al 31/07/2026',
+      },
+    });
+
+    expect(r.conElCampo).toEqual(r.sinElCampo);
+    expect(r.conElCampo.puedeAnular).toBeFalse();
+    expect(r.conElCampo.motivoNoAnular).not.toBeNull();
   });
 });

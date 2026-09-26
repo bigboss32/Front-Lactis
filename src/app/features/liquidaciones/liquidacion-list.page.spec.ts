@@ -403,3 +403,223 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
     expect(celda).not.toContain('cobra lo anterior');
   });
 });
+
+// =============================================================================
+// "PAGADA · QUEDÓ DEBIENDO": EL ESTADO COMO SE LEE.
+//
+// Lo pidió el dueño: la quincena en firme en la que el tercero quedó debiendo no tiene
+// nada que entregarse, y el chip decía "aprobada", que se lee "falta pagarla". El backend
+// manda `estado_visible` y la lista solo lo pinta. Y lo que tiene que cuadrar con el chip
+// es EL FILTRO: una fila que dice "pagada" no puede salir al tocar "Aprobadas".
+// =============================================================================
+
+const PAGADA_DEBIENDO = 'pagada · quedó debiendo';
+
+/**
+ * EL SERVIDOR DE VERDAD, no el falso de arriba (que filtra por `estado` pelado).
+ *
+ * Es la regla de `LiquidacionService.list` en el backend: "pagada" INCLUYE las que están
+ * en firme con el saldo por debajo de cero, y "aprobada"/"parcial" las EXCLUYEN. Si la
+ * pantalla contara por su cuenta mirando `fila.estado`, con este servidor las tarjetas
+ * no cuadrarían con el chip.
+ */
+class ServicioComoElServidor {
+  filas: Liquidacion[] = [];
+  pedidos: (string | null | undefined)[] = [];
+
+  list(params?: { estado?: string | null }): Observable<Page<Liquidacion>> {
+    this.pedidos.push(params?.estado);
+    const enFirme = ['aprobada', 'parcial', 'pagada'];
+    const debe = (f: Liquidacion) => Number(f.saldo) < 0;
+    const estado = params?.estado;
+    const items = this.filas.filter((f) => {
+      if (!estado) return true;
+      if (estado === 'pagada') {
+        return f.estado === 'pagada' || (enFirme.includes(f.estado) && debe(f));
+      }
+      if (estado === 'aprobada' || estado === 'parcial') return f.estado === estado && !debe(f);
+      return f.estado === estado;
+    });
+    return of({ items, total: items.length, page: 1, page_size: 20, pages: 1 });
+  }
+}
+
+describe('LiquidacionListPage: "pagada · quedó debiendo" en el chip, las tarjetas y el filtro', () => {
+  let fixture: ComponentFixture<LiquidacionListPage>;
+  let servicio: ServicioComoElServidor;
+
+  /** Aprobada en la base, y el tercero quedó debiendo: el caso del dueño. */
+  const APROBADA_QUE_DEBE = liq({
+    ...HENRI_QUEDO_DEBIENDO_120K,
+    id: 'l-aprobada-debe',
+    estado: 'aprobada',
+    estado_visible: PAGADA_DEBIENDO,
+    deuda_trasladada_a_id: 'l-siguiente',
+  });
+  /** La de Alex, aprobada y con plata por entregar: esa sí es "por pagar". */
+  const APROBADA_POR_PAGAR = liq({ ...A_ALEX_130K, estado_visible: 'aprobada' });
+  /** Una pagada limpia, para comparar. */
+  const PAGADA_LIMPIA = liq({
+    id: 'l-pagada',
+    estado: 'pagada',
+    estado_visible: 'pagada',
+    pagado: '44506.32',
+    saldo: '0',
+  });
+
+  const limpiarFiltrosGuardados = () => {
+    try {
+      sessionStorage.removeItem('qe.filtros.liquidaciones');
+    } catch {
+      /* sin sessionStorage no hay nada que limpiar */
+    }
+  };
+
+  beforeEach(limpiarFiltrosGuardados);
+  afterEach(limpiarFiltrosGuardados);
+
+  const refrescar = async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  };
+
+  const armar = async (filas: Liquidacion[]): Promise<void> => {
+    servicio = new ServicioComoElServidor();
+    servicio.filas = filas;
+    await TestBed.configureTestingModule({
+      imports: [LiquidacionListPage, NoopAnimationsModule],
+      providers: [
+        provideNativeDateAdapter(),
+        { provide: MAT_DATE_LOCALE, useValue: 'es-CO' },
+        { provide: LiquidacionesService, useValue: servicio },
+        { provide: MatSnackBar, useValue: { open: () => {} } },
+        { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(null) }) } },
+        {
+          provide: AuthService,
+          useValue: { hasPermission: () => true, perfil: () => null, esSuperadmin: () => false },
+        },
+      ],
+    }).compileComponents();
+    fixture = TestBed.createComponent(LiquidacionListPage);
+    await refrescar();
+  };
+
+  /** Los chips de la columna Estado, fila por fila, como se leen (sin el CSS). */
+  const chips = (): string[] =>
+    Array.from(fixture.nativeElement.querySelectorAll('td[data-label="Estado"] .chip')).map(
+      (chip) => comoSeLee((chip as HTMLElement).textContent),
+    );
+
+  const idsEnPantalla = (): string[] => fixture.componentInstance.filas().map((f) => f.id);
+
+  const tarjetaBoton = (texto: string): HTMLButtonElement =>
+    Array.from(
+      fixture.nativeElement.querySelectorAll('button.tarjeta') as NodeListOf<HTMLButtonElement>,
+    ).find((t) => comoSeLee(t.textContent).includes(texto))!;
+
+  const cifraDe = (texto: string): string =>
+    comoSeLee(tarjetaBoton(texto).querySelector('.cifra')?.textContent);
+
+  it('el chip pinta el estado como se lee, no el que se guarda', async () => {
+    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR]);
+
+    expect(chips()).toEqual([PAGADA_DEBIENDO, 'aprobada']);
+    // Y en verde, como una pagada: no hay nada que hacer con ella.
+    const chip = fixture.nativeElement.querySelector(
+      'td[data-label="Estado"] .chip',
+    ) as HTMLElement;
+    expect(chip.classList).toContain('verde');
+  });
+
+  it('una respuesta vieja, sin el campo o con el campo vacío, pinta el estado de siempre', async () => {
+    const vieja: Liquidacion = { ...APROBADA_QUE_DEBE, id: 'l-vieja' };
+    delete vieja.estado_visible;
+    await armar([vieja, { ...APROBADA_QUE_DEBE, id: 'l-vacia', estado_visible: '' }]);
+
+    // Nunca un chip vacío ni "undefined": se cae en `estado`.
+    expect(chips()).toEqual(['aprobada', 'aprobada']);
+  });
+
+  it('las tarjetas cuentan lo que dice el chip: la que quedó debiendo va en Pagadas', async () => {
+    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR, PAGADA_LIMPIA]);
+
+    const resumen = fixture.componentInstance.resumen()!;
+    expect(resumen.aprobadas).toBe(1);
+    expect(resumen.pagadas).toBe(2);
+    expect(resumen.saldoAprobadas).toBe(130000);
+    // La cifra grande de cada tarjeta, como la lee el dueño.
+    expect(cifraDe('Aprobadas por pagar')).toBe('1');
+    expect(cifraDe('Pagadas en el período')).toBe('2');
+    // Aquí la deuda ya se cobró en otra quincena: no suma a la tarjeta de lo que le deben.
+    expect(resumen.liquidacionesQueDeben).toBe(0);
+  });
+
+  it('una deuda sin cobrar entra UNA sola vez en la tarjeta de lo que le deben', async () => {
+    // Ahora viaja en la consulta de las pagadas y no en la de las aprobadas: tiene que
+    // seguir contándose, y una sola vez.
+    await armar([{ ...APROBADA_QUE_DEBE, deuda_trasladada_a_id: null }, APROBADA_POR_PAGAR]);
+
+    const resumen = fixture.componentInstance.resumen()!;
+    expect(resumen.liquidacionesQueDeben).toBe(1);
+    expect(resumen.leQuedaronDebiendo).toBe(120000);
+  });
+
+  it('tocar "Aprobadas" NO trae la fila que dice pagada; tocar "Pagadas" SÍ', async () => {
+    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR, PAGADA_LIMPIA]);
+
+    tarjetaBoton('Aprobadas por pagar').click();
+    await refrescar();
+    expect(servicio.pedidos).toContain('aprobada');
+    expect(idsEnPantalla()).toEqual(['l-alex-130']);
+    expect(chips()).not.toContain(PAGADA_DEBIENDO);
+
+    tarjetaBoton('Pagadas en el período').click();
+    await refrescar();
+    expect(idsEnPantalla()).toEqual(['l-aprobada-debe', 'l-pagada']);
+    expect(chips()).toEqual([PAGADA_DEBIENDO, 'pagada']);
+  });
+
+  it('el desplegable de estado dice lo mismo que las tarjetas', async () => {
+    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR, PAGADA_LIMPIA]);
+
+    fixture.componentInstance.estado.setValue('aprobada');
+    await refrescar();
+    expect(chips()).toEqual(['aprobada']);
+
+    fixture.componentInstance.estado.setValue('parcial');
+    await refrescar();
+    expect(chips()).toEqual([]);
+
+    fixture.componentInstance.estado.setValue('pagada');
+    await refrescar();
+    expect(chips()).toEqual([PAGADA_DEBIENDO, 'pagada']);
+  });
+
+  it('lo que la fila marca como pendiente sigue mirando `estado`, no el chip', async () => {
+    await armar([APROBADA_QUE_DEBE]);
+    const pagina = fixture.componentInstance;
+    const sinElCampo: Liquidacion = { ...APROBADA_QUE_DEBE, estado_visible: undefined };
+
+    // Con el campo y sin él, las marcas de la fila son las mismas: el chip no las mueve.
+    expect(pagina.esPorPagar(APROBADA_QUE_DEBE)).toBe(pagina.esPorPagar(sinElCampo));
+    expect(pagina.marcaLeQuedaDebiendo(APROBADA_QUE_DEBE)).toBe(
+      pagina.marcaLeQuedaDebiendo(sinElCampo),
+    );
+    expect(pagina.tooltipLeQuedaDebiendo(APROBADA_QUE_DEBE)).toBe(
+      pagina.tooltipLeQuedaDebiendo(sinElCampo),
+    );
+    // El borde de la fila sale de `estado` (con el texto visible saldrían clases basura).
+    const fila = fixture.nativeElement.querySelector('tr.mat-mdc-row') as HTMLElement;
+    expect(fila.classList).toContain('fila-aprobada');
+    expect(fila.classList).toContain('fila-le-debe');
+  });
+
+  it('ordenar por Estado ordena por lo que dice el chip', async () => {
+    await armar([APROBADA_POR_PAGAR, PAGADA_LIMPIA, APROBADA_QUE_DEBE]);
+
+    fixture.componentInstance.orden.set({ active: 'estado', direction: 'asc' });
+    await refrescar();
+    expect(chips()).toEqual(['aprobada', 'pagada', PAGADA_DEBIENDO]);
+  });
+});

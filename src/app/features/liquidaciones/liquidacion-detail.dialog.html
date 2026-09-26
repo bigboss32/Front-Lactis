@@ -38,11 +38,102 @@
           El papel que {{ tercero() }} tiene en la mano puede ser el anterior: entréguele
           esta versión y recójale la vieja.
         </p>
+        <!--
+          EL ENLACE AL HISTORIAL. La banda sigue mostrando SOLO LA ÚLTIMA corrección —es
+          la que explica el papel vigente y tiene que caber en tres líneas—, y acá abajo
+          dice cuántas hay en total.
+
+          Sale con una sola corrección también, con otro rótulo: la banda dice el motivo
+          pero no QUÉ cambió ni de cuánto a cuánto, y esa es justo la pregunta que el
+          productor hace con la hoja en la mano.
+        -->
+        @if (rotuloHistorial(); as rotulo) {
+          <button
+            type="button"
+            class="ver-historial"
+            aria-controls="historial-de-correcciones"
+            [attr.aria-expanded]="verHistorial()"
+            (click)="toggleHistorial()"
+          >
+            <mat-icon>{{ verHistorial() ? 'expand_less' : 'expand_more' }}</mat-icon>
+            {{ verHistorial() ? 'ocultar las correcciones' : rotulo }}
+          </button>
+        }
       </div>
     </div>
   }
 
-  <app-liquidacion-estado-stepper [estado]="liq().estado" />
+  <!--
+    EL HISTORIAL COMPLETO, de la más vieja a la más nueva.
+
+    VA ACÁ Y NO EN OTRO DIÁLOGO (el porqué está escrito en `verHistorial`, en el .ts):
+    este detalle ya es una ventana abierta sobre otra, y las cifras de cada corrección se
+    cuadran contra el resumen que está más abajo EN ESTA MISMA pantalla.
+
+    El orden es el del papel: el comprobante en PDF imprime v2, después v3, y el dueño
+    recorre las dos listas en paralelo para emparejar la hoja que le muestran.
+  -->
+  @if (verHistorial() && historial().length) {
+    <div class="historial" id="historial-de-correcciones">
+      <p class="historial-titulo">
+        Esta quincena se corrigió {{ cuantasVeces() }}. Cada corrección dejó un comprobante
+        con su propio número de versión; el productor puede tener cualquiera de esos papeles.
+      </p>
+      @for (correccion of historial(); track correccion.id) {
+        <div class="correccion">
+          <div class="correccion-cuando">
+            <span class="correccion-version">v{{ correccion.version }}</span>
+            <span>{{ correccion.cuando }}</span>
+            <span class="correccion-quien">· {{ correccion.quien }}</span>
+          </div>
+
+          <ul class="correccion-cambios">
+            @for (cambio of correccion.cambios; track $index) {
+              <li>{{ cambio }}</li>
+            }
+          </ul>
+
+          <!--
+            LAS CIFRAS QUE SE MOVIERON, y solo esas. En una corrección de puro adelanto el
+            valor total NO se mueve: mostrar solo esa cifra diría "no cambió nada" y
+            escondería la que sí cambió. Ver `cifrasQueSeMovieron`.
+          -->
+          @if (correccion.cifras.length) {
+            <div class="correccion-cifras">
+              @for (cifra of correccion.cifras; track cifra.etiqueta) {
+                <div class="correccion-cifra">
+                  <span>{{ cifra.etiqueta }}</span>
+                  <span class="correccion-movida">
+                    <span class="num">{{ cifra.antes | money: true }}</span>
+                    <span class="flecha">→</span>
+                    <span class="num">{{ cifra.despues | money: true }}</span>
+                  </span>
+                </div>
+              }
+            </div>
+          }
+          @if (correccion.sinMovimiento) {
+            <p class="correccion-nota">
+              Las cifras de este comprobante no se movieron con esta corrección: lo que
+              cambió queda para la quincena siguiente.
+            </p>
+          }
+          @if (correccion.notaAdelantos) {
+            <p class="correccion-nota">{{ correccion.notaAdelantos }}</p>
+          }
+
+          <p class="correccion-motivo">Motivo: {{ correccion.motivo }}</p>
+        </div>
+      }
+    </div>
+  }
+
+  <!--
+    EL ESTADO COMO SE LEE (`estadoComoSeLee`), aquí y en el chip de abajo: una quincena
+    en firme en la que el tercero quedó debiendo dice "pagada · quedó debiendo", igual que
+    el PDF. Solo en lo que se PINTA: los botones y los candados siguen leyendo `estado`.
+  -->
+  <app-liquidacion-estado-stepper [estado]="estadoComoSeLee(liq())" />
 
   <div class="info">
     <div>
@@ -51,7 +142,7 @@
     </div>
     <div>
       <span class="etiqueta">Estado</span>
-      <app-estado-chip [estado]="liq().estado" />
+      <app-estado-chip [estado]="estadoComoSeLee(liq())" />
     </div>
     @if (liq().observaciones) {
       <div>

@@ -653,6 +653,19 @@ export interface DeudaCobrada extends LiquidacionReferencia {
 }
 
 export interface Liquidacion extends TenantFields {
+  /**
+   * EL ESTADO COMO SE LEE: igual a `estado` casi siempre, y "pagada · quedó debiendo"
+   * cuando la quincena está en firme (aprobada, parcial o pagada) y el tercero quedó
+   * debiendo —no hay nada que entregarle—. Nunca en borrador ni en anulada.
+   *
+   * La regla vive en el backend (`Liquidacion.estado_visible`) y la pantalla solo la
+   * pinta, siempre por `estadoComoSeLee` (liquidaciones/estado-como-se-lee.ts). Y SOLO SE
+   * PINTA: los botones y los candados siguen mirando `estado`.
+   *
+   * OPCIONAL a propósito: una respuesta vieja o cacheada no lo trae, y ahí se cae en
+   * `estado`.
+   */
+  estado_visible?: string;
   tipo: 'proveedor' | 'transportador' | string;
   proveedor_id: string | null;
   proveedor_nombre: string | null;

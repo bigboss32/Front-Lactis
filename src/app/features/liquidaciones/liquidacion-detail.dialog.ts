@@ -20,6 +20,7 @@ import {
 } from '../../core/models';
 import { compartirArchivo, compartirWhatsApp } from '../../shared/compartir';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { fechaEnHoraDeColombia } from '../../shared/date-utils';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoChip } from '../../shared/estado-chip';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
@@ -33,7 +34,12 @@ import {
   porQueSeLePagoDeMas,
   precioTecleado,
 } from './cifras-de-la-quincena';
+import {
+  RenglonDeCorreccion,
+  renglonesDeCorrecciones,
+} from './correcciones-en-palabras';
 import { CorregirQuincenaDialog } from './corregir-quincena.dialog';
+import { estadoComoSeLee } from './estado-como-se-lee';
 import { LiquidacionEstadoStepper } from './liquidacion-estado-stepper';
 import { comoFecha, periodoDe } from './periodo-liquidacion';
 import {
@@ -177,6 +183,123 @@ interface RenglonComparable {
       color: var(--mat-sys-on-tertiary-container);
     }
     .banda-motivo { margin: 2px 0 0; font-size: 0.8rem; }
+    /*
+     * EL ENLACE QUE ABRE EL HISTORIAL, dentro de la misma banda.
+     *
+     * Se ve como un enlace y no como un botón de Material a propósito: la banda tiene
+     * que seguir leyéndose como una advertencia de tres líneas, y un botón con relieve
+     * ahí adentro compite con el "Corregido el …" que es lo que hay que leer primero.
+     * Lleva subrayado —no solo color— porque en la banda todo el texto ya va con el
+     * color del contenedor, y sin el subrayado no se ve que se puede tocar.
+     */
+    .ver-historial {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+      padding: 2px 0;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: inherit;
+      background: none;
+      border: none;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .ver-historial mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+    /*
+     * EL HISTORIAL COMPLETO. Va DEBAJO de la banda y dentro del flujo de la pantalla
+     * (no es sticky): la advertencia se queda arriba, y esta lista se lee y se desplaza
+     * contra el resumen de más abajo, que es con el que se cuadran sus cifras.
+     */
+    .historial {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--mat-sys-tertiary) 10%, transparent);
+    }
+    .historial-titulo {
+      margin: 0 0 8px;
+      font-size: 0.8125rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* Una corrección por bloque, separadas por una línea: el dueño empareja UNA hoja
+       con UN renglón, y sin la separación los renglones se leen corridos. */
+    .correccion {
+      padding: 8px 0;
+      border-top: 1px solid color-mix(in srgb, var(--mat-sys-on-surface) 12%, transparent);
+    }
+    .correccion:first-of-type { border-top: none; }
+    .correccion-cuando {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 8px;
+      font-size: 0.8125rem;
+    }
+    /* La versión es el número que aparece en el folio del papel ("A3F2B1C9-v2"): se
+       marca para que el ojo la encuentre sin leer el renglón entero. */
+    .correccion-version {
+      padding: 1px 8px;
+      border-radius: 999px;
+      background: var(--mat-sys-tertiary-container);
+      color: var(--mat-sys-on-tertiary-container);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .correccion-quien { color: var(--mat-sys-on-surface-variant); }
+    /* Qué cambió, una frase por renglón: son hechos distintos (un día, un precio, un
+       adelanto) y en un párrafo corrido se leen como uno solo. */
+    .correccion-cambios {
+      margin: 6px 0 0;
+      padding-left: 20px;
+      font-size: 0.8125rem;
+      line-height: 1.45;
+    }
+    /* Las cifras, antes y ahora: el mismo "rótulo … cifra → cifra" del aviso del
+       recálculo, porque es la misma pregunta y el dueño ya sabe leerla. */
+    .correccion-cifras { margin-top: 6px; font-size: 0.8125rem; }
+    .correccion-cifra {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 2px 8px;
+    }
+    /*
+     * Las dos puntas y la flecha van en un solo bloque que NO se parte: en un celular,
+     * "$ 500.000 →" arriba y "$ 680.000" abajo se lee como dos cifras sueltas. Lo que sí
+     * puede bajar de línea es el rótulo largo ("Lo que hay que entregarle").
+     */
+    .correccion-movida {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .correccion-cifras .num {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .correccion-cifras .flecha { color: var(--mat-sys-on-surface-variant); }
+    .correccion-motivo {
+      margin: 6px 0 0;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+    }
+    /* Las notas del renglón —"las cifras no se movieron", "no quedó anotado cuánto
+       sumaban los adelantos"— en el tono discreto de las demás aclaraciones: explican
+       una ausencia, no avisan de un problema. */
+    .correccion-nota {
+      margin: 6px 0 0;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
     /*
      * EL CLIP DE LOS SOPORTES, con el número encima. Es el mismo dibujo que en la
      * lista de reventa —donde el dueño ya lo conoce— y no otro: el clip con la
@@ -484,6 +607,8 @@ export class LiquidacionDetailDialog {
   readonly data = inject<{ item: Liquidacion }>(MAT_DIALOG_DATA);
 
   readonly liq = signal<Liquidacion>(this.data.item);
+  /** SOLO para el chip y la línea de estados: los botones siguen leyendo `liq().estado`. */
+  readonly estadoComoSeLee = estadoComoSeLee;
   readonly procesando = signal(false);
   readonly descargando = signal(false);
   readonly compartiendo = signal(false);
@@ -1203,11 +1328,71 @@ export class LiquidacionDetailDialog {
       if (!this.fueCorregida()) return null;
       const ultima = this.correcciones()[this.correcciones().length - 1] ?? null;
       return {
-        fecha: ultima ? comoFecha(ultima.created_at.slice(0, 10)) : null,
+        // EN HORA DE COLOMBIA, no la del computador: `created_at` es un instante en UTC
+        // y recortarle los diez primeros caracteres mostraba el día de UTC. Una
+        // corrección hecha a las 7 de la noche acá cae en el día siguiente allá, así que
+        // la banda decía una fecha y el papel —que sí convierte— decía la anterior.
+        fecha: ultima ? fechaEnHoraDeColombia(ultima.created_at) : null,
         motivo: ultima?.motivo ?? null,
       };
     },
   );
+
+  // ------------------------------- el historial completo de correcciones
+  /**
+   * EL HISTORIAL VA DESPLEGABLE DEBAJO DE LA BANDA, Y NO EN OTRO DIÁLOGO. Por qué:
+   *
+   *  · ESTE DETALLE YA ES UNA VENTANA SOBRE OTRA. Se abre desde la lista de quincenas,
+   *    que es una pantalla con su propio diálogo encima cuando se corrige. Un tercer
+   *    piso de ventanas en una tablet —que es donde el dueño trabaja— tapa la pantalla
+   *    entera, se cierra con el botón de atrás sin querer y devuelve al escritorio.
+   *  · LAS CIFRAS SE CUADRAN CONTRA LAS DE ABAJO. El renglón dice "lo que hay que
+   *    entregarle pasó de $500.000 a $680.000" y esa segunda cifra TIENE que ser la del
+   *    resumen que está más abajo en esta misma pantalla. En un diálogo aparte, el
+   *    resumen queda tapado justo cuando hay que compararlo.
+   *  · Y CERRADO NO CUESTA NADA. La pantalla es densa, y por eso arranca plegado: quien
+   *    solo quiere el comprobante ve la banda de siempre, de tres líneas, y quien tiene
+   *    al productor enfrente con una hoja vieja en la mano abre la lista de un toque.
+   *
+   * Lo que se paga a cambio: el historial se desplaza con el contenido (la banda no, que
+   * es sticky). Es justo el orden correcto —la advertencia se queda, el detalle se lee—.
+   */
+  readonly verHistorial = signal(false);
+
+  toggleHistorial(): void {
+    this.verHistorial.update((abierto) => !abierto);
+  }
+
+  /** Las correcciones traducidas al idioma del dueño. Ver `correcciones-en-palabras`. */
+  readonly historial = computed<RenglonDeCorreccion[]>(() =>
+    renglonesDeCorrecciones(this.correcciones()),
+  );
+
+  /** "una vez" / "3 veces": va acá y no en la plantilla porque "1 veces" se lee como un error. */
+  readonly cuantasVeces = computed(() => {
+    const cuantas = this.historial().length;
+    return cuantas === 1 ? 'una vez' : `${cuantas} veces`;
+  });
+
+  /**
+   * EL ENLACE DE LA BANDA, con la cuenta adentro: "ver las 3 correcciones".
+   *
+   * El número va en el rótulo y no escondido adentro porque es la mitad del aviso: si la
+   * quincena se corrigió tres veces, el productor puede llegar con cualquiera de las
+   * tres hojas, y saber CUÁNTAS hay es lo que le dice al dueño que la que tiene en la
+   * mano puede no ser ni la primera ni la última.
+   *
+   * Con una sola corrección el enlace igual se ofrece —la banda muestra el motivo, pero
+   * no QUÉ cambió ni de cuánto a cuánto—, y ahí el rótulo es otro: "ver las 1
+   * correcciones" se lee como un error del sistema y le quita confianza a la cifra de al
+   * lado. Sin ninguna cargada (todavía, o porque el servidor no respondió) no hay enlace:
+   * abriría una lista vacía.
+   */
+  readonly rotuloHistorial = computed<string | null>(() => {
+    const cuantas = this.correcciones().length;
+    if (cuantas === 0) return null;
+    return cuantas === 1 ? 'ver qué cambió' : `ver las ${cuantas} correcciones`;
+  });
 
   /**
    * EL RÓTULO DEL BOTÓN DE PDF. Con una corrección encima ya no basta con "PDF": lo que
