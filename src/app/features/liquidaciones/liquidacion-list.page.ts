@@ -19,7 +19,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Liquidacion } from '../../core/models';
+import { Liquidacion, Monto } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
@@ -28,7 +28,11 @@ import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
-import { causaDeLaDeuda, porQueSeLePagoDeMas } from './cifras-de-la-quincena';
+import {
+  causaDeLaDeuda,
+  deudaBorradaPorReparar,
+  porQueSeLePagoDeMas,
+} from './cifras-de-la-quincena';
 import { CierreGenerar, GenerarQuincenaDialog } from './generar-quincena.dialog';
 import { LiquidacionDetailDialog } from './liquidacion-detail.dialog';
 import { periodoDe } from './periodo-liquidacion';
@@ -57,6 +61,23 @@ interface ResumenEstados {
   leQuedaronDebiendo: number;
   /** En cuántas liquidaciones: sin el conteo, la cifra no se puede ir a revisar. */
   liquidacionesQueDeben: number;
+  /**
+   * Las quincenas a las que la migración de los abonos les borró la deuda, y cuánto suma
+   * lo borrado. Cero casi siempre, y cero también si el servidor todavía no las cuenta.
+   */
+  porReparar: number;
+  deudaBorrada: number;
+}
+
+/**
+ * Una cifra de `GET /liquidaciones/resumen` como número ("130000.00" → 130000). Si
+ * falta o no es un número, revienta: `cargarResumen` deja las tarjetas sin pintar en
+ * vez de mostrar "$ NaN" o un $0 que nadie mandó.
+ */
+function cifraDelResumen(valor: Monto | null | undefined): number {
+  const numero = valor === null || valor === undefined || valor === '' ? NaN : Number(valor);
+  if (!Number.isFinite(numero)) throw new Error(`Cifra del resumen ilegible: ${valor}`);
+  return numero;
 }
 
 @Component({
@@ -331,81 +352,49 @@ export class LiquidacionListPage implements OnInit {
   }
 
   /**
-   * Carga los conteos por estado para las tarjetas resumen respetando los
-   * filtros de tipo y fechas (no el de estado, que es el que las tarjetas
-   * controlan). Cada estado se pide con hasta 200 filas (el máximo del backend) y de
-   * ahí salen las dos cifras de plata: lo que hay POR PAGAR y lo que los terceros LE
-   * QUEDARON DEBIENDO.
+   * LAS TARJETAS LAS CUENTA EL SERVIDOR, en una sola consulta (`GET
+   * /liquidaciones/resumen`) y con los filtros de tipo y fechas de la lista —no el de
+   * estado, que es el que las tarjetas controlan—.
    *
-   * Los borradores y las pagadas también traen sus filas —antes se pedían de una en una,
-   * solo para contarlas— porque una deuda del tercero vive en cualquiera de los cuatro
-   * estados: nace en un BORRADOR (así se genera la quincena) y las 'pagada' viejas del
-   * cliente quedaron con saldo negativo por el botón Pagar de antes. Contándola solo en
-   * las aprobadas, la tarjeta se dejaría por fuera justo la deuda recién nacida.
+   * Antes se pedían cuatro listas de hasta 200 filas y se contaba aquí. El total venía
+   * completo pero las filas no: con más de 200 pagadas en el período, la deuda vieja de
+   * enero ($120.000 que nadie ha cobrado) quedaba en la página 2 y la tarjeta "Le
+   * quedaron debiendo" desaparecía. Las reglas —lo que dice el chip, solo saldos
+   * positivos en "por pagar", sin anuladas ni deudas ya cobradas— viven ahora en el
+   * backend, que es el que ve todas las filas.
    *
-   * LAS TARJETAS CUENTAN LO QUE DICE EL CHIP porque cuentan con el filtro DEL SERVIDOR,
-   * nunca mirando `fila.estado` aquí: la quincena en firme en la que el tercero quedó
-   * debiendo se pinta "pagada · quedó debiendo", y el `?estado=` del backend la mete en
-   * "pagada" y la saca de "aprobada"/"parcial". Contar aquí por `estado` la devolvería a
-   * "Aprobadas por pagar", que era la queja del dueño. Y como cada fila sale en UNA sola
-   * de las cuatro consultas, la deuda de abajo no se cuenta dos veces.
-   *
-   * LAS ANULADAS NO SE PIDEN, y eso es la regla del servidor: la deuda de una liquidación
-   * anulada no viaja a ninguna parte (ver `deudas_sin_cobrar` en el backend), así que
-   * sumarla acá prometería un cobro que nadie va a hacer.
+   * Si la respuesta falla o trae una cifra que no se puede leer, no se pintan tarjetas:
+   * una tarjeta en $0 afirmaría que nadie debe nada.
    */
   async cargarResumen(): Promise<void> {
-    const filtros = {
-      tipo: this.tipo.value,
-      desde: dateToIso(this.desde.value),
-      hasta: dateToIso(this.hasta.value),
-    };
     try {
-      const porEstado = (estado: string) =>
-        firstValueFrom(this.servicio.list({ ...filtros, estado, page: 1, page_size: 200 }));
-      const [borradores, aprobadas, parciales, pagadas] = await Promise.all([
-        porEstado('borrador'),
-        porEstado('aprobada'),
-        porEstado('parcial'),
-        porEstado('pagada'),
-      ]);
-      const deben = [
-        ...borradores.items,
-        ...aprobadas.items,
-        ...parciales.items,
-        ...pagadas.items,
-      ].filter((liq) => this.leQuedaDebiendo(liq) && !this.deudaYaCobrada(liq));
+      const r = await firstValueFrom(
+        this.servicio.resumen({
+          tipo: this.tipo.value,
+          desde: dateToIso(this.desde.value),
+          hasta: dateToIso(this.hasta.value),
+        }),
+      );
+      // Las de la deuda borrada son opcionales (una respuesta vieja no las trae) y ahí se
+      // leen como cero. Pero si el servidor dice que hay alguna, la cifra tiene que venir
+      // legible: "2 quincenas por reparar · $ NaN" no se le puede mostrar al dueño.
+      const porReparar = r.por_reparar == null ? 0 : cifraDelResumen(r.por_reparar);
+      const deudaBorrada = porReparar > 0 ? cifraDelResumen(r.deuda_borrada) : 0;
       this.resumen.set({
-        borradores: borradores.total,
-        aprobadas: aprobadas.total,
-        saldoAprobadas: this.saldoPorPagar(aprobadas.items),
-        parciales: parciales.total,
-        // `saldo` ya es solo lo que falta por pagar, así que esta suma es deuda
-        // viva: no se le puede restar lo ya abonado otra vez.
-        saldoParciales: this.saldoPorPagar(parciales.items),
-        pagadas: pagadas.total,
-        leQuedaronDebiendo: deben.reduce((suma, liq) => suma + Number(liq.le_queda_debiendo ?? 0), 0),
-        liquidacionesQueDeben: deben.length,
+        borradores: cifraDelResumen(r.borradores),
+        aprobadas: cifraDelResumen(r.aprobadas),
+        saldoAprobadas: cifraDelResumen(r.saldo_aprobadas),
+        parciales: cifraDelResumen(r.parciales),
+        saldoParciales: cifraDelResumen(r.saldo_parciales),
+        pagadas: cifraDelResumen(r.pagadas),
+        leQuedaronDebiendo: cifraDelResumen(r.le_quedaron_debiendo),
+        liquidacionesQueDeben: cifraDelResumen(r.liquidaciones_que_deben),
+        porReparar,
+        deudaBorrada,
       });
     } catch {
       this.resumen.set(null);
     }
-  }
-
-  /**
-   * LO QUE LA QUESERA TIENE QUE SACAR, sin dejar que una deuda del tercero lo tape.
-   *
-   * La tarjeta dice "$X por pagar" y esa cifra es plata por SALIR. Un saldo negativo es
-   * lo contrario —el proveedor le quedó debiendo a la quesera— y sumado crudo restaba
-   * de la deuda de los demás: dos liquidaciones, una de $130.000 por pagar y otra de
-   * -$120.000, mostraban "$ 10.000" cuando hay $130.000 por entregar de verdad. Cada
-   * fila entra solo si es positiva, que es la pregunta que el dueño le hace a esta
-   * tarjeta; lo que a él le deben va en SU tarjeta y con su nombre (ver
-   * `leQuedaronDebiendo` en `ResumenEstados`), y en cada fila con su marca (ver
-   * `leQuedaDebiendo`).
-   */
-  private saldoPorPagar(items: Liquidacion[]): number {
-    return items.reduce((suma, liq) => suma + Math.max(0, Number(liq.saldo)), 0);
   }
 
   /**
@@ -428,7 +417,42 @@ export class LiquidacionListPage implements OnInit {
    * resto sigue siendo deuda; dejarla por fuera escondería plata por pagar.
    */
   esPorPagar(fila: Liquidacion): boolean {
-    return (fila.estado === 'aprobada' || fila.estado === 'parcial') && Number(fila.saldo) > 0;
+    return (
+      (fila.estado === 'aprobada' || fila.estado === 'parcial') &&
+      Number(fila.saldo) > 0 &&
+      // Con la deuda borrada ese saldo trae sumado lo que el tercero debe, y el servidor
+      // no deja pagarlo: "por pagar" sería falso (tampoco entra en la tarjeta).
+      !this.tieneDeudaBorrada(fila)
+    );
+  }
+
+  /**
+   * La migración de los abonos le borró la deuda y HAY QUE REPARARLA: lo dice el servidor,
+   * no `pagado`. Es la misma pregunta de su `por_reparar`, que no cuenta las anuladas: una
+   * anulada no se repara, y la marca "por reparar" en la fila no cuadraría con la tarjeta.
+   */
+  tieneDeudaBorrada(fila: Liquidacion): boolean {
+    return deudaBorradaPorReparar(fila);
+  }
+
+  /** Qué es la marca "deuda borrada", con la cifra del servidor. */
+  tooltipDeudaBorrada(fila: Liquidacion): string {
+    return (
+      'Viene de antes de que existieran los abonos, y el sistema de esa época le borró los ' +
+      `${pesosExactos(fila.deuda_borrada_por_la_migracion)} que ${this.tercero(fila)} ` +
+      'quedaba debiendo. Hay que repararla antes de corregirla o pagarla'
+    );
+  }
+
+  /** El tooltip de la tarjeta de las quincenas con la deuda borrada. */
+  tooltipPorReparar(cuantas: number, total: number): string {
+    return (
+      `${cuantas === 1 ? 'Una quincena' : `${cuantas} quincenas`} de antes de los abonos a ` +
+      'las que el sistema de esa época les borró lo que el tercero quedaba debiendo: ' +
+      `${pesosExactos(total)} en total. Hay que repararlas antes de corregirlas o pagarlas, y ` +
+      'mientras tanto no entran en la plata por pagar de las otras tarjetas. En la lista ' +
+      'llevan la marca «deuda borrada · por reparar»'
+    );
   }
 
   /**

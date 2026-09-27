@@ -116,8 +116,20 @@ export class AnticipoListPage implements OnInit {
     return '';
   }
 
-  /** Por qué este anticipo quedó trabado: son dos situaciones distintas. */
+  /**
+   * Por qué este anticipo quedó trabado.
+   *
+   * LO DICE EL BACKEND (`candado_aviso`), con el mismo texto que daría el 422: el guardia
+   * traba por varias razones y desde la pantalla no se ven todas. El adelanto de $300.000
+   * de Beto, en la quincena 'aprobada' cuya deuda ya se cobró la siguiente, decía "Elimine
+   * primero ese pago" cuando no hay ningún pago que eliminar.
+   *
+   * Sin el aviso (una respuesta vieja) se dice solo lo que los campos alcanzan a saber: ahí
+   * no se manda a buscar un pago, ni se afirma que no lo haya. No usa `this`: es una
+   * pregunta sobre la fila y nada más.
+   */
   motivoDelCandado(fila: Anticipo): string {
+    if (fila.candado_aviso) return fila.candado_aviso;
     if (fila.pago_empleado_id) {
       return 'Ya se le descontó al empleado en un pago de nómina: no se puede editar ni eliminar.';
     }
@@ -127,10 +139,22 @@ export class AnticipoListPage implements OnInit {
         'registre el ajuste en la quincena siguiente.'
       );
     }
-    return (
-      'La liquidación en la que se descontó ya tiene un pago registrado. Elimine ' +
-      'primero ese pago si de verdad hay que corregirlo.'
-    );
+    // Una 'parcial' no siempre tiene un pago: la v2 de una quincena que sus anticipos
+    // cubrían, corregida hacia arriba, queda 'parcial' con pagado $0 y la traba el
+    // comprobante corregido (`_por_que_no_se_mueve` lo nombra). Mandar a "eliminar primero
+    // ese pago" sería mandar a buscar uno que no existe: se dice solo lo que es cierto.
+    if (fila.liquidacion_estado === 'parcial') {
+      return (
+        'La liquidación en la que se descontó ya tiene sus cifras en firme (un abono o un ' +
+        'comprobante corregido): no se puede editar ni eliminar.'
+      );
+    }
+    // Sin afirmar que no tiene pagos: la 'aprobada' con la deuda borrada por la migración
+    // SÍ puede tener uno encima (Mas-Cincuenta). Se dice solo lo que es cierto siempre.
+    if (fila.liquidacion_id) {
+      return 'La liquidación en la que se descontó ya tiene sus cifras en firme: no se puede editar ni eliminar.';
+    }
+    return 'Este anticipo quedó en firme: no se puede editar ni eliminar.';
   }
 
   recargar(): void {

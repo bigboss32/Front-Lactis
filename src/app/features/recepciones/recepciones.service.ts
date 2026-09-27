@@ -53,12 +53,19 @@ export interface CeldaGrilla {
    */
   liquidada: boolean;
   /**
-   * Alguna de esas liquidaciones ya tiene pagos ('pagada' o 'parcial'). Ya NO
-   * significa "no editable": significa que el día tiene CAMPOS trabados, y por
-   * eso lleva el ícono de candado. El día se sigue abriendo para corregir lo que
-   * no sea plata pagada.
+   * EL CANDADO DE LA CELDA, pese al nombre: el día tiene CAMPOS trabados y por eso lleva
+   * el ícono. Es `leche_pagada || flete_pagado`, el mismo candado que rebota el PUT, y NO
+   * quiere decir que haya salido plata: también lo pone la quincena cuya deuda ya se
+   * cobró en otra, que sigue 'aprobada' sin que se haya pagado un peso. El porqué va en
+   * `candado_aviso`. Tampoco es "no editable": el día se sigue abriendo.
    */
   pagada: boolean;
+  /**
+   * El porqué del candado, escrito por el backend: el mismo texto del diálogo del día
+   * (`Recepcion.candado_aviso`). Null cuando no hay nada trabado; opcional para leer una
+   * respuesta vieja.
+   */
+  candado_aviso?: string | null;
   /**
    * Cuál de las dos platas fue. Es lo que hace honesto el tooltip: con la leche
    * pagada y el flete sin liquidar, el día SÍ se corrige (el transportador, la

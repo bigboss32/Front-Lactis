@@ -46,7 +46,7 @@
               ("Liquidaciones por pagar"), porque el dueño compara las dos pantallas y
               con dos rótulos distintos no sabía si tenía que dar la misma cifra. Y la
               cifra es solo lo POSITIVO —la plata que tiene que sacar—: lo que a él le
-              deben va en su propia tarjeta, más abajo (ver `saldoPorPagar`).
+              deben va en su propia tarjeta, más abajo (ver `cargarResumen`).
             -->
             <span class="detalle">{{ r.saldoAprobadas | money }} por pagar</span>
           }
@@ -126,6 +126,31 @@
                   : r.liquidacionesQueDeben + ' liquidaciones'
               }}
               · se cobra en la próxima quincena
+            </span>
+          </span>
+        </div>
+      }
+
+      <!--
+        LAS QUINCENAS CON LA DEUDA BORRADA POR LA MIGRACIÓN DE LOS ABONOS, contadas por el
+        servidor (`por_reparar`, `deuda_borrada`). Esas filas no entran en la plata por
+        pagar de arriba, y sin esta tarjeta desaparecerían de las cifras sin que nadie lo
+        dijera. Tampoco es un botón: no hay filtro para ellas; en la lista cada una lleva
+        su marca. Solo sale cuando hay alguna. Con centavos: la cifra se cuadra contra el
+        aviso del detalle de cada una.
+      -->
+      @if (r.porReparar > 0) {
+        <div
+          class="tarjeta rojo pasiva"
+          [matTooltip]="tooltipPorReparar(r.porReparar, r.deudaBorrada)"
+        >
+          <span class="icono"><mat-icon aria-hidden="true">report</mat-icon></span>
+          <span class="textos">
+            <span class="cifra">{{ r.deudaBorrada | money: true }}</span>
+            <span class="titulo">Deuda borrada por reparar</span>
+            <span class="detalle">
+              en {{ r.porReparar === 1 ? '1 quincena' : r.porReparar + ' quincenas' }}
+              · no entra en lo que hay por pagar
             </span>
           </span>
         </div>
@@ -260,6 +285,13 @@
               @if (cobraSaldoAnterior(fila)) {
                 <span class="badge-saldo-anterior" [matTooltip]="tooltipSaldoAnterior(fila)">
                   cobra lo anterior
+                </span>
+              }
+              <!-- La fila que cuenta la tarjeta "Deuda borrada por reparar": sin la marca
+                   no hay cómo encontrarla, y su saldo no es plata por pagar. -->
+              @if (tieneDeudaBorrada(fila)) {
+                <span class="badge-le-debe" [matTooltip]="tooltipDeudaBorrada(fila)">
+                  deuda borrada · por reparar
                 </span>
               }
             </td>

@@ -440,6 +440,38 @@ export function diaTrabadoPorPago(estado: EstadoLiquidacionDia): boolean {
 }
 
 /**
+ * ¿EL CANDADO DE ESTE DÍA ES OTRA COSA QUE PLATA ENTREGADA? Solo para una respuesta SIN
+ * `candado_aviso`: cuando el backend manda el aviso, la razón es esa y no esta.
+ *
+ * `leche_pagada` / `flete_pagado` son el `_traba_el_dia` del backend: ya salió plata o
+ * papel, O lo que el tercero quedó debiendo ya se le cobró en otra quincena. Por el día
+ * de Beto —quincena 'aprobada' cuya deuda de $120.000 ya se cobró la siguiente— no salió
+ * un peso, y "la leche ya se pagó" lo mandaba a buscar un pago que no existe. Una
+ * 'aprobada' o un borrador nunca tienen pagos (`_estado_pago`), así que un candado sobre
+ * una de ellas NO es plata. Lo contrario no vale: una 'pagada' del Pagar de antes puede
+ * no tener un peso entregado, y eso solo lo sabe el aviso del servidor.
+ *
+ * Si la respuesta no trae el estado de cada liquidación se cae en `liquidacion_estado`.
+ */
+export function trabadoSinPlataEntregada(
+  dia: Pick<
+    Recepcion,
+    | 'leche_pagada'
+    | 'flete_pagado'
+    | 'liquidacion_estado'
+    | 'liquidacion_estado_leche'
+    | 'liquidacion_estado_flete'
+  >,
+): boolean {
+  const leche = dia.liquidacion_estado_leche ?? dia.liquidacion_estado;
+  const flete = dia.liquidacion_estado_flete ?? dia.liquidacion_estado;
+  return (
+    (dia.leche_pagada && !diaTrabadoPorPago(leche)) ||
+    (dia.flete_pagado && !diaTrabadoPorPago(flete))
+  );
+}
+
+/**
  * Los campos de una recepción, con el mismo nombre que usa el backend.
  *
  * Son las llaves que llegan en `campos_bloqueados` / `campos_editables`. Se
@@ -505,6 +537,22 @@ export interface Recepcion extends TenantFields {
    * cuando no hay nada trabado.
    */
   candado_aviso: string | null;
+  /**
+   * LAS LIQUIDACIONES QUE ESTE GUARDADO DEVOLVIÓ A BORRADOR, dichas por el servidor. Solo
+   * en la respuesta de crear o editar el día. Es el hecho, no una deducción: cubre la
+   * que el día DEJA y también la que el día ENTRA —el transportador nuevo cuyo viaje de
+   * esa fecha ya estaba en un comprobante aprobado—, que desde el día de antes no se ve.
+   * Vacía = ninguna volvió. Ausente (una respuesta vieja) = no se sabe, y se deduce (ver
+   * `avisoDelGuardado`).
+   */
+  liquidaciones_devueltas_a_borrador?: LiquidacionDevueltaABorrador[];
+}
+
+/** Una liquidación que volvió a borrador al guardar un día. */
+export interface LiquidacionDevueltaABorrador {
+  id: string;
+  /** 'proveedor' = la de la leche; 'transportador' = la del flete. */
+  tipo: string;
 }
 
 export interface ResumenDia {
@@ -766,6 +814,25 @@ export interface Liquidacion extends TenantFields {
    */
   le_queda_debiendo: Monto;
   /**
+   * LA DEUDA QUE BORRÓ LA MIGRACIÓN DE LOS ABONOS, en positivo; "0.00" en todas las demás.
+   *
+   * La migración de agosto de 2026 les escribió a las 'pagada' de antes pagado = valor
+   * total − anticipos y saldo = 0, sin renglón de pago. Con $180.000 de leche contra
+   * $300.000 de adelanto eso dejó pagado en −$120.000: los $120.000 que el tercero debía
+   * desaparecieron. La cifra es Σ(pagos) − pagado —lo que `pagado` tiene que no salió por
+   * ningún pago— y NO el signo de `pagado`: corregida con $50.000 más y pagada, la fila
+   * queda con pagado −$70.000 y un pago de $50.000, y lo borrado sigue siendo $120.000.
+   *
+   * Mientras sea mayor que cero (y la fila no esté anulada) el servidor rebota Corregir,
+   * Pagar, los abonos, Anular y mover sus anticipos (`_exigir_sin_deuda_borrada`), y la
+   * pantalla lee ESTE campo para no ofrecerlos: la pregunta es la del backend
+   * (`Liquidacion.deuda_borrada_por_la_migracion`), no una cuenta hecha acá. En el resumen
+   * va como renglón propio, y lo que de verdad falta entregar es saldo − esta cifra.
+   *
+   * Opcional: una respuesta vieja no lo trae, y ausente se lee como cero.
+   */
+  deuda_borrada_por_la_migracion?: Monto;
+  /**
    * QUÉ NÚMERO DE HOJA ES ESTA. Arranca en 1 y sube CADA VEZ que se corrige la quincena
    * después de pagada.
    *
@@ -821,8 +888,17 @@ export interface Anticipo extends TenantFields {
   aplicado: boolean;
   /** 'borrador' | 'aprobada' | 'parcial' | 'pagada' de la liquidación que lo tiene. */
   liquidacion_estado: string | null;
-  /** El candado de verdad: ya salió plata contra este anticipo (o quedó en nómina). */
+  /**
+   * El candado de verdad: las cifras de su quincena quedaron en firme (salió plata o
+   * papel, o su deuda ya se cobró en otra), o quedó en una nómina.
+   */
   bloqueado: boolean;
+  /**
+   * POR QUÉ ESTÁ TRABADO, escrito por el backend: el mismo texto que daría el 422 al
+   * editarlo o eliminarlo. Null cuando no está trabado. Opcional para leer una respuesta
+   * vieja: ahí `motivoDelCandado` dice lo que se puede saber con los demás campos.
+   */
+  candado_aviso?: string | null;
 }
 
 // -------------------------------------------------------------- producción
@@ -1171,12 +1247,13 @@ export interface Dashboard {
   gastos_mes_anterior: Monto;
   cartera_pendiente: Monto;
   /**
-   * CUÁNTA PLATA TIENE QUE SACAR EL DUEÑO por liquidaciones: solo los saldos positivos.
+   * CUÁNTA PLATA TIENE QUE SACAR EL DUEÑO por liquidaciones: los saldos POSITIVOS de las
+   * que están en borrador, aprobadas o con abonos, de cualquier fecha. Los negativos no la
+   * bajan: van aparte, en `terceros_le_quedan_debiendo` (antes se restaban y decía
+   * $10.000 con $130.000 por sacar).
    *
-   * Es la MISMA cuenta que la tarjeta "Aprobadas por pagar" de la lista de liquidaciones
-   * (ver `saldoPorPagar` allá): son la misma pregunta y no pueden contestarse distinto en
-   * dos pantallas. Antes esta sumaba los negativos con los positivos y las dos decían
-   * cifras distintas —$10.000 acá contra $130.000 allá—.
+   * NO es la cifra de la tarjeta "Aprobadas por pagar" de la lista de liquidaciones: esa
+   * suma solo las aprobadas, y con los filtros de tipo y fechas de la lista.
    */
   liquidaciones_por_pagar: Monto;
   /**

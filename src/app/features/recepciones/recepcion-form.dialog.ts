@@ -17,6 +17,7 @@ import {
   Proveedor,
   Recepcion,
   Transportador,
+  trabadoSinPlataEntregada,
 } from '../../core/models';
 import { dateToIso, isoToDate, hoyDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
@@ -33,6 +34,14 @@ export interface RecepcionDialogData {
   /** Al crear desde la grilla: fecha y proveedor vienen fijos (no editables). */
   prefill?: { fecha: string; proveedor_id: string };
 }
+
+/**
+ * Con qué se cierra el diálogo: 'eliminado', o el día COMO LO DEVOLVIÓ EL SERVIDOR al
+ * guardarlo. La respuesta trae el estado de sus liquidaciones después del recuadre, y con
+ * eso quien lo abrió dice si una volvió a borrador sin adivinarlo (`avisoDelGuardado`).
+ * 'guardado' queda para una respuesta sin cuerpo.
+ */
+export type CierreRecepcion = 'eliminado' | 'guardado' | Recepcion;
 
 @Component({
   selector: 'app-recepcion-form',
@@ -243,12 +252,20 @@ export class RecepcionFormDialog {
    */
   readonly puedeEliminar =
     !(this.data?.item?.leche_pagada ?? false) && !(this.data?.item?.flete_pagado ?? false);
-  readonly motivoNoEliminar =
-    this.data?.item?.leche_pagada && this.data?.item?.flete_pagado
-      ? 'La leche y el flete de este día ya se pagaron'
-      : this.data?.item?.leche_pagada
-        ? 'La leche de este día ya se pagó: borrarlo descuadraría esa liquidación'
-        : 'El flete de este día ya se pagó: borrarlo descuadraría esa liquidación';
+  // El porqué es el del backend siempre que lo manda, igual que el tooltip de la lista
+  // (`tooltipEliminar`): el estado no alcanza para saber si fue plata, y una 'pagada' del
+  // Pagar de antes, cuya deuda ya se cobró en otra, no tiene un peso entregado. Los textos
+  // cortos quedan para una respuesta vieja, y ahí "ya se pagó" solo cuando lo fue (ver
+  // `trabadoSinPlataEntregada`).
+  readonly motivoNoEliminar = this.candadoAviso
+    ? `No se puede eliminar. ${this.candadoAviso}`
+    : this.data?.item && trabadoSinPlataEntregada(this.data.item)
+      ? 'Las cifras de este día quedaron en firme: no se puede eliminar'
+      : this.data?.item?.leche_pagada && this.data?.item?.flete_pagado
+        ? 'La leche y el flete de este día ya se pagaron'
+        : this.data?.item?.leche_pagada
+          ? 'La leche de este día ya se pagó: borrarlo descuadraría esa liquidación'
+          : 'El flete de este día ya se pagó: borrarlo descuadraría esa liquidación';
   /** Ya está en una liquidación, pero sin pagos: se edita avisando. */
   readonly enLiquidacion =
     this.estadoLiquidacion === 'borrador' || this.estadoLiquidacion === 'aprobada';
@@ -312,6 +329,7 @@ export class RecepcionFormDialog {
   async guardar(): Promise<void> {
     if (this.form.invalid) return;
     this.guardando.set(true);
+    let guardada: Recepcion | undefined;
     try {
       const valores = this.form.getRawValue();
       const payload: RecepcionPayload = {
@@ -336,12 +354,13 @@ export class RecepcionFormDialog {
         for (const campo of this.camposBloqueados) {
           delete cuerpo[campo];
         }
-        await firstValueFrom(this.servicio.update(this.data.item.id, payload));
+        guardada = await firstValueFrom(this.servicio.update(this.data.item.id, payload));
       } else {
         payload.proveedor_id = valores.proveedor_id;
-        await firstValueFrom(this.servicio.create(payload));
+        guardada = await firstValueFrom(this.servicio.create(payload));
       }
-      this.dialogRef.close('guardado');
+      const cierre: CierreRecepcion = guardada ?? 'guardado';
+      this.dialogRef.close(cierre);
     } catch (err) {
       avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar');
     } finally {

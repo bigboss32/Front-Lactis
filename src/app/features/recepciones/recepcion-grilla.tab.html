@@ -152,12 +152,14 @@
                 @for (dia of dias(); track dia.iso) {
                   <td class="celda" [class.hoy]="dia.iso === hoy()">
                     @if (fila.celdas[dia.iso]; as celda) {
-                      <!-- El candado marca los días con PLATA YA PAGADA (del todo o
-                           con un abono encima), pero ya NO cierra la celda: el
-                           candado del backend es por campo, así que un día con la
-                           leche pagada y el flete sin liquidar se abre igual para
-                           corregirle el transportador. Se entra y el diálogo apaga
-                           uno por uno los campos que no se pueden tocar. -->
+                      <!-- El candado marca los días con CIFRAS EN FIRME: plata ya
+                           pagada (del todo o con un abono encima), o una quincena
+                           cuya deuda ya se cobró en otra, donde no salió un peso.
+                           Por eso la etiqueta no dice por qué: lo dice el tooltip,
+                           que el lector de pantalla también lee, con el texto del
+                           backend. Ya NO cierra la celda: el candado es por campo,
+                           así que un día con la leche pagada y el flete sin liquidar
+                           se abre igual para corregirle el transportador. -->
                       @if (celda.pagada && puedeEditar()) {
                         <button
                           type="button"
@@ -166,7 +168,7 @@
                           [attr.aria-label]="
                             'Ver recepción de ' + fila.proveedor_nombre +
                             ' del ' + (dia.iso | date: 'dd/MM/yyyy') +
-                            ' (tiene campos trabados porque ya salió plata por este día)'
+                            ' (tiene campos trabados)'
                           "
                           (click)="clickCelda(fila, dia.iso)"
                         >
@@ -277,6 +279,10 @@
   de toda la fila, y hoy sería mentira. Un día con la leche pagada y el flete sin
   liquidar se corrige —el transportador, la ruta, las observaciones—; el tooltip
   de cada celda dice exactamente qué.
+
+  Y tampoco dice "Ya se pagó": el candado también lo lleva el día cuya quincena
+  quedó debiendo y esa deuda ya se cobró en otra, donde no salió un peso. La
+  leyenda dice lo que es cierto en todos los casos; el porqué, la celda.
 -->
 <div class="leyenda">
   <span class="leyenda-item"><span class="muestra"></span> Sin registro (clic para anotar)</span>
@@ -286,7 +292,7 @@
     editar, pero la liquidación se recalcula
   </span>
   <span class="leyenda-item">
-    <span class="muestra pagada"><mat-icon>lock</mat-icon></span> Ya se pagó — las cifras pagadas
-    quedan en firme, lo demás se corrige
+    <span class="muestra pagada"><mat-icon>lock</mat-icon></span> Cifras en firme — la celda
+    dice por qué; lo demás se corrige
   </span>
 </div>

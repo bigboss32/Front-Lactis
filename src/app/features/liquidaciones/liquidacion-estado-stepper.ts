@@ -189,10 +189,21 @@ const AYUDAS: Record<string, string> = {
 })
 export class LiquidacionEstadoStepper {
   readonly estado = input.required<string>();
+  /**
+   * LA AYUDA QUE MANDA QUIEN SABE QUÉ BOTONES HAY, en lugar de la del estado.
+   *
+   * La de 'aprobada' dice "usa Pagar", y hay aprobadas sin ese botón: la que la deuda
+   * vieja dejó en cero, la que se cierra con "Marcar pagada", la que trae una deuda
+   * borrada. Esta línea no ve los botones; el detalle sí, y la arma con las mismas
+   * señales que los ponen (ver `ayudaDelEstado` en el diálogo). Null = la del estado.
+   */
+  readonly ayudaEnLugarDeLaDelEstado = input<string | null>(null);
 
   readonly anulada = computed(() => this.estado() === 'anulada');
   readonly indiceActual = computed(() => PASO_DE_ESTADO[this.estado()] ?? -1);
-  readonly ayuda = computed(() => AYUDAS[this.estado()] ?? '');
+  readonly ayuda = computed(
+    () => this.ayudaEnLugarDeLaDelEstado() ?? AYUDAS[this.estado()] ?? '',
+  );
 
   /** El último paso se llama "Parcial" mientras la liquidación siga debiendo. */
   readonly pasos = computed<Paso[]>(() =>

@@ -27,11 +27,16 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
-import { EstadoLiquidacionDia, Page, Ruta, Transportador } from '../../core/models';
+import { Page, Ruta, Transportador, diaTrabadoPorPago } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
-import { RecepcionDialogData, RecepcionFormDialog } from './recepcion-form.dialog';
+import { avisoDelGuardado } from './aviso-del-guardado';
+import {
+  CierreRecepcion,
+  RecepcionDialogData,
+  RecepcionFormDialog,
+} from './recepcion-form.dialog';
 import {
   CeldaGrilla,
   FilaGrilla,
@@ -311,7 +316,8 @@ function quincenaDeHoy(): Quincena {
       .celda-btn.vacia .mas { opacity: 0.35; }
     }
 
-    /* Celda con PLATA YA PAGADA: tinte verde + candado.
+    /* Celda con CIFRAS EN FIRME (celda.pagada): tinte verde + candado. Casi siempre es
+       plata pagada, pero también la quincena cuya deuda ya se cobró en otra.
        Ya no significa "no se puede tocar", porque el candado es por campo: con la
        leche pagada y el flete sin liquidar, este día se abre para corregirle el
        transportador. El verde y el candado dicen "aquí hay cifras en firme", y el
@@ -991,8 +997,19 @@ export class RecepcionGrillaTab implements OnInit {
    * flete no se ha liquidado, el día SÍ se corrige —el transportador, la ruta,
    * las observaciones—. Ahora se dice cuál de las dos platas salió y qué queda
    * por hacer, que es lo que el dueño necesitaba leer.
+   *
+   * EL PORQUÉ LO ESCRIBE EL BACKEND (`candado_aviso`), el mismo que traba el PUT: la
+   * celda de Beto —quincena 'aprobada' cuya deuda ya se cobró la siguiente— lleva
+   * candado sin que haya salido un peso, y "La leche de este día ya se pagó" lo mandaba
+   * a buscar un pago que no existe. Los textos de abajo quedan para una respuesta vieja,
+   * y aun ahí "ya se pagó" solo sale si la liquidación que manda es una pagada o una
+   * parcial (una aprobada o un borrador nunca tienen pagos). No usa `this`.
    */
   tooltipTrabada(celda: CeldaGrilla): string {
+    if (celda.candado_aviso) return celda.candado_aviso;
+    if (!diaTrabadoPorPago(celda.liquidacion_estado)) {
+      return 'Las cifras de este día quedaron en firme: ábralo para ver qué se puede corregir';
+    }
     const abonada = celda.liquidacion_estado === 'parcial';
     const salida = abonada
       ? ' Para corregir esa cifra hay que eliminar antes el pago en la liquidación.'
@@ -1036,22 +1053,18 @@ export class RecepcionGrillaTab implements OnInit {
     if (!this.puedeEditar()) return;
     try {
       const item = await firstValueFrom(this.servicio.getById(celda.recepcion_id));
-      this.abrirDialogo({ item }, celda.liquidacion_estado);
+      this.abrirDialogo({ item });
     } catch (err) {
       this.mostrarError(err, 'No fue posible abrir la recepción');
     }
   }
 
   /**
-   * `estadoPrevio` es el estado que tenía la liquidación de ese día ANTES de
-   * guardar: con él se arma el aviso de lo que acaba de pasar por detrás. Se
-   * toma de antes a propósito, porque después de guardar una aprobada ya
-   * aparece en borrador y no se sabría que hubo retroceso.
+   * El día como estaba AL ABRIRLO (`data.item`) es la mitad del aviso de lo que pasó por
+   * detrás: después de guardar, una aprobada ya aparece en borrador y no se sabría que
+   * hubo retroceso. La otra mitad es la respuesta del PUT. Ver `avisoDelGuardado`.
    */
-  private abrirDialogo(
-    data: RecepcionDialogData,
-    estadoPrevio: EstadoLiquidacionDia = null,
-  ): void {
+  private abrirDialogo(data: RecepcionDialogData): void {
     this.dialog
       .open(RecepcionFormDialog, {
         data,
@@ -1059,10 +1072,10 @@ export class RecepcionGrillaTab implements OnInit {
         autoFocus: 'input[formcontrolname="cantidad_litros"]',
       })
       .afterClosed()
-      .subscribe((resultado) => {
+      .subscribe((resultado?: CierreRecepcion) => {
         if (!resultado) return;
         const hecho = resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada';
-        const aviso = this.avisoLiquidacion(estadoPrevio);
+        const aviso = avisoDelGuardado(data.item, typeof resultado === 'object' ? resultado : null);
         this.snackbar.open(aviso ? `${hecho}. ${aviso}` : hecho, 'OK', {
           // El aviso hay que alcanzar a leerlo: son dos renglones y dicen que
           // una liquidación se movió.
@@ -1071,18 +1084,6 @@ export class RecepcionGrillaTab implements OnInit {
         this.cargar();
         this.cambio.emit();
       });
-  }
-
-  /** Qué le pasó a la liquidación del día que se acaba de tocar. */
-  private avisoLiquidacion(estadoPrevio: EstadoLiquidacionDia): string | null {
-    if (estadoPrevio === 'aprobada') {
-      return (
-        'Esta liquidación volvió a borrador porque cambiaron sus litros; ' +
-        'revísela y apruébela otra vez.'
-      );
-    }
-    if (estadoPrevio === 'borrador') return 'Se recalculó la liquidación de este día.';
-    return null;
   }
 
   private mostrarError(err: unknown, fallback: string): void {

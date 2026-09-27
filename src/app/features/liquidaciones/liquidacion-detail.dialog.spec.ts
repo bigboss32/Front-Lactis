@@ -1186,8 +1186,10 @@ describe('LiquidacionDetailDialog: renglones por día y ruta', () => {
   // LA QUINCENA QUE NO SE PODÍA CERRAR. Con el saldo en CERO EXACTO —el anticipo cubrió
   // justo la quincena— el botón desaparecía (exigía saldo > 0) y no había ningún otro:
   // esa liquidación se quedaba en 'aprobada' para siempre, con sus días abiertos a que
-  // alguien les cambiara las cifras meses después. Y el servidor SÍ la acepta: su
-  // `marcar_pagada` solo rebota cuando el tercero quedó DEBIENDO.
+  // alguien les cambiara las cifras meses después. Y el servidor SÍ la acepta cuando el
+  // cero lo hicieron los anticipos: su `pagar` rebota si el tercero quedó DEBIENDO o si
+  // el cero lo hizo la deuda arrastrada sin pagos (ver el describe de "Marcar pagada que
+  // siempre fallaba", más abajo).
   // ----------------------------------------------------------------------------
   /** El anticipo cubrió EXACTO la quincena: $44.506,32 contra $44.506,32. */
   const SALDADA_EN_CERO: Partial<Liquidacion> = {
@@ -2811,7 +2813,15 @@ describe('LiquidacionDetailDialog: el estado como se lee no mueve ningún botón
     const r = await conYSinElCampo({ ...HENRI_DEBE, estado: 'aprobada' });
 
     expect(r.chipConElCampo).toBe(PAGADA_DEBIENDO);
-    expect(r.conElCampo).toEqual(r.sinElCampo);
+    // Lo que se PUEDE HACER es idéntico. Lo único que cambia es la REDACCIÓN del candado
+    // de Recalcular, que sigue al chip de al lado: con el campo dice "no hay nada que
+    // entregarle"; sin él, el chip dice 'aprobada' y el texto de siempre es el cierto.
+    expect({ ...r.conElCampo, motivoNoRecalcular: null }).toEqual({
+      ...r.sinElCampo,
+      motivoNoRecalcular: null,
+    });
+    expect(r.conElCampo.motivoNoRecalcular).toContain('No hay nada que entregarle');
+    expect(r.sinElCampo.motivoNoRecalcular).toContain('Está aprobada');
     // Y lo que eso significa, dicho con nombre: el chip dice "pagada" pero la quincena
     // SIGUE siendo una aprobada para el servidor, así que se puede anular (la deuda aún
     // no se cobró) y no se puede pagar (no hay nada que entregar).
@@ -2869,5 +2879,1148 @@ describe('LiquidacionDetailDialog: el estado como se lee no mueve ningún botón
     expect(r.conElCampo).toEqual(r.sinElCampo);
     expect(r.conElCampo.puedeAnular).toBeFalse();
     expect(r.conElCampo.motivoNoAnular).not.toBeNull();
+  });
+});
+
+// =============================================================================
+// TRES COSAS QUE LA PANTALLA DECÍA MAL, medidas con las mismas lecturas de arriba.
+// =============================================================================
+
+/** Abre el detalle con la fila dada y el servidor falso de siempre. */
+const abrirDetalle = async (item: Liquidacion): Promise<Fixture> => {
+  TestBed.resetTestingModule();
+  await TestBed.configureTestingModule({
+    imports: [LiquidacionDetailDialog, NoopAnimationsModule],
+    providers: [
+      { provide: MAT_DIALOG_DATA, useValue: { item } },
+      { provide: LiquidacionesService, useValue: new ServicioFalso() },
+      { provide: MatDialog, useValue: { open: () => ({ afterClosed: () => of(null) }) } },
+      {
+        provide: AuthService,
+        useValue: { hasPermission: () => true, perfil: () => null, esSuperadmin: () => false },
+      },
+    ],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(LiquidacionDetailDialog);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  fixture.detectChanges();
+  return fixture;
+};
+
+const botonesDe = (fixture: Fixture): string[] =>
+  Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions button'))
+    .map((boton) => leido(boton as Element))
+    .filter((texto) => texto !== '');
+
+const candadosDe = (fixture: Fixture): string[] =>
+  Array.from(fixture.nativeElement.querySelectorAll('mat-dialog-actions .nota-recalcular')).map(
+    (nota) => leido(nota as Element),
+  );
+
+/** La quincena de Henri: $180.000 de leche contra $300.000 ya adelantados. */
+const HENRI_QUEDO_DEBIENDO: Partial<Liquidacion> = {
+  estado: 'aprobada',
+  estado_visible: 'pagada · quedó debiendo',
+  tipo: 'proveedor',
+  proveedor_id: 'p-1',
+  proveedor_nombre: 'Henri Castaño',
+  transportador_id: null,
+  transportador_nombre: null,
+  total_litros: '100',
+  precio_promedio: '1800',
+  valor_bruto: '180000',
+  valor_transporte: '0',
+  valor_total: '180000',
+  anticipos: '300000',
+  neto_a_pagar: '-120000',
+  saldo: '-120000',
+  le_queda_debiendo: '120000',
+};
+const EL_DIA_DE_HENRI_Q1 = [det('d-1', '2026-07-03', '100', '1800', '180000')];
+
+describe('LiquidacionDetailDialog: el candado de Recalcular dice lo mismo que el chip', () => {
+  it('la que se lee "pagada · quedó debiendo" no dice "está aprobada, no se le ha pagado nada"', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', HENRI_QUEDO_DEBIENDO),
+    );
+
+    expect(leido(fixture.nativeElement.querySelector('.info app-estado-chip'))).toBe(
+      'pagada · quedó debiendo',
+    );
+    const motivo = comoSeLee(fixture.componentInstance.motivoNoRecalcular());
+    expect(motivo).toBe(
+      'No hay nada que entregarle: Henri Castaño quedó debiendo $ 120.000. Sus cifras están ' +
+        'en firme y Recalcular solo trabaja sobre borradores. Si quedaron mal —por ejemplo ' +
+        'una tarifa que se corrigió después—, anúlela y vuelva a generarla: esa deuda ' +
+        'todavía no se le ha cobrado en otra quincena.',
+    );
+    expect(motivo).not.toContain('Está aprobada');
+    expect(motivo).not.toContain('no se le ha pagado nada');
+    // Lo mismo en el párrafo de abajo, que es el que se lee sin pasar el mouse.
+    expect(leido(fixture.nativeElement.querySelector('.ayuda-precio.con-candado'))).toContain(
+      'No hay nada que entregarle',
+    );
+    // Y la salida que nombra EXISTE: el servidor anula mientras la deuda no se cobre.
+    expect(fixture.componentInstance.puedeAnular()).toBeTrue();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Anular'))).toBeTrue();
+  });
+
+  it('con la deuda YA cobrada en otra, no manda a anular nada: dice dónde se cobró', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...HENRI_QUEDO_DEBIENDO,
+        deuda_trasladada_a_id: 'l-q2',
+        deuda_trasladada_a: {
+          id: 'l-q2',
+          periodo_inicio: '2026-07-16',
+          periodo_fin: '2026-07-31',
+          periodo_texto: '16/07/2026 al 31/07/2026',
+        },
+      }),
+    );
+
+    const motivo = comoSeLee(fixture.componentInstance.motivoNoRecalcular());
+    // Ni "anúlela" (el servidor también rebota Anular) ni "anule primero esa liquidación …
+    // y vuelva a intentarlo": anulada la otra, esta sigue aprobada y Recalcular sigue sin poder.
+    expect(motivo).toBe(
+      'No hay nada que entregarle: Henri Castaño quedó debiendo $ 120.000, y eso ya se le ' +
+        'cobró en la liquidación del 16/07/2026 al 31/07/2026. Sus cifras están en firme y ' +
+        'Recalcular solo trabaja sobre borradores.',
+    );
+    expect(motivo).not.toContain('anúlela');
+    expect(motivo).not.toContain('vuelva a intentarlo');
+    expect(motivo).not.toContain('esa deuda todavía no se le ha cobrado');
+    expect(botonesDe(fixture).some((b) => b.endsWith('Anular'))).toBeFalse();
+  });
+
+  it('la aprobada con plata por entregar conserva su texto: ahí sí es cierto', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_MARTES, 'transportador', { estado: 'aprobada', estado_visible: 'aprobada' }),
+    );
+
+    expect(comoSeLee(fixture.componentInstance.motivoNoRecalcular())).toBe(
+      'Está aprobada y Recalcular solo trabaja sobre borradores. Si sus cifras quedaron mal ' +
+        '—por ejemplo una tarifa que se corrigió después—, anúlela y vuelva a generarla: ' +
+        'todavía no se le ha pagado nada.',
+    );
+  });
+});
+
+// =============================================================================
+// EL CANDADO DE RECALCULAR NO MANDA A UN PASO QUE NO DESTRABA NADA, NI NOMBRA UNA PLATA
+// QUE NO SALIÓ. Se lee en el cuerpo del diálogo (`.ayuda-precio.con-candado`), sin pasar
+// el mouse: lo que dice ahí el dueño lo hace.
+// =============================================================================
+
+describe('LiquidacionDetailDialog: el candado de Recalcular solo dice lo que es cierto', () => {
+  const COBRADA_EN_LA_Q2: Partial<Liquidacion> = {
+    deuda_trasladada_a_id: 'l-q2',
+    deuda_trasladada_a: {
+      id: 'l-q2',
+      periodo_inicio: '2026-07-16',
+      periodo_fin: '2026-07-31',
+      periodo_texto: '16/07/2026 al 31/07/2026',
+    },
+  } as Partial<Liquidacion>;
+  /** La v2 de una pagada que sus anticipos cubrieron exacto, corregida con $50.000 más. */
+  const V2_SIN_PAGOS: Partial<Liquidacion> = {
+    ...HENRI_QUEDO_DEBIENDO,
+    estado: 'parcial',
+    estado_visible: 'parcial',
+    version: 2,
+    anticipos: '180000',
+    valor_bruto: '230000',
+    valor_total: '230000',
+    neto_a_pagar: '50000',
+    pagado: '0',
+    saldo: '50000',
+    le_queda_debiendo: '0',
+    pagos: [],
+  };
+  const candadoEnElCuerpo = (fixture: Fixture): string =>
+    leido(fixture.nativeElement.querySelector('.ayuda-precio.con-candado span'));
+
+  it('borrador con la deuda ya cobrada: no ofrece Recalcular y manda a anular la otra primero', async () => {
+    // El `recalcular` del servidor rebota la deuda trasladada ANTES de mirar el estado: el
+    // botón siempre fallaba. Y aquí sí sirve anular la otra: esta vuelve a recalcularse.
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...HENRI_QUEDO_DEBIENDO,
+        estado: 'borrador',
+        estado_visible: 'borrador',
+        ...COBRADA_EN_LA_Q2,
+      }),
+    );
+
+    expect(fixture.componentInstance.puedeRecalcular()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Recalcular'))).toBeFalse();
+    expect(candadoEnElCuerpo(fixture)).toBe(
+      'No se puede recalcular esta liquidación: lo que Henri Castaño quedó debiendo ' +
+        '($ 120.000) ya se le cobró en la liquidación del 16/07/2026 al 31/07/2026. Anule ' +
+        'primero esa liquidación —así esta deuda vuelve a quedar libre— y vuelva a intentarlo.',
+    );
+  });
+
+  it('pagada del Pagar de antes con la deuda ya cobrada: ni "vuelva a intentarlo" ni "ya está pagado ($ 0)"', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...HENRI_QUEDO_DEBIENDO,
+        estado: 'pagada',
+        pagado: '0',
+        ...COBRADA_EN_LA_Q2,
+      }),
+    );
+
+    expect(candadoEnElCuerpo(fixture)).toBe(
+      'No hay nada que entregarle: Henri Castaño quedó debiendo $ 120.000. Sus cifras están ' +
+        'en firme y Recalcular solo trabaja sobre borradores.',
+    );
+  });
+
+  it('pagada del Pagar de antes con la deuda pendiente: tampoco "ya está pagado"', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...HENRI_QUEDO_DEBIENDO,
+        estado: 'pagada',
+        pagado: '0',
+      }),
+    );
+
+    expect(candadoEnElCuerpo(fixture)).not.toContain('ya está pagado');
+    expect(candadoEnElCuerpo(fixture)).toContain('Henri Castaño quedó debiendo $ 120.000');
+  });
+
+  it('pagada en cero por sus anticipos, sin un peso en pagos: dice que está en firme, sin cifra', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...HENRI_QUEDO_DEBIENDO,
+        estado: 'pagada',
+        estado_visible: 'pagada',
+        anticipos: '180000',
+        neto_a_pagar: '0',
+        pagado: '0',
+        saldo: '0',
+        le_queda_debiendo: '0',
+      }),
+    );
+
+    expect(candadoEnElCuerpo(fixture)).toBe(
+      'Sus cifras están en firme y Recalcular solo trabaja sobre borradores.',
+    );
+  });
+
+  it('parcial v2 sin pagos: nombra el comprobante corregido, no un abono', async () => {
+    const fixture = await abrirDetalle(liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', V2_SIN_PAGOS));
+
+    expect(candadoEnElCuerpo(fixture)).toBe(
+      'De esta quincena ya salieron 2 comprobantes (el original y sus correcciones): sus ' +
+        'cifras están en firme y Recalcular solo trabaja sobre borradores.',
+    );
+  });
+
+  it('parcial v2 con un abono: no manda a eliminarlo (borrado, queda una aprobada v2 que tampoco se anula)', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...V2_SIN_PAGOS,
+        pagado: '20000',
+        saldo: '30000',
+        pagos: [{ id: 'p-1', fecha: '2026-07-20', valor: '20000', observaciones: null }],
+      }),
+    );
+
+    expect(candadoEnElCuerpo(fixture)).not.toContain('elimine el abono');
+    expect(candadoEnElCuerpo(fixture)).toContain('ya salieron 2 comprobantes');
+  });
+
+  it('aprobada v2: no manda a anularla, porque Anular dice que no', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q1, 'proveedor', {
+        ...V2_SIN_PAGOS,
+        estado: 'aprobada',
+        estado_visible: 'aprobada',
+      }),
+    );
+    const c = fixture.componentInstance;
+
+    expect(c.puedeAnular()).toBeFalse();
+    expect(candadoEnElCuerpo(fixture)).toBe(
+      'De esta quincena ya salieron 2 comprobantes (el original y sus correcciones): sus ' +
+        'cifras están en firme y Recalcular solo trabaja sobre borradores.',
+    );
+    expect(candadoEnElCuerpo(fixture)).not.toContain('anúlela');
+  });
+});
+
+describe('LiquidacionDetailDialog: la pagada de antes de los pagos parciales cuadra', () => {
+  /**
+   * UNA 'pagada' DE ANTES DE LOS PAGOS PARCIALES, como la dejó la migración: `pagado`
+   * puesto y NINGÚN renglón en `pagos`. $400.000 de leche, $100.000 de anticipo y
+   * $300.000 entregados:
+   *
+   *   400.000 − 100.000 − 300.000 = 0   (Saldo a pagar)
+   *
+   * Sin el renglón "Pagado" la columna decía 400.000 − 100.000 y cerraba en $0: el dueño
+   * suma a mano y le sobran $300.000. El PDF sí lo imprime.
+   */
+  const PAGADA_VIEJA: Partial<Liquidacion> = {
+    estado: 'pagada',
+    estado_visible: 'pagada',
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Rosa Pagada',
+    transportador_id: null,
+    transportador_nombre: null,
+    total_litros: '200',
+    precio_promedio: '2000',
+    valor_bruto: '400000',
+    valor_transporte: '0',
+    valor_total: '400000',
+    anticipos: '100000',
+    neto_a_pagar: '300000',
+    pagado: '300000',
+    saldo: '0',
+    pagos: [],
+  };
+  const EL_DIA_DE_ROSA = [det('d-1', '2026-06-05', '200', '2000', '400000')];
+
+  it('pinta el renglón "Pagado" aunque no haya pagos en la lista, y la columna cierra', async () => {
+    const fixture = await abrirDetalle(liquidacion(EL_DIA_DE_ROSA, 'proveedor', PAGADA_VIEJA));
+
+    expect(leerResumen(fixture)['Pagado']).toBe('− $ 300.000');
+    expect(rotulosDelResumen(fixture)).toEqual([
+      'Total litros',
+      'Precio promedio',
+      'Valor bruto',
+      'Bonificaciones',
+      'Descuentos',
+      'Valor total',
+      'Anticipos aplicados',
+      'Pagado',
+      'Saldo a pagar',
+    ]);
+    // LA REGLA DE ORO, sumando lo que se LEE: 400.000 − 100.000 − 300.000 = 0.
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.valorTotal).toBe(40000000);
+    expect(cuadre.cierre).toBe(0);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    // Y el texto que se manda por WhatsApp sale de los mismos renglones.
+    expect(fixture.componentInstance.renglonesResumen().map((r) => r.clave)).toContain('pagado');
+  });
+
+  it('con pagos en la lista sigue igual: el renglón es lo pagado y la columna cierra', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_ROSA, 'proveedor', {
+        ...PAGADA_VIEJA,
+        estado: 'parcial',
+        estado_visible: 'parcial',
+        pagado: '120000',
+        saldo: '180000',
+        pagos: [{ id: 'p-1', fecha: '2026-06-20', valor: '120000', observaciones: null }],
+      }),
+    );
+
+    expect(leerResumen(fixture)['Pagado']).toBe('− $ 120.000');
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.cierre).toBe(18000000);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+  });
+
+  it('un pagado NEGATIVO no se pinta: es la deuda borrada que se repara aparte', async () => {
+    // La forma de zz-existentes-historia: la migración dejó pagado = −$120.000. Pintar
+    // "− −$ 120.000" sería peor que el hueco, y esa fila tiene su propio arreglo.
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_ROSA, 'proveedor', {
+        ...PAGADA_VIEJA,
+        valor_bruto: '180000',
+        valor_total: '180000',
+        anticipos: '300000',
+        neto_a_pagar: '-120000',
+        pagado: '-120000',
+        saldo: '0',
+      }),
+    );
+
+    expect(rotulosDelResumen(fixture)).not.toContain('Pagado');
+  });
+
+  it('sin nada pagado no hay renglón en $ 0', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_MARTES, 'transportador', { estado: 'aprobada', pagado: '0', pagos: [] }),
+    );
+
+    expect(rotulosDelResumen(fixture)).not.toContain('Pagado');
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+  });
+});
+
+describe('LiquidacionDetailDialog: "Marcar pagada" que siempre fallaba', () => {
+  /**
+   * LA QUINCENA 2 DE HENRI: vale justo los $120.000 que dejó debiendo la 1, sin
+   * anticipos propios ni abonos. El neto cae en $0 por la deuda arrastrada y el
+   * servidor rebota `POST /pagar` (`_no_sale_un_peso_por_la_deuda`): se queda 'aprobada'
+   * a propósito. El botón estaba y siempre fallaba (zz-existentes-cobrada.spec.ts, caso 4).
+   */
+  const Q2_EN_CERO_POR_LA_DEUDA: Partial<Liquidacion> = {
+    id: 'l-q2',
+    estado: 'aprobada',
+    estado_visible: 'aprobada',
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Henri Castaño',
+    transportador_id: null,
+    transportador_nombre: null,
+    periodo_inicio: '2026-07-16',
+    periodo_fin: '2026-07-31',
+    total_litros: '100',
+    precio_promedio: '1200',
+    valor_bruto: '120000',
+    valor_transporte: '0',
+    valor_total: '120000',
+    anticipos: '0',
+    saldo_anterior: '120000',
+    deudas_cobradas: [
+      {
+        id: 'l-q1',
+        periodo_inicio: '2026-07-01',
+        periodo_fin: '2026-07-15',
+        periodo_texto: '01/07/2026 al 15/07/2026',
+        le_queda_debiendo: '120000',
+      },
+    ],
+    neto_a_pagar: '0',
+    pagado: '0',
+    saldo: '0',
+    le_queda_debiendo: '0',
+  };
+  const EL_DIA_DE_HENRI_Q2 = [det('d-2', '2026-07-20', '100', '1200', '120000')];
+
+  it('no ofrece "Marcar pagada" y dice por qué: la deuda de la quincena pasada la cubrió', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q2, 'proveedor', Q2_EN_CERO_POR_LA_DEUDA),
+    );
+    const c = fixture.componentInstance;
+
+    expect(c.laDeudaViejaCubrioLaQuincena()).toBeTrue();
+    expect(c.puedeCerrarSinPago()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeFalse();
+    // En su lugar, el candado con la razón.
+    expect(candadosDe(fixture)).toContain('lock No hay nada que pagar');
+    const nota = leido(fixture.nativeElement.querySelector('.nota-saldo-cero'));
+    expect(nota).toBe(
+      'No hay nada que entregarle a Henri Castaño: lo que ya venía debiendo de antes ' +
+        '($ 120.000) cubre EXACTO el valor total de la quincena ($ 120.000), así que el ' +
+        'saldo quedó en $ 0. Se queda aprobada: no queda un peso por entregarle, y ' +
+        'marcarla pagada trabaría sus días con un aviso que no es cierto.',
+    );
+    // El tooltip del candado dice LO MISMO que la nota: una sola redacción.
+    expect(comoSeLee(c.motivoNoPagar())).toBe(nota);
+    // Y el estado no se toca: sigue siendo la aprobada que el servidor quiere.
+    expect(c.liq().estado).toBe('aprobada');
+  });
+
+  it('con anticipos Y deuda vieja entre los dos, tampoco: son las mismas tres condiciones', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q2, 'proveedor', {
+        ...Q2_EN_CERO_POR_LA_DEUDA,
+        anticipos: '20000',
+        saldo_anterior: '100000',
+      }),
+    );
+
+    expect(fixture.componentInstance.puedeCerrarSinPago()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeFalse();
+    const nota = leido(fixture.nativeElement.querySelector('.nota-saldo-cero'));
+    expect(nota).toContain('los anticipos aplicados ($ 20.000)');
+    expect(nota).toContain('lo que ya venía debiendo de antes ($ 100.000)');
+    expect(nota).toContain('Se queda aprobada');
+  });
+
+  it('el cero que hicieron SUS PROPIOS anticipos (sin deuda vieja) sí ofrece "Marcar pagada"', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q2, 'proveedor', {
+        ...Q2_EN_CERO_POR_LA_DEUDA,
+        anticipos: '120000',
+        saldo_anterior: '0',
+        deudas_cobradas: [],
+      }),
+    );
+
+    expect(fixture.componentInstance.laDeudaViejaCubrioLaQuincena()).toBeFalse();
+    expect(fixture.componentInstance.puedeCerrarSinPago()).toBeTrue();
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeTrue();
+    const nota = leido(fixture.nativeElement.querySelector('.nota-saldo-cero'));
+    expect(nota).toContain('los anticipos aplicados ($ 120.000) cubren EXACTO');
+    expect(nota).not.toContain('Se queda aprobada');
+  });
+
+  it('con saldo por entregar sigue el botón "Pagar", aunque haya cobrado deuda vieja', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q2, 'proveedor', {
+        ...Q2_EN_CERO_POR_LA_DEUDA,
+        valor_bruto: '150000',
+        valor_total: '150000',
+        neto_a_pagar: '30000',
+        saldo: '30000',
+      }),
+    );
+
+    expect(fixture.componentInstance.puedePagar()).toBeTrue();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeTrue();
+    expect(fixture.componentInstance.motivoNoPagar()).toBeNull();
+  });
+
+  it('con un abono encima el servidor sí la cierra, y el botón vuelve', async () => {
+    // `_no_sale_un_peso_por_la_deuda` deja pasar la que tiene pagos (`pagado > 0`): ahí
+    // sí salió plata contra este comprobante.
+    const fixture = await abrirDetalle(
+      liquidacion(EL_DIA_DE_HENRI_Q2, 'proveedor', {
+        ...Q2_EN_CERO_POR_LA_DEUDA,
+        estado: 'parcial',
+        estado_visible: 'parcial',
+        valor_bruto: '150000',
+        valor_total: '150000',
+        neto_a_pagar: '30000',
+        pagado: '30000',
+        saldo: '0',
+        pagos: [{ id: 'p-1', fecha: '2026-08-01', valor: '30000', observaciones: null }],
+      }),
+    );
+
+    expect(fixture.componentInstance.laDeudaViejaCubrioLaQuincena()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeTrue();
+  });
+});
+
+// =============================================================================
+// LA QUINCENA CON LA DEUDA BORRADA POR LA MIGRACIÓN DE LOS ABONOS.
+//
+// La migración de agosto les escribió a las 'pagada' de antes pagado = valor total −
+// anticipos y saldo = 0. Con $180.000 de leche contra $300.000 de adelanto eso dejó
+// pagado en −$120.000: la deuda de Henri desapareció. El servidor manda
+// `deuda_borrada_por_la_migracion` y rebota Corregir, Pagar y los abonos sobre esa fila;
+// la pantalla hace la misma pregunta con ese campo y dice por qué el resumen no cuadra.
+// =============================================================================
+
+describe('LiquidacionDetailDialog: la quincena con la deuda borrada por la migración', () => {
+  const HENRI: Partial<Liquidacion> = {
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Henri Castaño',
+    transportador_id: null,
+    transportador_nombre: null,
+    total_litros: '100',
+    precio_promedio: '1800',
+    valor_transporte: '0',
+  };
+
+  /** Como la dejó la migración: pagada, pagado −$120.000, saldo en cero, sin pagos. */
+  const MIGRADA: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'pagada',
+    estado_visible: 'pagada',
+    valor_bruto: '180000',
+    valor_total: '180000',
+    anticipos: '300000',
+    neto_a_pagar: '-120000',
+    pagado: '-120000',
+    saldo: '0',
+    le_queda_debiendo: '0',
+    deuda_borrada_por_la_migracion: '120000.00',
+  };
+
+  /**
+   * La que se corrigió antes de que existiera el guardia: un día olvidado de $50.000.
+   * Henri debe $70.000 de verdad, y el saldo dice $50.000 "por pagar".
+   */
+  const CORREGIDA_SIN_REPARAR: Partial<Liquidacion> = {
+    ...MIGRADA,
+    estado: 'parcial',
+    estado_visible: 'parcial',
+    version: 2,
+    valor_bruto: '230000',
+    valor_total: '230000',
+    neto_a_pagar: '-70000',
+    saldo: '50000',
+  };
+
+  /**
+   * Y esos $50.000 se le pagaron: volvió a 'aprobada' con pagado −$70.000 y saldo cero. Lo
+   * borrado sigue siendo $120.000 —Σ pagos − pagado = 50.000 − (−70.000)—: el backend ya
+   * no lo mide por el signo de `pagado`, que daba $70.000.
+   */
+  const ABONADA_ENCIMA: Partial<Liquidacion> = {
+    ...CORREGIDA_SIN_REPARAR,
+    estado: 'aprobada',
+    estado_visible: 'aprobada',
+    pagado: '-70000',
+    saldo: '0',
+    deuda_borrada_por_la_migracion: '120000.00',
+    pagos: [{ id: 'p-1', fecha: '2026-08-10', valor: '50000', observaciones: null }],
+  };
+
+  const DIA = [det('d-1', '2026-07-03', '100', '1800', '180000')];
+  const ayudaDe = (fixture: Fixture): string =>
+    leido(fixture.nativeElement.querySelector('app-liquidacion-estado-stepper .ayuda'));
+
+  it('la deuda borrada va en su renglón, la columna cierra y el aviso dice lo que de verdad queda', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', MIGRADA));
+
+    expect(leido(fixture.nativeElement.querySelector('.aviso-deuda-borrada span'))).toBe(
+      'Esta quincena viene de antes de que existieran los abonos, y el sistema de esa ' +
+        'época le borró los $ 120.000 que Henri Castaño quedaba debiendo. En el resumen van ' +
+        'en el renglón «Deuda borrada por la migración». Tal como están las cifras, Henri ' +
+        'Castaño todavía le debe $ 120.000 al negocio por esta quincena. Hay que repararla ' +
+        'antes de cualquier otra cosa: mientras tanto no se puede corregir, pagar, abonar ni ' +
+        'anular.',
+    );
+    // La cuenta del dueño con calculadora: 180.000 − 300.000 + 120.000 = 0, el "Saldo a
+    // pagar $ 0" del final. Sin pagos no hay renglón "Pagado".
+    expect(leerResumen(fixture)['Deuda borrada por la migración']).toBe('+ $ 120.000');
+    expect(rotulosDelResumen(fixture)).not.toContain('Pagado');
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.valorTotal).toBe(18000000);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    expect(cuadre.cierre).toBe(0);
+    // Ni la nota que explicaría un saldo que no es.
+    expect(fixture.nativeElement.querySelector('.nota-le-debe')).toBeNull();
+  });
+
+  it('no ofrece Corregir, y el candado dice lo mismo que el servidor', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', MIGRADA));
+    const c = fixture.componentInstance;
+
+    expect(c.puedeCorregir()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.includes('Corregir esta quincena'))).toBeFalse();
+    expect(candadosDe(fixture)).toContain('lock No se puede corregir');
+    expect(comoSeLee(c.motivoNoCorregir())).toBe(
+      'No se puede corregir esta quincena: viene de antes de que existieran los abonos, y el ' +
+        'sistema de esa época le borró lo que Henri Castaño quedaba debiendo ($ 120.000). Hay ' +
+        'que repararla antes de tocarla: tal como está, el sistema le sumaría esos $ 120.000 a ' +
+        'lo que falta por entregarle y mandaría a pagarle a alguien que todavía debe.',
+    );
+    // Ni la línea de estados dice "esta liquidación está completa", ni el candado de
+    // Recalcular nombra un "pagado" negativo.
+    expect(ayudaDe(fixture)).toBe(
+      'Esta quincena trae una deuda borrada de antes de los abonos: hay que repararla antes ' +
+        'de pagarla o corregirla.',
+    );
+    expect(comoSeLee(c.motivoNoRecalcular())).not.toContain('ya está pagado');
+    expect(comoSeLee(c.motivoNoRecalcular())).toContain('deuda borrada');
+  });
+
+  it('una respuesta vieja, sin el campo, se ve como antes: la pregunta es la del servidor', async () => {
+    const vieja: Partial<Liquidacion> = { ...MIGRADA };
+    delete vieja.deuda_borrada_por_la_migracion;
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', vieja));
+
+    expect(fixture.nativeElement.querySelector('.aviso-deuda-borrada')).toBeNull();
+    expect(fixture.componentInstance.puedeCorregir()).toBeTrue();
+  });
+
+  it('corregida sin reparar: el saldo dice $ 50.000, pero no hay Pagar y el candado dice por qué', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', CORREGIDA_SIN_REPARAR));
+    const c = fixture.componentInstance;
+
+    expect(leerResumen(fixture)['Saldo a pagar']).toBe('$ 50.000');
+    expect(c.puedePagar()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeFalse();
+    // "No hay nada que pagar" al lado de "Saldo a pagar $ 50.000" sería falso: no se PUEDE.
+    expect(candadosDe(fixture)).toContain('lock No se puede pagar');
+    expect(comoSeLee(c.motivoNoPagar())).toBe(
+      'No se puede pagar esta quincena: viene de antes de que existieran los abonos, y el ' +
+        'sistema de esa época le borró lo que Henri Castaño quedaba debiendo ($ 120.000). Hay ' +
+        'que repararla antes de tocarla: tal como está, el sistema le sumaría esos $ 120.000 a ' +
+        'lo que falta por entregarle y mandaría a pagarle a alguien que todavía debe.',
+    );
+    // Tampoco Corregir, y la ayuda de arriba no manda a usar "Pagar" para el resto.
+    expect(botonesDe(fixture).some((b) => b.includes('Corregir esta quincena'))).toBeFalse();
+    expect(ayudaDe(fixture)).not.toContain('Pagar');
+    // 230.000 − 300.000 + 120.000 = 50.000: la columna cierra en el saldo que se ve, y el
+    // aviso dice que el saldo no es lo que queda: Henri debe $70.000.
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    expect(leido(fixture.nativeElement.querySelector('.aviso-deuda-borrada'))).toContain(
+      'Henri Castaño todavía le debe $ 70.000 al negocio por esta quincena.',
+    );
+  });
+
+  it('con un abono encima y el saldo en cero: no ofrece "Marcar pagada" ni culpa a los anticipos', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', ABONADA_ENCIMA));
+    const c = fixture.componentInstance;
+
+    expect(c.puedeCerrarSinPago()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeFalse();
+    expect(candadosDe(fixture)).toContain('lock No se puede pagar');
+    // "los anticipos ($ 300.000) cubren EXACTO el valor total ($ 230.000)" no cuadra con nada.
+    expect(fixture.nativeElement.querySelector('.nota-saldo-cero')).toBeNull();
+    // Ni un "− −$ 70.000": "Pagado" es lo que suma la tabla de pagos, y lo borrado va en su
+    // renglón con la cifra del servidor. 230.000 − 300.000 − 50.000 + 120.000 = 0.
+    expect(leerResumen(fixture)['Pagado']).toBe('− $ 50.000');
+    expect(leerResumen(fixture)['Deuda borrada por la migración']).toBe('+ $ 120.000');
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    expect(leido(fixture.nativeElement.querySelector('.aviso-deuda-borrada'))).toContain(
+      'Henri Castaño todavía le debe $ 120.000 al negocio por esta quincena.',
+    );
+  });
+
+  it('las demás no cambian: con "0.00" no hay aviso y los botones siguen donde estaban', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(EL_MARTES, 'transportador', {
+        estado: 'aprobada',
+        deuda_borrada_por_la_migracion: '0.00',
+      }),
+    );
+
+    expect(fixture.nativeElement.querySelector('.aviso-deuda-borrada')).toBeNull();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeTrue();
+  });
+});
+
+// =============================================================================
+// LA COLUMNA CUADRA EN TODAS LAS FORMAS QUE DEJÓ LA MIGRACIÓN, y el aviso dice lo que
+// queda de verdad.
+//
+// Con la deuda borrada, `pagado` lleva metida la deuda que se borró: borrada = Σ pagos −
+// pagado, y saldo = neto − pagado. Por eso valor total − anticipos − Σ pagos + borrada =
+// saldo en todas, y lo que de verdad falta entregar es saldo − borrada (negativo: el
+// tercero debe). Las cifras son las del backend (tests/test_liquidacion_deuda_borrada_con_pagos.py).
+// =============================================================================
+
+describe('LiquidacionDetailDialog: la deuda borrada, forma por forma', () => {
+  const HENRI: Partial<Liquidacion> = {
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Henri Castaño',
+    transportador_id: null,
+    transportador_nombre: null,
+    total_litros: '90',
+    precio_promedio: '2000',
+    valor_transporte: '0',
+    anticipos: '300000',
+    le_queda_debiendo: '0',
+    deuda_borrada_por_la_migracion: '120000.00',
+  };
+  const DIA = [det('d-1', '2026-07-03', '90', '2000', '180000')];
+  const pago = (id: string, valor: string): PagoLiquidacion =>
+    ({ id, fecha: '2026-08-10', valor, observaciones: null }) as PagoLiquidacion;
+
+  /** Como la dejó la migración: pagada, pagado −$120.000, saldo en cero, sin pagos. */
+  const PLAIN: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'pagada',
+    estado_visible: 'pagada',
+    valor_bruto: '180000',
+    valor_total: '180000',
+    neto_a_pagar: '-120000',
+    pagado: '-120000',
+    saldo: '0',
+    pagos: [],
+  };
+  /** Un día olvidado de $50.000 y Pagar antes del guardia: aprobada, pagado −$70.000. */
+  const MAS_CINCUENTA: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'aprobada',
+    estado_visible: 'aprobada',
+    version: 2,
+    valor_bruto: '230000',
+    valor_total: '230000',
+    neto_a_pagar: '-70000',
+    pagado: '-70000',
+    saldo: '0',
+    pagos: [pago('pg-1', '50000.00')],
+  };
+  /** Un día olvidado de $200.000 y Pagar: pagada, pagado $80.000 y $200.000 en pagos. */
+  const PASO_DE_CERO: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'pagada',
+    estado_visible: 'pagada',
+    version: 2,
+    valor_bruto: '380000',
+    valor_total: '380000',
+    neto_a_pagar: '80000',
+    pagado: '80000',
+    saldo: '0',
+    pagos: [pago('pg-2', '200000.00')],
+  };
+  /** Abonos de $150.000 y $50.000, y el de $150.000 borrado: pagado −$70.000. */
+  const DOS_ABONOS: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'aprobada',
+    estado_visible: 'aprobada',
+    version: 2,
+    valor_bruto: '380000',
+    valor_total: '380000',
+    neto_a_pagar: '80000',
+    pagado: '-70000',
+    saldo: '150000',
+    pagos: [pago('pg-3', '50000.00')],
+  };
+  /** El día olvidado de $200.000 sin pagar todavía: el saldo dice $200.000. */
+  const HACIA_ARRIBA_SIN_PAGAR: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'parcial',
+    estado_visible: 'parcial',
+    version: 2,
+    valor_bruto: '380000',
+    valor_total: '380000',
+    neto_a_pagar: '80000',
+    pagado: '-120000',
+    saldo: '200000',
+    pagos: [],
+  };
+
+  const aviso = (fixture: Fixture): string =>
+    leido(fixture.nativeElement.querySelector('.aviso-deuda-borrada span'));
+
+  const DEBE_120 = 'Henri Castaño todavía le debe $ 120.000 al negocio por esta quincena.';
+  const formas: {
+    nombre: string;
+    cifras: Partial<Liquidacion>;
+    /** El renglón "Pagado" como se lee, o null si no hay pagos. */
+    pagado: string | null;
+    loQueQueda: string;
+  }[] = [
+    { nombre: 'la migrada tal cual', cifras: PLAIN, pagado: null, loQueQueda: DEBE_120 },
+    {
+      nombre: 'corregida +$50.000 y pagada',
+      cifras: MAS_CINCUENTA,
+      pagado: '− $ 50.000',
+      loQueQueda: DEBE_120,
+    },
+    {
+      nombre: 'corregida +$200.000 y pagada',
+      cifras: PASO_DE_CERO,
+      pagado: '− $ 200.000',
+      loQueQueda: DEBE_120,
+    },
+    {
+      // 380.000 − 300.000 − 50.000 = 30.000 de verdad, contra un saldo de 150.000.
+      nombre: 'dos abonos y uno borrado',
+      cifras: DOS_ABONOS,
+      pagado: '− $ 50.000',
+      loQueQueda:
+        'Lo que de verdad falta por entregarle a Henri Castaño son $ 30.000, no los ' +
+        '$ 150.000 del saldo.',
+    },
+    {
+      nombre: 'corregida +$200.000 sin pagar',
+      cifras: HACIA_ARRIBA_SIN_PAGAR,
+      pagado: null,
+      loQueQueda:
+        'Lo que de verdad falta por entregarle a Henri Castaño son $ 80.000, no los ' +
+        '$ 200.000 del saldo.',
+    },
+  ];
+
+  for (const { nombre, cifras, pagado, loQueQueda } of formas) {
+    it(`${nombre}: la columna cierra exacta y el aviso nombra el renglón y lo que queda`, async () => {
+      const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', cifras));
+      const resumen = leerResumen(fixture);
+
+      // "Pagado" es lo que suma la tabla de pagos, y no sale si no hay ninguno.
+      expect(resumen['Pagado'] ?? 'sin renglón').toBe(pagado ?? 'sin renglón');
+      expect(resumen['Deuda borrada por la migración']).toBe('+ $ 120.000');
+      // LA REGLA DE ORO, con lo que se lee: total − descuentos + borrada = renglón final.
+      const cuadre = cuadreDelResumen(fixture);
+      expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+      expect(cuadre.cierre).toBe(centavos(resumen['Saldo a pagar']));
+      // El aviso ya no dice que el resumen no cuadra: nombra el renglón y lo que queda.
+      expect(aviso(fixture)).toContain('el renglón «Deuda borrada por la migración»');
+      expect(aviso(fixture)).toContain(loQueQueda);
+      expect(aviso(fixture)).not.toContain('no cuadra');
+    });
+  }
+
+  it('el renglón "Pagado" suma la tabla al centavo', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(DIA, 'proveedor', {
+        ...MAS_CINCUENTA,
+        pagado: '-119999.70',
+        saldo: '49999.70',
+        pagos: [pago('pg-a', '0.10'), pago('pg-b', '0.20')],
+      }),
+    );
+
+    expect(leerResumen(fixture)['Pagado']).toBe('− $ 0,30');
+    // 230.000 − 300.000 − 0,30 + 120.000 = 49.999,70, al centavo.
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    expect(cuadre.cierre).toBe(4999970);
+  });
+
+  it('sin deuda que deba el tercero, el candado de Pagar no dice que "todavía debe"', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', HACIA_ARRIBA_SIN_PAGAR));
+
+    // Se le deben $80.000 de verdad: pagarle el saldo sería pagarle $120.000 de más.
+    expect(comoSeLee(fixture.componentInstance.motivoNoPagar())).toBe(
+      'No se puede pagar esta quincena: viene de antes de que existieran los abonos, y el ' +
+        'sistema de esa época le borró lo que Henri Castaño quedaba debiendo ($ 120.000). Hay ' +
+        'que repararla antes de tocarla: tal como está, el sistema le sumaría esos $ 120.000 a ' +
+        'lo que falta por entregarle y le pagaría esos $ 120.000 de más.',
+    );
+  });
+
+  it('aprobada con la deuda borrada: no ofrece Anular, y el candado da la razón del servidor', async () => {
+    // `anular` hace primero `_exigir_sin_deuda_borrada`: el botón siempre fallaba.
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', MAS_CINCUENTA));
+    const c = fixture.componentInstance;
+
+    expect(c.puedeAnular()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Anular'))).toBeFalse();
+    expect(candadosDe(fixture)).toContain('lock No se puede anular');
+    expect(comoSeLee(c.motivoNoAnular())).toBe(
+      'No se puede anular esta quincena: viene de antes de que existieran los abonos, y el ' +
+        'sistema de esa época le borró lo que Henri Castaño quedaba debiendo ($ 120.000). Hay ' +
+        'que repararla antes de tocarla: tal como está, el sistema le sumaría esos $ 120.000 a ' +
+        'lo que falta por entregarle y mandaría a pagarle a alguien que todavía debe.',
+    );
+  });
+
+  it('aprobada con correcciones y sin deuda borrada: tampoco Anular (el servidor la rebota)', async () => {
+    // La v2 de una pagada que sus anticipos dejaron en cero, corregida hacia arriba.
+    const fixture = await abrirDetalle(
+      liquidacion(DIA, 'proveedor', {
+        ...HENRI,
+        estado: 'aprobada',
+        estado_visible: 'aprobada',
+        version: 2,
+        anticipos: '180000',
+        valor_bruto: '230000',
+        valor_total: '230000',
+        neto_a_pagar: '50000',
+        pagado: '0',
+        saldo: '50000',
+        deuda_borrada_por_la_migracion: '0.00',
+      }),
+    );
+    const c = fixture.componentInstance;
+
+    expect(c.puedeAnular()).toBeFalse();
+    expect(botonesDe(fixture).some((b) => b.endsWith('Anular'))).toBeFalse();
+    expect(comoSeLee(c.motivoNoAnular())).toBe(
+      'De esta quincena ya salieron 2 comprobantes (el original y sus correcciones): no se ' +
+        'puede anular.',
+    );
+    // Pagar sí: el servidor lo acepta.
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeTrue();
+  });
+
+  /**
+   * CON LAS DOS MARCAS: corregida hacia abajo antes del guardia (precio 2000 → 1500), valor
+   * $135.000, saldo −$45.000, y esos $45.000 ya se los cobró la siguiente.
+   */
+  const CON_LAS_DOS: Partial<Liquidacion> = {
+    ...HENRI,
+    estado: 'pagada',
+    estado_visible: 'pagada · quedó debiendo',
+    version: 2,
+    precio_promedio: '1500',
+    valor_bruto: '135000',
+    valor_total: '135000',
+    neto_a_pagar: '-165000',
+    pagado: '-120000',
+    saldo: '-45000',
+    le_queda_debiendo: '45000',
+    pagos: [],
+    deuda_trasladada_a_id: 'l-sig',
+    deuda_trasladada_a: {
+      id: 'l-sig',
+      periodo_inicio: '2026-07-16',
+      periodo_fin: '2026-07-31',
+      periodo_texto: '16/07/2026 al 31/07/2026',
+    },
+  } as Partial<Liquidacion>;
+
+  it('con la deuda borrada Y la deuda ya cobrada, Corregir da primero la borrada', async () => {
+    // `_exigir_corregible` rebota primero por la borrada: "anule primero esa liquidación"
+    // mandaría a anular la siguiente para nada.
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', CON_LAS_DOS));
+    const motivo = comoSeLee(fixture.componentInstance.motivoNoCorregir());
+
+    expect(motivo).toBe(
+      'No se puede corregir esta quincena: viene de antes de que existieran los abonos, y el ' +
+        'sistema de esa época le borró lo que Henri Castaño quedaba debiendo ($ 120.000). Hay ' +
+        'que repararla antes de tocarla: tal como está, el sistema le sumaría esos $ 120.000 a ' +
+        'lo que falta por entregarle y mandaría a pagarle a alguien que todavía debe.',
+    );
+    expect(motivo).not.toContain('Anule primero esa liquidación');
+  });
+
+  it('con las dos marcas, la columna cierra en "Le queda debiendo" y el aviso separa las dos deudas', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', CON_LAS_DOS));
+
+    // 135.000 − 300.000 + 120.000 = −45.000, el "Le queda debiendo $ 45.000" del final.
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+    expect(cuadre.cierre).toBe(-4500000);
+    expect(aviso(fixture)).toContain(
+      'Tal como están las cifras, Henri Castaño quedó debiendo $ 165.000 por esta quincena: ' +
+        'los $ 45.000 del renglón final ya se le cobraron en la liquidación del 16/07/2026 al ' +
+        '31/07/2026, y los $ 120.000 borrados todavía los debe.',
+    );
+  });
+
+  it('con las dos marcas, el candado de Recalcular también da primero la borrada', async () => {
+    // Mismo orden que Corregir y Anular: "anule primero esa liquidación … y vuelva a
+    // intentarlo" mandaría a anular la siguiente para nada.
+    const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', CON_LAS_DOS));
+    const motivo = comoSeLee(fixture.componentInstance.motivoNoRecalcular());
+
+    expect(motivo).toBe(
+      'Sus cifras están en firme y Recalcular solo trabaja sobre borradores. Además trae una ' +
+        'deuda borrada de antes de los abonos (ver el aviso de arriba): hay que repararla ' +
+        'antes de tocarla.',
+    );
+    expect(leido(fixture.nativeElement.querySelector('.ayuda-precio.con-candado span'))).toBe(
+      motivo,
+    );
+  });
+
+  /** Los botones de las acciones que le mandan algo al tercero, y el del PDF para el dueño. */
+  const loQueSeManda = (fixture: Fixture) => {
+    const botones = botonesDe(fixture);
+    return {
+      whatsApp: botones.some((b) => b.includes('WhatsApp')),
+      compartir: botones.some((b) => b.includes('Compartir PDF')),
+      verPdf: botones.some((b) => b.startsWith('picture_as_pdf')),
+    };
+  };
+
+  for (const { nombre, cifras } of [
+    ...formas,
+    { nombre: 'con las dos marcas', cifras: CON_LAS_DOS },
+  ]) {
+    it(`${nombre}: no ofrece mandársela al tercero, y el dueño sí puede ver el PDF`, async () => {
+      // El aviso dice que hay que repararla antes de cualquier otra cosa, y el renglón
+      // «+ Deuda borrada» le llegaría suelto al tercero, leyéndose como un abono.
+      const fixture = await abrirDetalle(liquidacion(DIA, 'proveedor', cifras));
+
+      expect(loQueSeManda(fixture)).toEqual({ whatsApp: false, compartir: false, verPdf: true });
+    });
+  }
+
+  it('la anulada con la deuda borrada, y una quincena normal, sí se pueden mandar', async () => {
+    const anulada = await abrirDetalle(
+      liquidacion(DIA, 'proveedor', { ...PLAIN, estado: 'anulada', estado_visible: 'anulada' }),
+    );
+    expect(loQueSeManda(anulada)).toEqual({ whatsApp: true, compartir: true, verPdf: true });
+
+    const normal = await abrirDetalle(
+      liquidacion(DIA, 'proveedor', {
+        ...PLAIN,
+        anticipos: '180000',
+        neto_a_pagar: '0',
+        pagado: '0',
+        deuda_borrada_por_la_migracion: '0.00',
+      }),
+    );
+    expect(loQueSeManda(normal)).toEqual({ whatsApp: true, compartir: true, verPdf: true });
+  });
+
+  it('una anulada no lleva aviso ni candados de la borrada, pero la columna sigue cerrando', async () => {
+    // El `por_reparar` del backend no cuenta las anuladas: no hay nada que reparar ahí.
+    const fixture = await abrirDetalle(
+      liquidacion(DIA, 'proveedor', { ...PLAIN, estado: 'anulada', estado_visible: 'anulada' }),
+    );
+
+    expect(fixture.componentInstance.tieneDeudaBorrada()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.aviso-deuda-borrada')).toBeNull();
+    const cuadre = cuadreDelResumen(fixture);
+    expect(cuadre.despuesDeLosDescuentos).toBe(cuadre.cierre);
+  });
+});
+
+// =============================================================================
+// LA AYUDA DE LA LÍNEA DE ESTADOS NOMBRA LOS BOTONES QUE SÍ HAY.
+//
+// La de 'aprobada' decía siempre "usa Pagar cuando entregues el dinero", también encima
+// de una quincena sin ese botón. El detalle se la cambia con las mismas señales que
+// ponen o quitan los botones (`ayudaDelEstado`).
+// =============================================================================
+
+describe('LiquidacionDetailDialog: la ayuda de arriba dice lo mismo que los botones de abajo', () => {
+  /** La quincena 2 de Henri: vale justo los $120.000 que dejó debiendo la 1. */
+  const Q2: Partial<Liquidacion> = {
+    estado: 'aprobada',
+    estado_visible: 'aprobada',
+    tipo: 'proveedor',
+    proveedor_id: 'p-1',
+    proveedor_nombre: 'Henri Castaño',
+    transportador_id: null,
+    transportador_nombre: null,
+    total_litros: '100',
+    precio_promedio: '1200',
+    valor_bruto: '120000',
+    valor_transporte: '0',
+    valor_total: '120000',
+    anticipos: '0',
+    saldo_anterior: '120000',
+    neto_a_pagar: '0',
+    pagado: '0',
+    saldo: '0',
+    le_queda_debiendo: '0',
+  };
+  const DIA_Q2 = [det('d-2', '2026-07-20', '100', '1200', '120000')];
+  const ayudaDe = (fixture: Fixture): string =>
+    leido(fixture.nativeElement.querySelector('app-liquidacion-estado-stepper .ayuda'));
+
+  it('en cero por la deuda vieja: no hay botón, y la ayuda no manda a buscar uno', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA_Q2, 'proveedor', Q2));
+
+    expect(
+      botonesDe(fixture).some((b) => b.endsWith('Pagar') || b.includes('Marcar pagada')),
+    ).toBeFalse();
+    expect(ayudaDe(fixture)).toBe(
+      'Los valores quedaron en firme y no queda un peso por entregarle: no hay que pagarla ni ' +
+        'marcarla pagada.',
+    );
+  });
+
+  it('y el candado de Recalcular ya no dice "todavía no se le ha pagado nada"', async () => {
+    const fixture = await abrirDetalle(liquidacion(DIA_Q2, 'proveedor', Q2));
+    const c = fixture.componentInstance;
+
+    expect(comoSeLee(c.motivoNoRecalcular())).toBe(
+      'No hay nada que entregarle a Henri Castaño: con lo que venía debiendo de antes, el saldo ' +
+        'quedó en $ 0. Sus cifras están en firme y Recalcular solo trabaja sobre borradores. Si ' +
+        'quedaron mal —por ejemplo una tarifa que se corrigió después—, anúlela y vuelva a ' +
+        'generarla: al anularla, lo que venía debiendo vuelve a quedar pendiente.',
+    );
+    expect(comoSeLee(c.motivoNoRecalcular())).not.toContain('todavía no se le ha pagado nada');
+    // La salida que nombra existe.
+    expect(botonesDe(fixture).some((b) => b.endsWith('Anular'))).toBeTrue();
+  });
+
+  it('en cero por sus propios anticipos: la ayuda nombra "Marcar pagada", que es el botón que hay', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(DIA_Q2, 'proveedor', { ...Q2, anticipos: '120000', saldo_anterior: '0' }),
+    );
+
+    expect(botonesDe(fixture).some((b) => b.includes('Marcar pagada'))).toBeTrue();
+    expect(ayudaDe(fixture)).toBe(
+      'Los valores quedaron en firme y no hay plata por entregar: usa "Marcar pagada" para ' +
+        'cerrarla.',
+    );
+  });
+
+  it('con plata por entregar sigue la de siempre, que ahí sí es cierta', async () => {
+    const fixture = await abrirDetalle(
+      liquidacion(DIA_Q2, 'proveedor', {
+        ...Q2,
+        valor_bruto: '150000',
+        valor_total: '150000',
+        neto_a_pagar: '30000',
+        saldo: '30000',
+      }),
+    );
+
+    expect(botonesDe(fixture).some((b) => b.endsWith('Pagar'))).toBeTrue();
+    expect(ayudaDe(fixture)).toBe(
+      'Los valores quedaron en firme: usa "Pagar" cuando entregues el dinero.',
+    );
   });
 });

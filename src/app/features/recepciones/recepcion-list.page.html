@@ -179,18 +179,12 @@
                     </span>
                   }
                   @case ('aprobada') {
-                    <span
-                      class="liq en-liquidacion"
-                      matTooltip="Aprobada: si corrige el día, vuelve a borrador y se recalcula"
-                    >
+                    <span class="liq en-liquidacion" [matTooltip]="tooltipChipSinPagar(fila)">
                       <mat-icon>check_circle</mat-icon> Aprobada
                     </span>
                   }
                   @case ('borrador') {
-                    <span
-                      class="liq en-liquidacion"
-                      matTooltip="En borrador: si corrige el día, la liquidación se recalcula"
-                    >
+                    <span class="liq en-liquidacion" [matTooltip]="tooltipChipSinPagar(fila)">
                       <mat-icon>edit_note</mat-icon> En borrador
                     </span>
                   }

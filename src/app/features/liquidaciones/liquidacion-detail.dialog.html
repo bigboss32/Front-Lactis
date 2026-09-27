@@ -133,7 +133,10 @@
     en firme en la que el tercero quedó debiendo dice "pagada · quedó debiendo", igual que
     el PDF. Solo en lo que se PINTA: los botones y los candados siguen leyendo `estado`.
   -->
-  <app-liquidacion-estado-stepper [estado]="estadoComoSeLee(liq())" />
+  <app-liquidacion-estado-stepper
+    [estado]="estadoComoSeLee(liq())"
+    [ayudaEnLugarDeLaDelEstado]="ayudaDelEstado()"
+  />
 
   <div class="info">
     <div>
@@ -151,6 +154,19 @@
       </div>
     }
   </div>
+
+  <!--
+    LA DEUDA QUE BORRÓ LA MIGRACIÓN DE LOS ABONOS, arriba y antes del resumen: el resumen
+    la lleva en su propio renglón, y el saldo del final NO es lo que de verdad queda. El
+    aviso dice qué queda, antes de que el dueño desconfíe de las demás cifras. Corregir,
+    Pagar y Anular no se ofrecen (ver `tieneDeudaBorrada`).
+  -->
+  @if (avisoDeLaDeudaBorrada(); as aviso) {
+    <div class="aviso-deuda-borrada" role="note">
+      <mat-icon aria-hidden="true">report</mat-icon>
+      <span>{{ aviso }}</span>
+    </div>
+  }
 
   <!--
     LO QUE MOVIÓ EL RECÁLCULO, con la cifra de antes y la de ahora.
@@ -420,9 +436,10 @@
     sin saber qué pasó con la plata de la quincena. La nota nombra los renglones que de
     verdad la cubrieron —los mismos del resumen, en el mismo orden— y por eso siempre
     cuadra con la columna de arriba. Solo sale mientras la quincena está saldada y sin
-    cerrar: en una pagada el cero es lo normal y no hay nada que aclarar.
+    cerrar: en una pagada el cero es lo normal y no hay nada que aclarar. Si el cero lo
+    hizo la deuda arrastrada, dice además que se queda aprobada (ver `notaSaldoEnCero`).
   -->
-  @if (explicacionSaldoEnCero(); as nota) {
+  @if (notaSaldoEnCero(); as nota) {
     <p class="nota-saldo-cero">{{ nota }}</p>
   }
 
@@ -594,23 +611,31 @@
     <mat-icon>picture_as_pdf</mat-icon> {{ rotuloPdf() }}
   </button>
 
-  <button
-    mat-stroked-button
-    *hasPermission="'liquidaciones:imprimir'"
-    [disabled]="compartiendo()"
-    (click)="compartir()"
-  >
-    <mat-icon>share</mat-icon> Compartir PDF
-  </button>
+  <!--
+    CON LA DEUDA BORRADA POR LA MIGRACIÓN no se le manda nada al tercero: el aviso de arriba
+    dice que hay que repararla antes de cualquier otra cosa, y su renglón «+ Deuda borrada»
+    le llegaría suelto, leyéndose como un abono a su favor. El dueño sí puede ver y bajar
+    el PDF (el botón de arriba). Ver `tieneDeudaBorrada`.
+  -->
+  @if (!tieneDeudaBorrada()) {
+    <button
+      mat-stroked-button
+      *hasPermission="'liquidaciones:imprimir'"
+      [disabled]="compartiendo()"
+      (click)="compartir()"
+    >
+      <mat-icon>share</mat-icon> Compartir PDF
+    </button>
 
-  <button
-    mat-stroked-button
-    *hasPermission="'liquidaciones:imprimir'"
-    matTooltip="Abre WhatsApp con el resumen en texto"
-    (click)="enviarWhatsApp()"
-  >
-    <mat-icon>chat</mat-icon> WhatsApp
-  </button>
+    <button
+      mat-stroked-button
+      *hasPermission="'liquidaciones:imprimir'"
+      matTooltip="Abre WhatsApp con el resumen en texto"
+      (click)="enviarWhatsApp()"
+    >
+      <mat-icon>chat</mat-icon> WhatsApp
+    </button>
+  }
 
   @if (puedeRecalcular()) {
     <button
@@ -631,10 +656,11 @@
   }
 
   <!--
-    ANULAR desaparece cuando la deuda de esta liquidación YA SE COBRÓ en otra: el
-    servidor lo rebota, porque anularla dejaría a ese otro comprobante descontando la
-    deuda de un documento anulado. En su lugar queda el candado, que NOMBRA la
-    liquidación que hay que anular primero: sin eso el dueño queda atascado.
+    ANULAR desaparece donde el servidor lo rebota (ver `puedeAnular`): la deuda borrada
+    por la migración, la deuda de esta liquidación YA COBRADA en otra —anularla dejaría a
+    ese otro comprobante descontando la deuda de un documento anulado— y la quincena con
+    correcciones. En su lugar queda el candado con la razón; en la de la deuda cobrada
+    NOMBRA la liquidación que hay que anular primero: sin eso el dueño queda atascado.
   -->
   @if (puedeAnular()) {
     <button mat-stroked-button [disabled]="procesando()" (click)="anular()">
@@ -711,7 +737,8 @@
       QUE PODER CERRARSE. Antes acá no había botón —el de Pagar exigía saldo > 0— y esa
       liquidación se quedaba en 'aprobada' para siempre, con sus días abiertos a que
       alguien les cambiara las cifras meses después. El botón NO dice "Pagar" porque no
-      se paga nada: marca pagada y cierra (el servidor lo acepta; ver `saldoEnCero`).
+      se paga nada: marca pagada y cierra. No sale cuando el cero lo hizo la deuda
+      arrastrada: ahí el servidor lo rebota y queda el candado (ver `saldoEnCero`).
     -->
     <button
       mat-flat-button
@@ -723,7 +750,7 @@
     </button>
   } @else if (motivoNoPagar(); as motivo) {
     <span class="nota-recalcular" [matTooltip]="motivo">
-      <mat-icon>lock</mat-icon> No hay nada que pagar
+      <mat-icon>lock</mat-icon> {{ rotuloNoPagar() }}
     </span>
   }
 </mat-dialog-actions>

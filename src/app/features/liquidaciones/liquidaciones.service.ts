@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Observable, map } from 'rxjs';
 
-import { CrudService } from '../../core/api.service';
+import { CrudService, QueryParams } from '../../core/api.service';
 import { Liquidacion, ModoTransporte, Monto } from '../../core/models';
 import { EnlaceSoporte, SoporteArchivo, SoportesLista } from '../../shared/soportes.model';
 
@@ -143,6 +143,42 @@ export function resultadoGenerarDeCrudo(crudo: unknown): ResultadoGenerar {
     omitidos: clave ? (cuerpo[clave] as unknown[]).map(omitidoDeCrudo) : [],
     omitidosSinLeer: clave === undefined,
   };
+}
+
+/**
+ * LAS CIFRAS DE LAS TARJETAS DEL LISTADO, contadas por el servidor. Es la respuesta de
+ * `GET /liquidaciones/resumen`.
+ *
+ * Cuenta lo que dice el chip ("pagada · quedó debiendo" va en `pagadas`, no en
+ * `aprobadas`) y sin tope de filas. Los montos llegan como texto (Decimal), igual que en
+ * `Liquidacion`; los conteos, como enteros.
+ */
+export interface ResumenLiquidaciones {
+  borradores: number;
+  aprobadas: number;
+  /** Solo plata por SALIR: una deuda del tercero no la baja. */
+  saldo_aprobadas: Monto;
+  parciales: number;
+  saldo_parciales: Monto;
+  pagadas: number;
+  /** En positivo: lo que los terceros quedaron debiendo y nadie les ha cobrado. */
+  le_quedaron_debiendo: Monto;
+  liquidaciones_que_deben: number;
+  /**
+   * Las quincenas a las que la migración de los abonos les borró la deuda
+   * (`deuda_borrada_por_la_migracion` > 0), y cuánto suma lo borrado. Esas filas no
+   * entran en la plata por pagar de las otras cifras. Opcionales: una respuesta vieja no
+   * los trae, y ausentes se leen como cero.
+   */
+  por_reparar?: number;
+  deuda_borrada?: Monto;
+}
+
+/** Los filtros de las tarjetas: los mismos nombres que manda la lista, sin el de estado. */
+export interface FiltrosResumen extends QueryParams {
+  tipo?: string | null;
+  desde?: string | null;
+  hasta?: string | null;
 }
 
 /** Un pago parcial contra una liquidación: los mismos campos que un abono de reventa. */
@@ -560,6 +596,15 @@ export interface AnticipoCambiadoEnCorreccion {
 export class LiquidacionesService extends CrudService<Liquidacion> {
   constructor() {
     super('/liquidaciones');
+  }
+
+  /**
+   * Las tarjetas del listado en UNA consulta, con los filtros de tipo y fechas de la
+   * lista. Antes la pantalla pedía cuatro listas de hasta 200 filas y contaba ella:
+   * pasadas 200 pagadas, la deuda vieja se quedaba por fuera de la tarjeta.
+   */
+  resumen(filtros: FiltrosResumen): Observable<ResumenLiquidaciones> {
+    return this.api.get<ResumenLiquidaciones>(`${this.base}/resumen`, filtros);
   }
 
   /**

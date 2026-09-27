@@ -87,8 +87,9 @@
             El candado es 'bloqueado', NO 'aplicado'. Antes se miraba 'aplicado' y
             el anticipo quedaba congelado desde que se GENERABA la quincena,
             aunque todavía no se le hubiera pagado un peso a nadie. Ahora se traba
-            solo cuando ya salió plata (la liquidación tiene algún pago) o cuando
-            se descontó en una nómina, que no tiene vuelta atrás.
+            cuando las cifras de su quincena quedaron en firme (salió plata o papel,
+            o su deuda ya se cobró en otra) o cuando se descontó en una nómina. El
+            porqué lo escribe el backend: ver `motivoDelCandado`.
           -->
           @if (!fila.bloqueado) {
             <button

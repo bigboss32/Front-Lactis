@@ -8,7 +8,7 @@ import { Observable, of } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { Liquidacion, Page } from '../../core/models';
 import { LiquidacionListPage } from './liquidacion-list.page';
-import { LiquidacionesService } from './liquidaciones.service';
+import { LiquidacionesService, ResumenLiquidaciones } from './liquidaciones.service';
 
 /**
  * LA LISTA TIENE QUE DISTINGUIR DE UN VISTAZO A QUIÉN SE LE DEBE DE QUIÉN LE DEBE.
@@ -96,15 +96,41 @@ const A_ALEX_130K: Partial<Liquidacion> = {
   saldo: '130000',
 };
 
+/**
+ * EL `GET /liquidaciones/resumen`, TAL CUAL LO MANDA EL SERVIDOR: cifras fijas.
+ *
+ * Las tarjetas las cuenta el backend y la regla —lo que dice el chip, "por pagar" solo con
+ * saldos positivos, sin anuladas ni deudas ya cobradas— la prueban sus propias pruebas
+ * (tests/test_liquidacion_resumen_de_las_tarjetas.py). Aquí se mide solo lo que la
+ * pantalla PINTA con lo que le llega; por eso ningún falso de este archivo cuenta filas.
+ * Los montos llegan como texto, igual que los Decimal de verdad.
+ */
+const RESUMEN_EN_CERO: ResumenLiquidaciones = {
+  borradores: 0,
+  aprobadas: 0,
+  saldo_aprobadas: '0.00',
+  parciales: 0,
+  saldo_parciales: '0.00',
+  pagadas: 0,
+  le_quedaron_debiendo: '0.00',
+  liquidaciones_que_deben: 0,
+};
+
 class ServicioFalso {
-  /** Lo que devuelve la lista principal; las tarjetas piden lo mismo filtrado. */
+  /** Lo que devuelve la lista principal. */
   filas: Liquidacion[] = [];
+  /** Lo que devuelve el resumen: lo pone cada prueba, sin sacarlo de las filas. */
+  respuestaResumen: ResumenLiquidaciones = RESUMEN_EN_CERO;
 
   list(params?: { estado?: string | null }): Observable<Page<Liquidacion>> {
     const items = params?.estado
       ? this.filas.filter((fila) => fila.estado === params.estado)
       : this.filas;
     return of({ items, total: items.length, page: 1, page_size: 20, pages: 1 });
+  }
+
+  resumen(): Observable<ResumenLiquidaciones> {
+    return of(this.respuestaResumen);
   }
 }
 
@@ -115,9 +141,13 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
   let fixture: ComponentFixture<LiquidacionListPage>;
   let servicio: ServicioFalso;
 
-  const armar = async (filas: Liquidacion[]): Promise<void> => {
+  const armar = async (
+    filas: Liquidacion[],
+    resumen: Partial<ResumenLiquidaciones> = {},
+  ): Promise<void> => {
     servicio = new ServicioFalso();
     servicio.filas = filas;
+    servicio.respuestaResumen = { ...RESUMEN_EN_CERO, ...resumen };
     await TestBed.configureTestingModule({
       imports: [LiquidacionListPage, NoopAnimationsModule],
       providers: [
@@ -224,13 +254,18 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
     );
   });
 
-  it('una deuda del tercero NO baja el "en saldos" de las aprobadas', async () => {
-    // La tarjeta dice "$X en saldos" y esa cifra es plata por SALIR. Sumado crudo, un
-    // saldo de -$4.955,77 la bajaba: dos liquidaciones, una de $120.000 por pagar y una
-    // deuda del tercero, mostraban menos plata por entregar de la que hay.
-    await armar([liq(POR_PAGAR), liq(LE_QUEDO_DEBIENDO)]);
+  it('el "por pagar" de las aprobadas es el del servidor: la deuda de una fila no lo baja', async () => {
+    // En pantalla hay una de $120.000 por pagar y una deuda del tercero de $4.955,77, y el
+    // servidor manda $120.000. La tarjeta pinta esa cifra; si la pantalla volviera a
+    // sumar filas, saldría $115.044.
+    await armar([liq(POR_PAGAR), liq(LE_QUEDO_DEBIENDO)], {
+      aprobadas: 1,
+      saldo_aprobadas: '120000.00',
+    });
 
     expect(fixture.componentInstance.resumen()?.saldoAprobadas).toBe(120000);
+    expect(tarjetaCon('Aprobadas por pagar')).toContain('$ 120.000 por pagar');
+    expect(tarjetaCon('Aprobadas por pagar')).not.toContain('115.044');
   });
 
   it('la cadena se lee entera: cobró lo anterior Y volvió a quedar debiendo', async () => {
@@ -329,11 +364,20 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
   // ---------------------------------------------------------------------------
   // LA TARJETA TIENE QUE DECIR CUÁNTA PLATA HAY QUE SACAR, y esa es una sola cifra:
   // los saldos POSITIVOS. Revueltos con las deudas de los terceros daba $10.000 donde
-  // hay $130.000 por entregar, y las dos pantallas que el dueño compara —esta y el
-  // tablero— decían cosas distintas.
+  // hay $130.000 por entregar. La cuenta la hace el servidor; acá se mide que la
+  // pantalla pinte sus dos cifras, cada una en su tarjeta, sin mezclarlas.
   // ---------------------------------------------------------------------------
-  it('la tarjeta suma solo lo que hay que SACAR: la deuda del tercero no la baja', async () => {
-    await armar([liq(A_ALEX_130K), liq(HENRI_QUEDO_DEBIENDO_120K)]);
+  /** Lo que manda el servidor con Alex ($130.000 por entregar) y Henri (debe $120.000). */
+  const ALEX_Y_HENRI: Partial<ResumenLiquidaciones> = {
+    aprobadas: 1,
+    saldo_aprobadas: '130000.00',
+    pagadas: 1,
+    le_quedaron_debiendo: '120000.00',
+    liquidaciones_que_deben: 1,
+  };
+
+  it('la tarjeta pinta solo lo que hay que SACAR: la deuda del tercero no la baja', async () => {
+    await armar([liq(A_ALEX_130K), liq(HENRI_QUEDO_DEBIENDO_120K)], ALEX_Y_HENRI);
 
     const resumen = fixture.componentInstance.resumen()!;
     expect(resumen.saldoAprobadas).toBe(130000);
@@ -345,7 +389,7 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
   });
 
   it('lo que le deben a la quesera va APARTE y con su nombre', async () => {
-    await armar([liq(A_ALEX_130K), liq(HENRI_QUEDO_DEBIENDO_120K)]);
+    await armar([liq(A_ALEX_130K), liq(HENRI_QUEDO_DEBIENDO_120K)], ALEX_Y_HENRI);
 
     const resumen = fixture.componentInstance.resumen()!;
     expect(resumen.leQuedaronDebiendo).toBe(120000);
@@ -370,27 +414,87 @@ describe('LiquidacionListPage: quién debe y quién le debe', () => {
     );
   });
 
-  it('no se cuenta dos veces: la deuda ya cobrada y la anulada quedan por fuera', async () => {
-    // La ya cobrada está descontada dentro del saldo de la liquidación que se la cobró, y
-    // la anulada no se le cobra a nadie. Sumarlas acá sería prometerle al dueño un cobro
-    // que no existe.
-    await armar([
-      liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-cobrada', deuda_trasladada_a_id: 'l-otra' }),
-      liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-anulada', estado: 'anulada' }),
-      liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-viva', estado: 'borrador' }),
-    ]);
+  it('la deuda de la tarjeta es la del servidor, no la suma de las filas en pantalla', async () => {
+    // En pantalla hay tres deudas de $120.000 —una ya cobrada, una anulada y una viva— y
+    // el servidor cuenta solo la viva (la regla y su porqué viven en el backend). Sumar
+    // las filas acá prometería un cobro de $360.000 que no existe.
+    await armar(
+      [
+        liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-cobrada', deuda_trasladada_a_id: 'l-otra' }),
+        liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-anulada', estado: 'anulada' }),
+        liq({ ...HENRI_QUEDO_DEBIENDO_120K, id: 'l-viva', estado: 'borrador' }),
+      ],
+      { le_quedaron_debiendo: '120000.00', liquidaciones_que_deben: 1 },
+    );
 
     const resumen = fixture.componentInstance.resumen()!;
-    // Solo la del borrador, que es la única cuya deuda va a viajar de verdad.
     expect(resumen.leQuedaronDebiendo).toBe(120000);
     expect(resumen.liquidacionesQueDeben).toBe(1);
+    const tarjeta = tarjetaCon('Le quedaron debiendo');
+    expect(tarjeta).toContain('$ 120.000');
+    expect(tarjeta).toContain('en 1 liquidación');
+    expect(tarjeta).not.toContain('360.000');
   });
 
   it('sin deudas la tarjeta no sale: una tarjeta en $0 le quita espacio a las de siempre', async () => {
-    await armar([liq(A_ALEX_130K)]);
+    await armar([liq(A_ALEX_130K)], { aprobadas: 1, saldo_aprobadas: '130000.00' });
 
     expect(fixture.componentInstance.resumen()?.leQuedaronDebiendo).toBe(0);
     expect(tarjetaCon('Le quedaron debiendo')).toBe('');
+  });
+
+  // ---------------------------------------------------------------------------
+  // LA FILA CON LA DEUDA BORRADA POR LA MIGRACIÓN no es plata por pagar: el servidor no
+  // deja pagarla y no la cuenta en la tarjeta. Lleva su marca, que es la que el dueño
+  // busca cuando la tarjeta "Deuda borrada por reparar" le dice que hay una.
+  // ---------------------------------------------------------------------------
+  it('la de la deuda borrada no se marca "por pagar" y lleva su propia marca', async () => {
+    await armar([
+      liq({
+        ...HENRI_QUEDO_DEBIENDO_120K,
+        id: 'l-borrada',
+        estado: 'parcial',
+        valor_total: '230000',
+        neto_a_pagar: '-70000',
+        pagado: '-120000',
+        saldo: '50000',
+        le_queda_debiendo: '0',
+        deuda_borrada_por_la_migracion: '120000.00',
+      }),
+    ]);
+
+    const celda = celdasDeSaldo()[0];
+    expect(celda).not.toContain('por pagar');
+    expect(celda).toContain('deuda borrada · por reparar');
+    const pagina = fixture.componentInstance;
+    expect(pagina.esPorPagar(pagina.filas()[0])).toBeFalse();
+    expect(comoSeLee(pagina.tooltipDeudaBorrada(pagina.filas()[0]))).toBe(
+      'Viene de antes de que existieran los abonos, y el sistema de esa época le borró los ' +
+        '$ 120.000 que Henri Castaño quedaba debiendo. Hay que repararla antes de corregirla ' +
+        'o pagarla',
+    );
+  });
+
+  it('una anulada con la deuda borrada no lleva la marca "por reparar"', async () => {
+    // El `por_reparar` del servidor no cuenta las anuladas: la marca en la fila no puede
+    // decir que hay una por reparar cuando la tarjeta dice que no.
+    await armar([
+      liq({
+        ...HENRI_QUEDO_DEBIENDO_120K,
+        id: 'l-anulada-borrada',
+        estado: 'anulada',
+        valor_total: '180000',
+        neto_a_pagar: '-120000',
+        pagado: '-120000',
+        saldo: '0',
+        le_queda_debiendo: '0',
+        deuda_borrada_por_la_migracion: '120000.00',
+      }),
+    ]);
+
+    const pagina = fixture.componentInstance;
+    expect(pagina.tieneDeudaBorrada(pagina.filas()[0])).toBeFalse();
+    expect(celdasDeSaldo()[0]).not.toContain('deuda borrada');
   });
 
   it('lo normal no cambia: la que hay que pagar sigue con su marca de siempre', async () => {
@@ -426,6 +530,8 @@ const PAGADA_DEBIENDO = 'pagada · quedó debiendo';
 class ServicioComoElServidor {
   filas: Liquidacion[] = [];
   pedidos: (string | null | undefined)[] = [];
+  /** Las tarjetas: cifras fijas que pone cada prueba (ver `RESUMEN_EN_CERO`). */
+  respuestaResumen: ResumenLiquidaciones = RESUMEN_EN_CERO;
 
   list(params?: { estado?: string | null }): Observable<Page<Liquidacion>> {
     this.pedidos.push(params?.estado);
@@ -441,6 +547,10 @@ class ServicioComoElServidor {
       return f.estado === estado;
     });
     return of({ items, total: items.length, page: 1, page_size: 20, pages: 1 });
+  }
+
+  resumen(): Observable<ResumenLiquidaciones> {
+    return of(this.respuestaResumen);
   }
 }
 
@@ -484,9 +594,13 @@ describe('LiquidacionListPage: "pagada · quedó debiendo" en el chip, las tarje
     fixture.detectChanges();
   };
 
-  const armar = async (filas: Liquidacion[]): Promise<void> => {
+  const armar = async (
+    filas: Liquidacion[],
+    resumen: Partial<ResumenLiquidaciones> = {},
+  ): Promise<void> => {
     servicio = new ServicioComoElServidor();
     servicio.filas = filas;
+    servicio.respuestaResumen = { ...RESUMEN_EN_CERO, ...resumen };
     await TestBed.configureTestingModule({
       imports: [LiquidacionListPage, NoopAnimationsModule],
       providers: [
@@ -541,8 +655,14 @@ describe('LiquidacionListPage: "pagada · quedó debiendo" en el chip, las tarje
     expect(chips()).toEqual(['aprobada', 'aprobada']);
   });
 
-  it('las tarjetas cuentan lo que dice el chip: la que quedó debiendo va en Pagadas', async () => {
-    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR, PAGADA_LIMPIA]);
+  it('cada tarjeta pinta el conteo del servidor, que cuenta lo que dice el chip', async () => {
+    // Con estas tres filas el servidor manda 1 aprobada y 2 pagadas: la que quedó debiendo
+    // va en Pagadas (su regla la prueba el backend). La pantalla no recuenta las filas.
+    await armar([APROBADA_QUE_DEBE, APROBADA_POR_PAGAR, PAGADA_LIMPIA], {
+      aprobadas: 1,
+      saldo_aprobadas: '130000.00',
+      pagadas: 2,
+    });
 
     const resumen = fixture.componentInstance.resumen()!;
     expect(resumen.aprobadas).toBe(1);
@@ -551,18 +671,32 @@ describe('LiquidacionListPage: "pagada · quedó debiendo" en el chip, las tarje
     // La cifra grande de cada tarjeta, como la lee el dueño.
     expect(cifraDe('Aprobadas por pagar')).toBe('1');
     expect(cifraDe('Pagadas en el período')).toBe('2');
-    // Aquí la deuda ya se cobró en otra quincena: no suma a la tarjeta de lo que le deben.
+    // Sin deuda por cobrar en la respuesta, no sale la tarjeta de lo que le deben.
     expect(resumen.liquidacionesQueDeben).toBe(0);
+    expect(
+      Array.from(fixture.nativeElement.querySelectorAll('.tarjeta')).some((t) =>
+        comoSeLee((t as HTMLElement).textContent).includes('Le quedaron debiendo'),
+      ),
+    ).toBeFalse();
   });
 
-  it('una deuda sin cobrar entra UNA sola vez en la tarjeta de lo que le deben', async () => {
-    // Ahora viaja en la consulta de las pagadas y no en la de las aprobadas: tiene que
-    // seguir contándose, y una sola vez.
-    await armar([{ ...APROBADA_QUE_DEBE, deuda_trasladada_a_id: null }, APROBADA_POR_PAGAR]);
+  it('la deuda sin cobrar sale una vez, con la cifra y el conteo del servidor', async () => {
+    await armar([{ ...APROBADA_QUE_DEBE, deuda_trasladada_a_id: null }, APROBADA_POR_PAGAR], {
+      aprobadas: 1,
+      saldo_aprobadas: '130000.00',
+      pagadas: 1,
+      le_quedaron_debiendo: '120000.00',
+      liquidaciones_que_deben: 1,
+    });
 
     const resumen = fixture.componentInstance.resumen()!;
     expect(resumen.liquidacionesQueDeben).toBe(1);
     expect(resumen.leQuedaronDebiendo).toBe(120000);
+    const tarjeta = Array.from(fixture.nativeElement.querySelectorAll('.tarjeta'))
+      .map((t) => comoSeLee((t as HTMLElement).textContent))
+      .filter((t) => t.includes('Le quedaron debiendo'));
+    expect(tarjeta.length).toBe(1);
+    expect(tarjeta[0]).toContain('$ 120.000');
   });
 
   it('tocar "Aprobadas" NO trae la fila que dice pagada; tocar "Pagadas" SÍ', async () => {

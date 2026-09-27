@@ -18,6 +18,13 @@ import { Liquidacion, Monto } from '../../core/models';
 export const ROTULO_SALDO_ANTERIOR = 'Lo que quedó debiendo de la quincena pasada';
 
 /**
+ * El rótulo del renglón de la deuda que borró la migración de los abonos. Una constante
+ * porque el aviso rojo del detalle lo nombra: si el aviso dijera otro nombre, el dueño
+ * buscaría en el resumen un renglón que no está.
+ */
+export const ROTULO_DEUDA_BORRADA = 'Deuda borrada por la migración';
+
+/**
  * El menos de los renglones que restan: U+2212 (signo de resta), NO el guion del
  * teclado.
  *
@@ -80,6 +87,37 @@ export function causaDeLaDeuda(
   const pagado = Number(liq.pagado ?? 0);
   if (!(pagado > 0)) return 'anticipos';
   return Number(liq.neto_a_pagar ?? 0) < 0 ? 'las_dos' : 'entregado_de_mas';
+}
+
+/**
+ * ¿EL CERO LO HIZO LA DEUDA DE LA QUINCENA PASADA? Si es así, `POST /pagar` rebota.
+ *
+ * Es la pregunta de `_no_sale_un_peso_por_la_deuda` en el backend, con sus mismas tres
+ * condiciones: no queda saldo, se cobró deuda arrastrada y no hay pagos (`tiene_pagos`
+ * allá es `pagado > 0`). La quincena 1 dejó debiendo $120.000 y la 2 vale justo
+ * $120.000: no sale un peso, y la 2 se queda 'aprobada' A PROPÓSITO. Ofrecer "Marcar
+ * pagada" ahí es ofrecer un botón que siempre falla.
+ */
+export function laDeudaViejaSeLlevoElNeto(
+  liq: Pick<Liquidacion, 'saldo' | 'saldo_anterior' | 'pagado'>,
+): boolean {
+  return (
+    Number(liq.saldo ?? 0) <= 0 &&
+    Number(liq.saldo_anterior ?? 0) > 0 &&
+    !(Number(liq.pagado ?? 0) > 0)
+  );
+}
+
+/**
+ * ¿HAY QUE REPARARLE LA DEUDA QUE BORRÓ LA MIGRACIÓN DE LOS ABONOS? La pregunta del
+ * `por_reparar` del backend: `deuda_borrada_por_la_migracion` > 0 y no anulada. Es la
+ * misma para la marca de la lista y para los candados del detalle, que no ofrecen lo que
+ * `_exigir_sin_deuda_borrada` rebota. Una respuesta vieja sin el campo da no.
+ */
+export function deudaBorradaPorReparar(
+  liq: Pick<Liquidacion, 'estado' | 'deuda_borrada_por_la_migracion'>,
+): boolean {
+  return liq.estado !== 'anulada' && Number(liq.deuda_borrada_por_la_migracion ?? 0) > 0;
 }
 
 /**

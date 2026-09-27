@@ -21,7 +21,14 @@ import { debounceTime, firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
-import { Page, Proveedor, Recepcion, ResumenPeriodo, Ruta } from '../../core/models';
+import {
+  Page,
+  Proveedor,
+  Recepcion,
+  ResumenPeriodo,
+  Ruta,
+  trabadoSinPlataEntregada,
+} from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
@@ -30,7 +37,8 @@ import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
-import { RecepcionFormDialog } from './recepcion-form.dialog';
+import { avisoDelGuardado } from './aviso-del-guardado';
+import { CierreRecepcion, RecepcionFormDialog } from './recepcion-form.dialog';
 import { RecepcionGrillaTab } from './recepcion-grilla.tab';
 import { RecepcionesService } from './recepciones.service';
 
@@ -261,7 +269,20 @@ export class RecepcionListPage implements OnInit {
     return fila.leche_pagada || fila.flete_pagado;
   }
 
+  /**
+   * EL PORQUÉ LO ESCRIBE EL BACKEND (`candado_aviso`) siempre que lo manda, con el estado
+   * que sea: el candado es su `_traba_el_dia` y desde acá no se ven todas sus razones. La
+   * 'pagada' que dejó el Pagar de antes con el tercero debiendo (pagado $0), cuya deuda ya
+   * se cobró la siguiente, no es plata entregada, y "ya se pagó" mandaba a buscar un pago
+   * que no existe; el servidor dice "ya se le cobró". Los textos cortos quedan para una
+   * respuesta vieja, sin el aviso. No usa `this`, igual que `tooltipEditar`.
+   */
   tooltipEliminar(fila: Recepcion): string {
+    if (!(fila.leche_pagada || fila.flete_pagado)) return 'Eliminar';
+    if (fila.candado_aviso) return `No se puede eliminar. ${fila.candado_aviso}`;
+    if (trabadoSinPlataEntregada(fila)) {
+      return 'Las cifras de este día quedaron en firme: no se puede eliminar';
+    }
     if (fila.leche_pagada && fila.flete_pagado) {
       return 'La leche y el flete de este día ya se pagaron: no se puede eliminar';
     }
@@ -271,12 +292,45 @@ export class RecepcionListPage implements OnInit {
   }
 
   /**
+   * EL TOOLTIP DEL CHIP 'Aprobada' / 'En borrador', que prometía corregir el día.
+   *
+   * La quincena cuya deuda ya se cobró en otra sigue 'aprobada' (o en borrador) y aun
+   * así sus días quedan trabados: el backend lo dice con `leche_pagada` / `flete_pagado`
+   * (su `_traba_el_dia`), los mismos que cierran Eliminar. Ahí "si corrige el día, vuelve
+   * a borrador" ofrecía algo que el servidor rebota; se muestra el aviso que él escribe.
+   */
+  tooltipChipSinPagar(fila: Recepcion): string {
+    if (fila.leche_pagada || fila.flete_pagado) {
+      return (
+        fila.candado_aviso ??
+        'Las cifras de este día quedaron en firme: ábralo para ver qué se puede corregir'
+      );
+    }
+    return fila.liquidacion_estado === 'aprobada'
+      ? 'Aprobada: si corrige el día, vuelve a borrador y se recalcula'
+      : 'En borrador: si corrige el día, la liquidación se recalcula';
+  }
+
+  /**
    * El tooltip de editar decía "Ya pagada: no editable" en cuanto CUALQUIERA de
    * las dos liquidaciones tenía pagos, y eso quedó mintiendo con el candado por
    * campo. Ahora se dice cuál plata salió y qué queda por corregir; el aviso
    * completo lo escribe el backend y sale dentro del diálogo (`candado_aviso`).
+   *
+   * Y el aviso del backend va acá mismo siempre que lo manda: "la leche ya se pagó" sobre
+   * el día de Beto —deuda cobrada, ni un peso pagado— contradecía al chip de al lado, que
+   * ya daba la razón real. Y el estado no alcanza para saber si fue plata: una 'pagada'
+   * del Pagar de antes puede no tener un peso entregado (ver `tooltipEliminar`).
    */
   tooltipEditar(fila: Recepcion): string {
+    if ((fila.leche_pagada || fila.flete_pagado) && fila.candado_aviso) {
+      return fila.candado_aviso;
+    }
+    // Sin el aviso (una respuesta vieja): "ya se pagó" solo si la que manda es una pagada
+    // o una parcial.
+    if (trabadoSinPlataEntregada(fila)) {
+      return 'Las cifras de este día quedaron en firme: ábralo para ver qué se puede corregir';
+    }
     if (fila.leche_pagada && fila.flete_pagado) {
       return 'Abrir: las cifras ya pagadas quedan en firme, se corrigen las observaciones';
     }
@@ -296,37 +350,28 @@ export class RecepcionListPage implements OnInit {
     }
   }
 
-  /** Qué le pasa a la liquidación del día que se acaba de tocar. */
-  private avisoLiquidacion(estadoPrevio: Recepcion['liquidacion_estado']): string | null {
-    if (estadoPrevio === 'aprobada') {
-      return (
-        'Esta liquidación volvió a borrador porque cambiaron sus litros; ' +
-        'revísela y apruébela otra vez.'
-      );
-    }
-    if (estadoPrevio === 'borrador') return 'Se recalculó la liquidación de este día.';
-    return null;
-  }
-
-  private avisar(hecho: string, estadoPrevio: Recepcion['liquidacion_estado']): void {
-    const aviso = this.avisoLiquidacion(estadoPrevio);
+  /**
+   * El aviso de lo que le pasó a la liquidación del día: `antes` es la fila como estaba al
+   * abrirla (después de guardar, una aprobada ya aparece en borrador y no se sabría que
+   * hubo retroceso) y `despues`, la respuesta del PUT. Ver `avisoDelGuardado`.
+   */
+  private avisar(hecho: string, antes: Recepcion | undefined, despues: Recepcion | null): void {
+    const aviso = avisoDelGuardado(antes, despues);
     this.snackbar.open(aviso ? `${hecho}. ${aviso}` : hecho, 'OK', {
       duration: aviso ? 9000 : 3000,
     });
   }
 
   abrirFormulario(item?: Recepcion): void {
-    // Se guarda el estado de ANTES: después de guardar, una aprobada ya aparece
-    // en borrador y no se sabría que hubo retroceso que avisar.
-    const estadoPrevio = item?.liquidacion_estado ?? null;
     this.dialog
       .open(RecepcionFormDialog, { data: { item }, width: '640px' })
       .afterClosed()
-      .subscribe((resultado) => {
+      .subscribe((resultado?: CierreRecepcion) => {
         if (!resultado) return;
         this.avisar(
           resultado === 'eliminado' ? 'Recepción eliminada' : 'Recepción guardada',
-          estadoPrevio,
+          item,
+          typeof resultado === 'object' ? resultado : null,
         );
         this.cargar();
         this.cargarResumen();
@@ -357,7 +402,7 @@ export class RecepcionListPage implements OnInit {
         if (!confirmado) return;
         try {
           await firstValueFrom(this.servicio.remove(item.id));
-          this.avisar('Recepción eliminada', item.liquidacion_estado);
+          this.avisar('Recepción eliminada', item, null);
           this.cargar();
           this.cargarResumen();
           this.grillaTab()?.cargar();
