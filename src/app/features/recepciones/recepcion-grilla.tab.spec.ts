@@ -163,7 +163,7 @@ describe('RecepcionGrillaTab: la celda trabada por una deuda ya cobrada', () => 
       'La leche de este día ya se pagó',
     );
     expect(tooltip({ liquidacion_estado: 'parcial' })).toContain(
-      'hay que eliminar antes el pago en la liquidación',
+      'La leche de este día ya se pagó',
     );
   });
 

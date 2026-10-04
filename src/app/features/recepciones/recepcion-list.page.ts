@@ -312,6 +312,27 @@ export class RecepcionListPage implements OnInit {
   }
 
   /**
+   * EL RÓTULO DEL CHIP DE UNA 'parcial', que decía "Con abono" sacado solo del estado.
+   *
+   * La quincena de $180.000 (100 L × $1.800) que el adelanto de $180.000 cubría exacto se
+   * cerró con Pagar en pagado $0; al corregirla con un día olvidado de 20 L quedó
+   * 'parcial' v2 con saldo $36.000 y sin un solo pago. Lo mismo la que se pagó con
+   * $180.000, se corrigió y después se le borró ese pago mal registrado: saldo $216.000.
+   * El chip decía "Con abono" y el dueño buscaba con la calculadora un abono que no
+   * existe. Si hubo plata por pagos lo dice el servidor (`liquidacion_con_abono`, su
+   * `con_abonos`): acá no se adivina con el estado ni con la versión.
+   *
+   * Sin abono el rótulo dice lo único que es cierto en todos los casos: el día tiene las
+   * cifras en firme (una 'parcial' siempre lo traba). El porqué —"ya emitió un
+   * comprobante corregido", o la deuda que borró la migración— lo dice el tooltip con el
+   * `candado_aviso` del servidor. Una respuesta vieja, sin la señal, sigue con "Con abono".
+   * No usa `this`, igual que `tooltipEditar`.
+   */
+  rotuloParcial(fila: Recepcion): string {
+    return fila.liquidacion_con_abono === false ? 'En firme' : 'Con abono';
+  }
+
+  /**
    * El tooltip de editar decía "Ya pagada: no editable" en cuanto CUALQUIERA de
    * las dos liquidaciones tenía pagos, y eso quedó mintiendo con el candado por
    * campo. Ahora se dice cuál plata salió y qué queda por corregir; el aviso

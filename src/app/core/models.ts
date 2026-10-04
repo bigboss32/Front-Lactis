@@ -546,7 +546,28 @@ export interface Recepcion extends TenantFields {
    * `avisoDelGuardado`).
    */
   liquidaciones_devueltas_a_borrador?: LiquidacionDevueltaABorrador[];
+  /**
+   * ¿La liquidación que manda en `liquidacion_estado` está en 'parcial' CON UN ABONO DE
+   * VERDAD? La quincena corregida queda 'parcial' sin ningún pago, y ahí el chip no puede
+   * decir "Con abono". Lo decide el servidor. Ausente en una respuesta vieja.
+   */
+  liquidacion_con_abono?: boolean;
 }
+
+/** Las acciones de una liquidación que la deuda borrada por la migración traba. */
+export type AccionTrabadaPorLaDeudaBorrada = 'corregir' | 'pagar' | 'registrar_pago' | 'anular';
+
+/** Las acciones de una liquidación que la deuda ya cobrada en otra puede trabar. */
+export type AccionTrabadaPorLaDeuda =
+  | 'anular'
+  | 'corregir'
+  | 'recalcular'
+  | 'precio'
+  | 'eliminar_pago'
+  // Pagar y abonar solo rebotan por la deuda cobrada cuando los dos comprobantes ya no
+  // cuadran entre sí (la quincena que la dejó o la que la cobró cambió después).
+  | 'pagar'
+  | 'registrar_pago';
 
 /** Una liquidación que volvió a borrador al guardar un día. */
 export interface LiquidacionDevueltaABorrador {
@@ -832,6 +853,48 @@ export interface Liquidacion extends TenantFields {
    * Opcional: una respuesta vieja no lo trae, y ausente se lee como cero.
    */
   deuda_borrada_por_la_migracion?: Monto;
+  /**
+   * LA POSICIÓN DE HOY DE LA FILA CON DEUDA BORRADA, escrita por el servidor: cuánto debe
+   * todavía el tercero, o cuánto falta de verdad por entregarle. Es la misma frase que
+   * sale en el 422 de Pagar o Corregir esa fila y en la nota del PDF, así que la pantalla
+   * la pinta tal cual en el aviso rojo, sin hacer la cuenta por su lado.
+   * Null en todas las demás. Ausente en una respuesta vieja: ahí se usa la redacción local.
+   */
+  aviso_deuda_borrada?: string | null;
+  /**
+   * LOS PORQUÉS DE LA DEUDA BORRADA, uno por acción y escritos por el servidor: el mismo
+   * texto del 422 que esa acción da sobre esta fila (`_aviso_deuda_borrada` con su verbo).
+   * Solo en las filas con deuda borrada. Ausente en una respuesta vieja: ahí se usa la
+   * redacción local.
+   */
+  avisos_deuda_borrada?: Partial<Record<AccionTrabadaPorLaDeudaBorrada, string>> | null;
+  /**
+   * POR QUÉ PAGAR REBOTA CUANDO LA DEUDA DE LA QUINCENA PASADA SE LLEVÓ EL NETO: el texto
+   * del 422 de Pagar (`_no_sale_un_peso_por_la_deuda`). Con él la pantalla esconde
+   * "Marcar pagada" y explica el porqué sin copiar las condiciones del servidor. Null
+   * cuando Pagar no rebota por eso. Ausente en una respuesta vieja: se deduce como antes.
+   */
+  aviso_sin_un_peso_por_la_deuda?: string | null;
+  /**
+   * LOS PORQUÉS DE LA DEUDA YA COBRADA, uno por acción y escritos por el servidor: el
+   * mismo texto del 422 que esa acción da sobre esta fila, con la salida que DE VERDAD
+   * existe para quien está mirando (si la otra quincena no se puede anular, o si este
+   * usuario no tiene el permiso, el texto no lo manda ahí). Solo trae las acciones que
+   * esa deuda traba. Vacío o ausente cuando la deuda no se ha cobrado en otra.
+   */
+  avisos_deuda_cobrada?: Partial<Record<AccionTrabadaPorLaDeuda, string>> | null;
+  /**
+   * ¿YA SALIÓ PLATA POR PAGOS CONTRA ESTA QUINCENA? La pregunta del servidor, para que la
+   * palabra "abono" no salga del estado guardado: la corregida que quedó 'parcial' sin un
+   * solo pago no tiene ningún abono. Ausente en una respuesta vieja: se deduce de `pagos`.
+   */
+  con_abonos?: boolean;
+  /**
+   * POR QUÉ ESTA 'pagada' QUEDÓ CERRADA SIN QUE SE REGISTRARA UN PAGO, escrito por el
+   * servidor (la misma frase que dicen sus días y sus anticipos). Null en las demás, y
+   * en la pagada que de verdad se pagó.
+   */
+  cerrada_sin_pago?: string | null;
   /**
    * QUÉ NÚMERO DE HOJA ES ESTA. Arranca en 1 y sube CADA VEZ que se corrige la quincena
    * después de pagada.
@@ -1219,6 +1282,13 @@ export interface Balance {
    * las queseras.
    */
   terceros_le_quedan_debiendo?: Monto;
+  /**
+   * CUÁNTAS QUINCENAS CON DEUDA BORRADA POR LA MIGRACIÓN quedaron POR FUERA de
+   * `liquidaciones_por_pagar` (el servidor no deja pagarlas hasta repararlas). Con más de
+   * cero la pantalla lo dice al lado de la cifra, para que no se lea como "no se le debe
+   * nada a nadie". Ausente en una respuesta vieja: se lee como cero.
+   */
+  quincenas_por_reparar?: number;
   total_disponible: Monto;
 }
 
@@ -1264,6 +1334,8 @@ export interface Dashboard {
    * y la tarjeta no sale, en vez de mostrar "$ NaN".
    */
   terceros_le_quedan_debiendo?: Monto;
+  /** Igual que en `Balance.quincenas_por_reparar`: las que no entran en "por pagar". */
+  quincenas_por_reparar?: number;
   alertas_no_leidas: number;
   litros_por_dia: SerieDia[];
   ventas_por_dia: SerieDia[];

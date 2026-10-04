@@ -513,7 +513,24 @@ export interface PrevisualizacionCorreccion {
    * cuál decir a partir del signo de un saldo.
    */
   queda_por_entregar: Monto;
+  /**
+   * SOLO lo que el PDF cierra en "SE LE PAGÓ DE MÁS": la deuda entera es efectivo entregado
+   * por encima del neto. En una respuesta vieja (sin `le_queda_debiendo`) es la deuda
+   * entera, sea cual sea su causa.
+   */
   se_le_pago_de_mas: Monto;
+  /**
+   * LA DEUDA QUE PUSIERON LOS ANTICIPOS (o la de la quincena pasada), con o sin efectivo
+   * encima: el PDF la cierra en "LE QUEDA DEBIENDO". Medido con 250 L × $2.000 contra
+   * $300.000 de anticipo, pagada con $200.000 y corregida a $1.000: neto −$50.000, saldo
+   * −$250.000, y los $250.000 vienen acá, no en `se_le_pago_de_mas` (en efectivo salieron
+   * $200.000). De los tres campos, a lo sumo uno pasa de cero, y
+   * queda_por_entregar − se_le_pago_de_mas − le_queda_debiendo = saldo_despues.
+   *
+   * Opcional porque un backend anterior no lo manda: ahí el rótulo de la deuda lo decide la
+   * pantalla con la pregunta del PDF (ver `cierreAhora` en corregir-quincena.dialog).
+   */
+  le_queda_debiendo?: Monto;
   version_actual: number;
   /**
    * LO QUE EL SISTEMA SABE Y EL DUEÑO NO, redactado por el servidor: qué pasa con el

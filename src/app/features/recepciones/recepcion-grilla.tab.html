@@ -153,8 +153,9 @@
                   <td class="celda" [class.hoy]="dia.iso === hoy()">
                     @if (fila.celdas[dia.iso]; as celda) {
                       <!-- El candado marca los días con CIFRAS EN FIRME: plata ya
-                           pagada (del todo o con un abono encima), o una quincena
-                           cuya deuda ya se cobró en otra, donde no salió un peso.
+                           pagada (del todo o con un abono encima), una quincena que
+                           ya emitió un comprobante corregido, o una cuya deuda ya se
+                           cobró en otra; en esas dos puede no haber salido un peso.
                            Por eso la etiqueta no dice por qué: lo dice el tooltip,
                            que el lector de pantalla también lee, con el texto del
                            backend. Ya NO cierra la celda: el candado es por campo,

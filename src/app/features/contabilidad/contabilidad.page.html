@@ -301,6 +301,11 @@
               <mat-card-content>
                 <p class="etiqueta">Liquidaciones por pagar</p>
                 <p class="valor negativo">{{ bal.liquidaciones_por_pagar | money }}</p>
+                <!-- Lo que esta cifra deja por fuera: las quincenas con deuda borrada,
+                     que el servidor no deja pagar. Ver `notaQuincenasPorReparar`. -->
+                @if (notaPorReparar(); as nota) {
+                  <p class="nota-reparar">{{ nota }}</p>
+                }
               </mat-card-content>
             </mat-card>
             <!--

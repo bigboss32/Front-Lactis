@@ -1004,31 +1004,33 @@ export class RecepcionGrillaTab implements OnInit {
    * a buscar un pago que no existe. Los textos de abajo quedan para una respuesta vieja,
    * y aun ahí "ya se pagó" solo sale si la liquidación que manda es una pagada o una
    * parcial (una aprobada o un borrador nunca tienen pagos). No usa `this`.
+   *
+   * Sobre una 'parcial' decía además "hay que eliminar antes el pago", y la celda no sabe
+   * si ese pago existe: la quincena de $180.000 que el adelanto cubría exacto, corregida
+   * con un día olvidado de 20 L, queda 'parcial' con saldo $36.000 y ningún pago; y en
+   * una corregida que sí lo tiene, borrarlo no destraba el día, porque sigue siendo la
+   * versión 2. El consejo de verdad para cada caso lo escribe el servidor.
    */
   tooltipTrabada(celda: CeldaGrilla): string {
     if (celda.candado_aviso) return celda.candado_aviso;
     if (!diaTrabadoPorPago(celda.liquidacion_estado)) {
       return 'Las cifras de este día quedaron en firme: ábralo para ver qué se puede corregir';
     }
-    const abonada = celda.liquidacion_estado === 'parcial';
-    const salida = abonada
-      ? ' Para corregir esa cifra hay que eliminar antes el pago en la liquidación.'
-      : '';
     if (celda.leche_pagada && celda.flete_pagado) {
       return (
         'La leche y el flete de este día ya se pagaron: las cifras quedan en firme. ' +
-        'Clic para ver el día y corregir las observaciones.' + salida
+        'Clic para ver el día y corregir las observaciones.'
       );
     }
     if (celda.leche_pagada) {
       return (
         'La leche de este día ya se pagó: los litros, el precio y la fecha quedan en firme. ' +
-        'Clic para corregir el transportador (su flete todavía no se ha pagado).' + salida
+        'Clic para corregir el transportador (su flete todavía no se ha pagado).'
       );
     }
     return (
       'El flete de este día ya se pagó: no se puede cambiar el transportador ni los litros. ' +
-      'Clic para corregir el precio de la leche y lo demás.' + salida
+      'Clic para corregir el precio de la leche y lo demás.'
     );
   }
 

@@ -1790,9 +1790,12 @@ describe('LiquidacionDetailDialog: el recálculo dice cuánto cambió', () => {
     );
 
     expect(botonRecalcular()).toBeNull();
+    // Del flete Corregir no recibe nada: borrar el pago es la única salida por dentro, y va
+    // con su advertencia, como el candado del anticipo de esa misma quincena.
     expect(comoSeLee(fixture.componentInstance.motivoNoRecalcular())).toBe(
       'Ya se le abonó $ 24.600 contra estas cifras: quedan en firme y no se pueden ' +
-        'recalcular. Si de verdad hay que rehacerlas, primero elimine el abono.',
+        'recalcular. Elimine primero ese pago si de verdad hay que rehacerlas —con él se van ' +
+        'sus soportes, que no se recuperan—, o registre el ajuste en la quincena siguiente.',
     );
   });
 
@@ -3129,7 +3132,7 @@ describe('LiquidacionDetailDialog: el candado de Recalcular solo dice lo que es 
       }),
     );
 
-    expect(candadoEnElCuerpo(fixture)).not.toContain('elimine el abono');
+    expect(candadoEnElCuerpo(fixture)).not.toMatch(/elimine primero/i);
     expect(candadoEnElCuerpo(fixture)).toContain('ya salieron 2 comprobantes');
   });
 
@@ -3312,9 +3315,12 @@ describe('LiquidacionDetailDialog: "Marcar pagada" que siempre fallaba', () => {
     expect(nota).toBe(
       'No hay nada que entregarle a Henri Castaño: lo que ya venía debiendo de antes ' +
         '($ 120.000) cubre EXACTO el valor total de la quincena ($ 120.000), así que el ' +
-        'saldo quedó en $ 0. Se queda aprobada: no queda un peso por entregarle, y ' +
-        'marcarla pagada trabaría sus días con un aviso que no es cierto.',
+        'saldo quedó en $ 0. Se queda aprobada: no queda un peso por entregarle, y cuando lo ' +
+        'que venía debiendo de antes se lleva lo que faltaba del neto, el sistema no la marca ' +
+        'pagada.',
     );
+    // Sin la razón vieja: con el aviso de C3, el de los días de esa 'pagada' sería cierto.
+    expect(nota).not.toContain('aviso que no es cierto');
     // El tooltip del candado dice LO MISMO que la nota: una sola redacción.
     expect(comoSeLee(c.motivoNoPagar())).toBe(nota);
     // Y el estado no se toca: sigue siendo la aprobada que el servidor quiere.
@@ -3860,8 +3866,11 @@ describe('LiquidacionDetailDialog: la deuda borrada, forma por forma', () => {
     expect(aviso(fixture)).toContain(
       'Tal como están las cifras, Henri Castaño quedó debiendo $ 165.000 por esta quincena: ' +
         'los $ 45.000 del renglón final ya se le cobraron en la liquidación del 16/07/2026 al ' +
-        '31/07/2026, y los $ 120.000 borrados todavía los debe.',
+        '31/07/2026, y la deuda borrada todavía la debe.',
     );
+    // La cifra borrada la dice una vez el marco del aviso (45.000 + 120.000 = 165.000 en el
+    // mismo párrafo): repetirla en la posición de hoy era la misma plata dos veces.
+    expect((aviso(fixture).match(/\$\s120\.000/g) ?? []).length).toBe(1);
   });
 
   it('con las dos marcas, el candado de Recalcular también da primero la borrada', async () => {

@@ -180,7 +180,7 @@ describe('LiquidacionListPage: las tarjetas salen de GET /liquidaciones/resumen'
       deudaBorrada: 0,
     });
     expect(tarjetaCon('Aprobadas por pagar')).toContain('$ 130.000 por pagar');
-    expect(tarjetaCon('Con abonos, debiendo')).toContain('$ 44.506 sin pagar');
+    expect(tarjetaCon('Parciales, con saldo pendiente')).toContain('$ 44.506 sin pagar');
     expect(tarjetaCon('Borradores por revisar')).toContain('2');
   });
 

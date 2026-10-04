@@ -32,10 +32,19 @@ const PASO_DE_ESTADO: Record<string, number> = {
   'pagada · quedó debiendo': 2,
 };
 
-/** Texto de ayuda de una línea según el estado actual. */
+/**
+ * Texto de ayuda de una línea según el estado actual.
+ *
+ * Las de 'borrador', 'aprobada' y 'parcial' nombran botones ("apruébala", "usa Pagar")
+ * que solo tiene el permiso 'administrar'. Por eso salen únicamente cuando quien arma la
+ * línea no manda otra: el detalle manda la suya a quien no tiene ese botón (ver
+ * `ayudaEnLugarDeLaDelEstado`).
+ */
 const AYUDAS: Record<string, string> = {
   borrador: 'Revisa los valores y apruébala para poder pagarla.',
   aprobada: 'Los valores quedaron en firme: usa "Pagar" cuando entregues el dinero.',
+  // Las dos que siguen afirman una plata entregada: el detalle las cambia cuando no la hubo
+  // (la parcial corregida sin un solo pago, la pagada que se cerró sin ninguno).
   parcial: 'Se le abonó una parte y todavía queda debiendo: usa "Pagar" para el resto.',
   pagada: 'El pago quedó registrado; esta liquidación está completa.',
   // Sin "usa Pagar": ese botón no está (el servidor lo rebota). Y sin decir de dónde salió
@@ -194,8 +203,14 @@ export class LiquidacionEstadoStepper {
    *
    * La de 'aprobada' dice "usa Pagar", y hay aprobadas sin ese botón: la que la deuda
    * vieja dejó en cero, la que se cierra con "Marcar pagada", la que trae una deuda
-   * borrada. Esta línea no ve los botones; el detalle sí, y la arma con las mismas
-   * señales que los ponen (ver `ayudaDelEstado` en el diálogo). Null = la del estado.
+   * borrada. Y las de 'parcial' y 'pagada' afirman una plata ("Se le abonó una parte",
+   * "El pago quedó registrado") que en la parcial corregida sin pagos, o en la pagada que
+   * se cerró sin ninguno, no salió. Y "apruébala" o "usa Pagar" a quien no tiene el permiso
+   * 'administrar' (Compras, Consulta) lo manda a un botón que no le sale y que el servidor
+   * le rebota con 403. Esta línea no ve los botones, los pagos ni los permisos; el detalle
+   * sí, y la arma con las mismas señales que ponen cada botón (ver `ayudaDelEstado` en el
+   * diálogo). Null = la del estado, y el detalle solo la deja pasar cuando el botón que
+   * nombra está.
    */
   readonly ayudaEnLugarDeLaDelEstado = input<string | null>(null);
 

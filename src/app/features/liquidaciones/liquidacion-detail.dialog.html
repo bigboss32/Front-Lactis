@@ -34,10 +34,9 @@
         @if (banda.motivo) {
           <p class="banda-motivo">motivo: {{ banda.motivo }}</p>
         }
-        <p class="banda-motivo">
-          El papel que {{ tercero() }} tiene en la mano puede ser el anterior: entréguele
-          esta versión y recójale la vieja.
-        </p>
+        <!-- Qué hacer con el papel: entregarlo, o todavía no si trae la deuda borrada
+             (ver `bandaDeCorreccion`). -->
+        <p class="banda-motivo">{{ banda.queHacerConElPapel }}</p>
         <!--
           EL ENLACE AL HISTORIAL. La banda sigue mostrando SOLO LA ÚLTIMA corrección —es
           la que explica el papel vigente y tiene que caber en tres líneas—, y acá abajo
@@ -525,16 +524,32 @@
             <!--
               'liquidaciones:eliminar', NO 'crear': borrar un pago le devuelve la
               deuda al sistema y es la puerta para tapar una entrega de plata.
+
+              Y NO CON LA DEUDA YA COBRADA EN OTRA QUINCENA: el servidor lo rebota
+              (`motivoNoEliminarPago`), porque esa otra sigue descontando lo que esta
+              quedó debiendo. En su lugar, el candado con el porqué; el clip de al lado
+              se queda, porque mirar los soportes no mueve plata.
             -->
-            <button
-              mat-icon-button
-              *hasPermission="'liquidaciones:eliminar'"
-              matTooltip="Eliminar este pago (registrado por error)"
-              [disabled]="procesando()"
-              (click)="eliminarPago(pago)"
-            >
-              <mat-icon>delete</mat-icon>
-            </button>
+            @if (tienePermisoDeEliminarPagos()) {
+              @if (motivoNoEliminarPago(); as motivo) {
+                <mat-icon
+                  class="candado-pago"
+                  role="img"
+                  [attr.aria-label]="motivo"
+                  [matTooltip]="motivo"
+                  >lock</mat-icon
+                >
+              } @else {
+                <button
+                  mat-icon-button
+                  matTooltip="Eliminar este pago (registrado por error)"
+                  [disabled]="procesando()"
+                  (click)="eliminarPago(pago)"
+                >
+                  <mat-icon>delete</mat-icon>
+                </button>
+              }
+            }
           </td>
         </ng-container>
 
@@ -542,6 +557,15 @@
         <tr mat-row *matRowDef="let pago; columns: columnasPagos"></tr>
       </table>
     </div>
+
+    <!-- El porqué del candado de la papelera, escrito y no solo en el tooltip: en una
+         tablet no hay mouse que pase por encima, y quien tiene la papelera la busca. -->
+    @if (tienePermisoDeEliminarPagos() && motivoNoEliminarPago(); as motivo) {
+      <p class="ayuda-precio con-candado candado-de-los-pagos">
+        <mat-icon>lock</mat-icon>
+        <span>{{ motivo }}</span>
+      </p>
+    }
 
     <!--
       QUE EL CLIP SE ENTIENDA SIN QUE NADIE LO EXPLIQUE. Un icono nuevo en una tabla de
@@ -697,13 +721,9 @@
     </span>
   }
 
-  @if (liq().estado === 'borrador') {
-    <button
-      mat-flat-button
-      *hasPermission="'liquidaciones:administrar'"
-      [disabled]="procesando()"
-      (click)="aprobar()"
-    >
+  <!-- Con la misma señal que la ayuda de arriba usa para decir "apruébala" (`puedeAprobar`). -->
+  @if (puedeAprobar()) {
+    <button mat-flat-button [disabled]="procesando()" (click)="aprobar()">
       <mat-icon>check_circle</mat-icon> Aprobar
     </button>
   }
@@ -719,14 +739,11 @@
     que saliera un peso y eso trababa los días de la quincena para siempre.
   -->
   @if (puedePagar()) {
+    <!-- "otro pago" solo si ya hubo uno: ver `tooltipPagar`. -->
     <button
       mat-flat-button
       [disabled]="procesando()"
-      [matTooltip]="
-        liq().estado === 'parcial'
-          ? 'Registrar otro pago: queda debiendo ' + (liq().saldo | money: true)
-          : 'Registrar el pago (puede ser parcial)'
-      "
+      [matTooltip]="tooltipPagar()"
       (click)="pagar()"
     >
       <mat-icon>payments</mat-icon> Pagar

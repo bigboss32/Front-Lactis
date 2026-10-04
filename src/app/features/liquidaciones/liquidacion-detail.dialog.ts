@@ -32,6 +32,7 @@ import {
   ROTULO_DEUDA_BORRADA,
   ROTULO_SALDO_ANTERIOR,
   causaDeLaDeuda,
+  conAbonos,
   deudaBorradaPorReparar,
   laDeudaViejaSeLlevoElNeto,
   porQueSeLePagoDeMas,
@@ -69,6 +70,19 @@ import { PagoLiquidacionFormDialog } from './pago-form.dialog';
  * encarga de preguntar ANTES de oprimir. Todo eso ya está escrito y probado.
  */
 const ESTADOS_QUE_ACEPTAN_RECALCULO: readonly string[] = ['borrador'];
+
+/**
+ * UNA FRASE DEL SERVIDOR, LISTA PARA IR EN UN PÁRRAFO: sin espacios de sobra y con su punto.
+ *
+ * Los textos del backend salen como los de sus 422, sin punto final ("…se llevó el neto"),
+ * y acá van seguidos de otra oración o como la línea de ayuda, que siempre lo lleva. Las
+ * palabras no se tocan. Null si no vino nada que decir.
+ */
+function comoFrase(texto: string | null | undefined): string | null {
+  const limpio = texto?.trim();
+  if (!limpio) return null;
+  return /[.!?]$/.test(limpio) ? limpio : `${limpio}.`;
+}
 
 /**
  * El rótulo del renglón de la deuda vieja BAJÓ a `cifras-de-la-quincena.ts` cuando el
@@ -354,6 +368,14 @@ interface RenglonComparable {
       text-align: center;
       background: var(--mat-sys-primary);
       color: var(--mat-sys-on-primary);
+    }
+    /* El candado que queda en el lugar de la papelera cuando el pago no se puede borrar:
+       del mismo ancho que el botón, para que la fila no cambie de forma, y en el tono
+       discreto de las notas porque no hay nada que arreglar en ese pago. */
+    .candado-pago {
+      vertical-align: middle;
+      margin: 0 12px;
+      color: var(--mat-sys-on-surface-variant);
     }
     .sin-datos {
       color: var(--mat-sys-on-surface-variant);
@@ -653,11 +675,19 @@ export class LiquidacionDetailDialog {
    * la del transportador la cifra de esa columna es la tarifa del flete del día
    * —otra cosa—. El backend rechaza los dos casos igual: esto es para que el
    * campo ni siquiera se ofrezca.
+   *
+   * Ni en el borrador cuya deuda ya se cobró en otra quincena: en el borrador de leche,
+   * `actualizar_precio_detalle` rebota eso (`_razon_para_no_cambiar_el_precio`: estado,
+   * tipo y después la deuda), con cualquier precio. Medido: Henri, 100 L × $1.800 contra $300.000 de adelanto, debe $120.000 y la
+   * quincena siguiente ya se los cobró; el lápiz salía, "Toque el precio…" invitaba a
+   * corregirlo y el PUT daba 422 siempre. Es la misma pregunta de `puedeRecalcular`, y el
+   * candado de Recalcular es el que dice por qué y qué hacer.
    */
   readonly puedeEditarPrecio = computed(
     () =>
       this.liq().estado === 'borrador' &&
       this.liq().tipo === 'proveedor' &&
+      !this.deudaYaCobrada() &&
       this.auth.hasPermission('liquidaciones', 'editar'),
   );
 
@@ -734,8 +764,15 @@ export class LiquidacionDetailDialog {
    */
   readonly notasDiaFijo = computed(() => notasDelDiaFijo(this.liq().detalles));
 
-  /** Si ya se le abonó algo: manda el historial, no el estado. */
+  /** Si hay pagos en la lista: manda el historial, no el estado. */
   readonly tienePagos = computed(() => this.liq().pagos.length > 0);
+
+  /**
+   * ¿SALIÓ PLATA POR PAGOS? La pregunta de cada texto que dice "abono" u "otro pago". No es
+   * lo mismo que `tienePagos`: la 'pagada' de antes de los pagos parciales tiene la plata
+   * en `pagado` y la lista vacía. Ver `conAbonos` en cifras-de-la-quincena.
+   */
+  readonly conAbonos = computed(() => conAbonos(this.liq()));
 
   /**
    * EL SALDO QUEDÓ POR DEBAJO DE CERO: el tercero le quedó debiendo AL NEGOCIO.
@@ -811,53 +848,96 @@ export class LiquidacionDetailDialog {
    */
   readonly avisoDeLaDeudaBorrada = computed<string | null>(() => {
     if (!this.tieneDeudaBorrada()) return null;
+    const reparar =
+      'Hay que repararla antes de cualquier otra cosa: mientras tanto no se puede corregir, ' +
+      'pagar, abonar ni anular.';
+    // LA POSICIÓN DE HOY LA ESCRIBE EL SERVIDOR (`aviso_deuda_borrada`), con la misma
+    // función que arma el 422 de Pagar o Corregir esta fila y la nota del PDF: si la
+    // pantalla hiciera la cuenta por su lado, el aviso rojo y el papel podrían decir dos
+    // cifras distintas para lo que Henri debe. Se pinta tal cual.
+    //
+    // Y CON ELLA, EL MARCO DE ACÁ NO REPITE NI LA CIFRA BORRADA NI EL NOMBRE. La frase del
+    // servidor ya dice lo que hace falta para la calculadora, con su formato y su "el
+    // tercero": medido con la corregida a $380.000 (saldo $200.000), el aviso decía "le
+    // borró los $ 120.000 que Henri Castaño quedaba debiendo" y enseguida "los otros
+    // $120.000 son la deuda que borró la migración" —la misma plata dos veces, con dos
+    // formatos y dos nombres—, y en la de saldo $120.000 la cifra salía tres veces. El
+    // marco nombra solo el renglón del resumen, donde está la cifra, y lo que falta hacer.
+    const delServidor = comoFrase(this.liq().aviso_deuda_borrada);
+    if (delServidor) {
+      return (
+        'Esta quincena viene de antes de que existieran los abonos, y en el resumen lleva el ' +
+        `renglón «${ROTULO_DEUDA_BORRADA}». ${delServidor} ${reparar}`
+      );
+    }
+    // Una respuesta vieja no la trae: ahí el marco dice la cifra y el nombre una vez, y la
+    // posición de hoy sale de la cuenta de acá con el mismo formato y el mismo nombre.
+    return (
+      'Esta quincena viene de antes de que existieran los abonos, y el sistema de esa época ' +
+      `le borró los ${this.enPesos(this.deudaBorrada())} que ${this.tercero()} quedaba ` +
+      `debiendo. En el resumen van en el renglón «${ROTULO_DEUDA_BORRADA}». ` +
+      `${this.posicionDeHoyEscritaAca()} ${reparar}`
+    );
+  });
+
+  /**
+   * Lo que de verdad queda con la deuda borrada, cuando el servidor no lo manda escrito.
+   * La cifra borrada ya la dijo el marco del aviso: acá no se repite.
+   */
+  private posicionDeHoyEscritaAca(): string {
     const l = this.liq();
-    const cifra = this.enPesos(this.deudaBorrada());
     const falta = this.faltaPorEntregar();
-    let loQueQueda: string;
     if (falta < 0 && this.leQuedaDebiendo()) {
       // El renglón final ya dice "Le queda debiendo": esa parte SÍ quedó anotada como deuda
       // (y puede que ya se le haya cobrado en otra); la que no está anotada es la borrada.
       const debe = this.enPesos((-falta / 100).toFixed(2));
       const anotada = this.enPesos(l.le_queda_debiendo);
-      loQueQueda = this.deudaYaCobrada()
+      return this.deudaYaCobrada()
         ? `Tal como están las cifras, ${this.tercero()} quedó debiendo ${debe} por esta ` +
-          `quincena: los ${anotada} del renglón final ya se le cobraron en ` +
-          `${this.dondeSeCobro()}, y los ${cifra} borrados todavía los debe.`
+            `quincena: los ${anotada} del renglón final ya se le cobraron en ` +
+            `${this.dondeSeCobro()}, y la deuda borrada todavía la debe.`
         : `Tal como están las cifras, ${this.tercero()} le debe ${debe} al negocio por esta ` +
-          `quincena: los ${anotada} del renglón final quedaron anotados como deuda, y los ` +
-          `${cifra} borrados, no.`;
-    } else if (falta < 0) {
-      loQueQueda =
+            `quincena: los ${anotada} del renglón final quedaron anotados como deuda, y la ` +
+            'deuda borrada, no.';
+    }
+    if (falta < 0) {
+      return (
         `Tal como están las cifras, ${this.tercero()} todavía le debe ` +
-        `${this.enPesos((-falta / 100).toFixed(2))} al negocio por esta quincena.`;
-    } else if (falta === 0) {
-      loQueQueda =
+        `${this.enPesos((-falta / 100).toFixed(2))} al negocio por esta quincena.`
+      );
+    }
+    if (falta === 0) {
+      return (
         `Tal como están las cifras, no queda nada por entregarle a ${this.tercero()} ni ` +
-        'nada que cobrarle.';
-    } else {
-      loQueQueda =
-        `Lo que de verdad falta por entregarle a ${this.tercero()} son ` +
-        `${this.enPesos((falta / 100).toFixed(2))}, no los ${this.enPesos(l.saldo)} del saldo.`;
+        'nada que cobrarle.'
+      );
     }
     return (
-      'Esta quincena viene de antes de que existieran los abonos, y el sistema de esa época ' +
-      `le borró los ${cifra} que ${this.tercero()} quedaba debiendo. En el resumen van en ` +
-      `el renglón «${ROTULO_DEUDA_BORRADA}». ${loQueQueda} Hay que repararla antes ` +
-      'de cualquier otra cosa: mientras tanto no se puede corregir, pagar, abonar ni anular.'
+      `Lo que de verdad falta por entregarle a ${this.tercero()} son ` +
+      `${this.enPesos((falta / 100).toFixed(2))}, no los ${this.enPesos(l.saldo)} del saldo.`
     );
-  });
+  }
 
   /**
-   * El porqué de los candados de Corregir, Pagar y Anular sobre esa quincena, con las
-   * palabras del error del backend (`_aviso_deuda_borrada`): si alguien alcanza a oprimir
-   * desde otra pantalla, el mensaje que recibe es el mismo.
+   * El porqué de los candados de Corregir, Pagar y Anular sobre esa quincena.
    *
-   * Salvo el remate cuando el tercero NO debe: la corregida con $200.000 más sin pagarse
-   * dice "Saldo a pagar $ 200.000" y se le deben $80.000 de verdad. Ahí "mandaría a
-   * pagarle a alguien que todavía debe" es falso; lo cierto es que le pagaría de más.
+   * LO ESCRIBE EL SERVIDOR (`avisos_deuda_borrada`), uno por acción: es el mismo 422 que
+   * esa acción da sobre esta fila (`_aviso_deuda_borrada` con su verbo), con la posición
+   * de hoy adentro. Se pinta tal cual. Medido antes del campo: en la de Arriba v2 (saldo
+   * $200.000, borrada $120.000) el candado de Pagar decía "le pagaría esos $ 120.000 de
+   * más" y el 422 "El saldo dice $200.000, pero lo que de verdad falta entregarle es
+   * $80.000…": dos textos para el mismo "no".
+   *
+   * La redacción de acá queda para una respuesta vieja que no lo trae. Arranca con las
+   * palabras del error del backend y deja la posición de hoy al aviso rojo de arriba, que
+   * sale siempre al lado de estos candados. Y el remate cambia cuando el tercero NO debe:
+   * la corregida con $200.000 más sin pagarse dice "Saldo a pagar $ 200.000" y se le deben
+   * $80.000 de verdad. Ahí "mandaría a pagarle a alguien que todavía debe" es falso; lo
+   * cierto es que le pagaría de más.
    */
   private avisoDeudaBorrada(verbo: 'corregir' | 'pagar' | 'anular'): string {
+    const delServidor = this.liq().avisos_deuda_borrada?.[verbo];
+    if (delServidor) return delServidor;
     const cifra = this.enPesos(this.deudaBorrada());
     const remate =
       this.faltaPorEntregar() < 0
@@ -981,8 +1061,16 @@ export class LiquidacionDetailDialog {
     // EL RENGLÓN DE CIERRE cambia de rótulo cuando la cuenta queda por debajo de cero:
     // ahí la plata la debe el tercero y la cifra va en POSITIVO. Un menos pegado a un
     // total destacado se lee como "hay que pagar una cifra negativa".
+    //
+    // Y CON LAS MISMAS TRES PALABRAS DEL PDF: si el negativo no lo hicieron los anticipos
+    // sino plata entregada de más (se le pagaron $500.000 y la quincena corregida quedó en
+    // $400.000), el papel cierra en "SE LE PAGÓ DE MÁS $100.000" y la pantalla decía "Le
+    // queda debiendo $ 100.000": la misma plata con dos causas, y el dueño compara las
+    // dos hojas. La pregunta es la del PDF (neto ≥ 0 y pagado > neto), en `causaDeLaDeuda`.
     if (this.leQuedaDebiendo()) {
-      plata('le_queda_debiendo', 'Le queda debiendo', l.le_queda_debiendo, '', {
+      const rotulo =
+        causaDeLaDeuda(l) === 'entregado_de_mas' ? 'Se le pagó de más' : 'Le queda debiendo';
+      plata('le_queda_debiendo', rotulo, l.le_queda_debiendo, '', {
         destacado: true,
         alReves: true,
       });
@@ -1125,6 +1213,12 @@ export class LiquidacionDetailDialog {
    */
   readonly explicacionSaldoAnterior = computed<string | null>(() => {
     if (!this.cobraSaldoAnterior()) return null;
+    // LA QUE COBRÓ UNA DEUDA QUE YA NO CUADRA: "son lo que quedó debiendo … Se le cobran
+    // acá" sería falso, porque la otra quincena hoy ya no debe eso. Se dice lo que dice el
+    // servidor de esta fila, tal cual. (Si esta también dejó deuda en otra, el aviso habla
+    // de ESA punta y aquí sigue la explicación de siempre.)
+    const descuadre = this.avisoDeudaQueNoCuadra();
+    if (descuadre && !this.deudaYaCobrada()) return descuadre;
     const l = this.liq();
     const cifra = this.enPesos(l.saldo_anterior);
     const origenes = this.origenesSaldoAnterior();
@@ -1160,6 +1254,26 @@ export class LiquidacionDetailDialog {
 
   /** ¿La deuda que ESTA dejó ya se la cobró otra liquidación? Entonces está congelada. */
   readonly deudaYaCobrada = computed(() => !!this.liq().deuda_trasladada_a_id);
+
+  /**
+   * LA DEUDA COBRADA QUE YA NO CUADRA: el 422 de Pagar sobre esta fila, escrito por el
+   * servidor (`avisos_deuda_cobrada.pagar`, o el de registrar un pago), o null.
+   *
+   * Son las parejas que dejó el borrado de pagos de antes del guardia. Medido con Henri:
+   * la del 01/06 dejó $100.000 de deuda que la del 16/06 descontó; después se le borró el
+   * pago a la primera y quedó "por entregar $400.000" sin deber nada, mientras la segunda
+   * seguía descontando los $100.000. El servidor rebota Pagar, Abonar y "Marcar pagada" en
+   * las dos puntas, y sin esta pregunta la pantalla pintaba un Pagar que siempre rebota. La
+   * pregunta es la del servidor —mira la OTRA quincena, que esta pantalla no tiene—, así
+   * que acá solo se lee. Llega a todo el que ve la fila, no solo a quien ve Pagar: el
+   * descuadre es de la fila, no del usuario, y con él la ayuda de la línea de estados deja
+   * de decir que el pago lo registra un Administrador (el servidor también se lo rebota).
+   */
+  readonly avisoDeudaQueNoCuadra = computed<string | null>(() => {
+    const avisos: Readonly<Record<string, string | undefined>> =
+      this.liq().avisos_deuda_cobrada ?? {};
+    return avisos['pagar'] || avisos['registrar_pago'] || null;
+  });
 
   /** El período de la liquidación que se cobró la deuda, o null si no vino nombrada. */
   private periodoDondeSeCobro(): string | null {
@@ -1225,6 +1339,13 @@ export class LiquidacionDetailDialog {
 
   async guardarPrecio(detalle: LiquidacionDetalle): Promise<void> {
     if (this.guardandoId()) return;
+    // Si mientras el campo estaba abierto la quincena dejó de aceptar el precio (llegó la
+    // recarga con la deuda ya cobrada en otra), se cierra sin mandar nada: cada salida del
+    // campo volvía a mandar el PUT y a recibir el mismo 422.
+    if (!this.puedeEditarPrecio()) {
+      this.editandoId.set(null);
+      return;
+    }
     const precio = precioTecleado(this.textoPrecio());
 
     // Sin cambio real, cerrar el campo y no molestar al servidor.
@@ -1277,9 +1398,9 @@ export class LiquidacionDetailDialog {
    * ofrece —el servidor rebota, y con razón—, pero tampoco desaparece en
    * silencio: ver `motivoNoRecalcular`.
    *
-   * Ni en el borrador cuya deuda ya se cobró en otra: el `recalcular` del servidor rebota
-   * eso ANTES de mirar el estado (`_exigir_deuda_no_trasladada`), así que el botón siempre
-   * fallaba. Ahí queda el candado que nombra cuál anular primero.
+   * Ni en el borrador cuya deuda ya se cobró en otra: en el borrador, el `recalcular` del
+   * servidor rebota eso (`_razon_para_no_recalcular`: el estado y después la deuda), así
+   * que el botón siempre fallaba. Ahí queda el candado que nombra cuál anular primero.
    */
   readonly puedeRecalcular = computed(
     () =>
@@ -1309,10 +1430,19 @@ export class LiquidacionDetailDialog {
         'repararla antes de tocarla.'
       );
     }
-    // "Anule primero esa liquidación y vuelva a intentarlo" SOLO EN EL BORRADOR: es el único
-    // estado en el que anular la otra destraba Recalcular. En una aprobada o una pagada,
-    // anulada la otra, esta sigue sin ser borrador y el servidor vuelve a rebotar.
-    if (this.deudaYaCobrada() && liq.estado === 'borrador') {
+    // LA DEUDA YA COBRADA EN OTRA, con el texto del servidor cuando lo manda: es el 422 que
+    // daría el botón, con la salida que de verdad existe para quien mira. El servidor lo
+    // manda solo sobre el borrador, porque su `recalcular` pregunta el estado primero; en
+    // los demás estados siguen los textos de abajo.
+    //
+    // Sin ese texto (una respuesta vieja), "Anule primero esa liquidación y vuelva a
+    // intentarlo" SOLO EN EL BORRADOR: es el único estado en el que anular la otra destraba
+    // Recalcular. En una aprobada o una pagada, anulada la otra, esta sigue sin ser
+    // borrador y el servidor vuelve a rebotar; ahí siguen los textos de abajo.
+    if (
+      this.deudaYaCobrada() &&
+      (liq.estado === 'borrador' || !!liq.avisos_deuda_cobrada?.recalcular)
+    ) {
       return this.avisoDeudaCongelada('recalcular');
     }
     if (liq.estado === 'pagada') {
@@ -1330,12 +1460,17 @@ export class LiquidacionDetailDialog {
             'solo trabaja sobre borradores.'
         : 'Sus cifras están en firme y Recalcular solo trabaja sobre borradores.';
     }
-    // El abono solo se nombra si EXISTE. Y no en la corregida: borrado el abono vuelve a
-    // 'aprobada' en su versión 2, que tampoco se anula, así que el consejo no llevaría a nada.
-    if (this.tienePagos() && !this.fueCorregida()) {
+    // El abono solo se nombra si EXISTE. Y no en la corregida: borrado el abono se queda
+    // 'parcial' en su versión 2 (`_estado_tras_corregir`), que tampoco se recalcula ni se
+    // anula, así que el consejo no llevaría a nada. Ni con la deuda ya cobrada en otra: ahí
+    // el servidor tampoco deja borrar el pago (ver `motivoNoEliminarPago`).
+    //
+    // La salida es la del servidor para esta misma quincena, en su orden: Corregir primero,
+    // el ajuste, y borrar los pagos de último (ver `consejoConLosAbonos`).
+    if (this.tienePagos() && !this.fueCorregida() && !this.deudaYaCobrada()) {
       return (
         `Ya se le abonó ${this.enPesos(liq.pagado)} contra estas cifras: quedan en firme y ` +
-        'no se pueden recalcular. Si de verdad hay que rehacerlas, primero elimine el abono.'
+        `no se pueden recalcular. ${this.consejoConLosAbonos()}`
       );
     }
     // 'parcial' SIN PAGOS es la v2 de una quincena que sus anticipos cubrían, corregida
@@ -1361,7 +1496,8 @@ export class LiquidacionDetailDialog {
     // borradores, así que el botón no se puede ofrecer. Se dice cuál es la salida
     // que sí funciona en vez de dejarlo buscando un botón que no está. (Si el
     // backend pasa a aceptarla, este texto desaparece solo: ver
-    // ESTADOS_QUE_ACEPTAN_RECALCULO.)
+    // ESTADOS_QUE_ACEPTAN_RECALCULO.) La salida la nombra `anulelaYVuelvaAGenerarla`, con
+    // el permiso de quien mira: este candado lo ve también quien solo edita.
     //
     // Y SI EL CHIP DICE "pagada · quedó debiendo" (en la base sigue 'aprobada'), el texto
     // tiene que decir lo mismo: "está aprobada, todavía no se le ha pagado nada" al lado
@@ -1383,8 +1519,30 @@ export class LiquidacionDetailDialog {
         `No hay nada que entregarle a ${this.tercero()}: con lo que venía debiendo de antes, ` +
         `el saldo quedó en ${this.enPesos('0')}. Sus cifras están en firme y Recalcular solo ` +
         'trabaja sobre borradores. Si quedaron mal —por ejemplo una tarifa que se corrigió ' +
-        'después—, anúlela y vuelva a generarla: al anularla, lo que venía debiendo vuelve a ' +
-        'quedar pendiente.'
+        `después—, ${this.anulelaYVuelvaAGenerarla(
+          'al anularla, lo que venía debiendo vuelve a quedar pendiente.',
+        )}`
+      );
+    }
+    // Y LA QUE SUS PROPIOS ANTICIPOS DEJARON EN CERO: 100 L × $1.800 = $180.000 contra un
+    // adelanto de $180.000. La nota del saldo dice que los anticipos "cubren EXACTO" la
+    // quincena y el botón es "Marcar pagada"; "todavía no se le ha pagado nada" al lado es
+    // falso con la calculadora en la mano: ya se le entregaron $180.000. Son las mismas
+    // señales de ese botón (`puedeCerrarSinPago` sin el permiso), y la frase del cero es la
+    // de la nota, que nombra solo los renglones que existen.
+    if (
+      liq.estado === 'aprobada' &&
+      this.quincenaSaldadaSinCerrar() &&
+      !this.laDeudaViejaCubrioLaQuincena()
+    ) {
+      return (
+        `${this.explicacionSaldoEnCero()} Sus cifras están en firme y Recalcular solo ` +
+        'trabaja sobre borradores. Si quedaron mal —por ejemplo una tarifa que se corrigió ' +
+        `después—, ${this.anulelaYVuelvaAGenerarla(
+          Number(liq.anticipos ?? 0) > 0
+            ? 'al anularla, sus anticipos vuelven a quedar pendientes.'
+            : 'todavía no tiene pagos registrados.',
+        )}`
       );
     }
     if (liq.estado === 'aprobada' && estadoComoSeLee(liq) === PAGADA_QUEDO_DEBIENDO) {
@@ -1392,39 +1550,203 @@ export class LiquidacionDetailDialog {
         `No hay nada que entregarle: ${this.tercero()} quedó debiendo ` +
         `${this.enPesos(liq.le_queda_debiendo)}. Sus cifras están en firme y Recalcular ` +
         'solo trabaja sobre borradores. Si quedaron mal —por ejemplo una tarifa que se ' +
-        'corrigió después—, anúlela y vuelva a generarla: esa deuda todavía no se le ha ' +
-        'cobrado en otra quincena.'
+        `corrigió después—, ${this.anulelaYVuelvaAGenerarla(
+          'esa deuda todavía no se le ha cobrado en otra quincena.',
+        )}`
       );
     }
     if (liq.estado === 'aprobada') {
+      // "Todavía no se le ha pagado nada" solo sin anticipos: el adelanto es plata que salió
+      // en la mano contra esta quincena ($300.000 de $500.000), y el dueño la cuenta como
+      // entregada. Con ellos se dice lo que es cierto: no hay pagos, y anularla los suelta.
+      const consecuencia =
+        Number(liq.anticipos ?? 0) > 0
+          ? 'todavía no tiene pagos registrados, y al anularla sus anticipos ' +
+            `(${this.enPesos(liq.anticipos)}) vuelven a quedar pendientes.`
+          : 'todavía no se le ha pagado nada.';
       return (
         'Está aprobada y Recalcular solo trabaja sobre borradores. Si sus cifras quedaron ' +
-        'mal —por ejemplo una tarifa que se corrigió después—, anúlela y vuelva a generarla: ' +
-        'todavía no se le ha pagado nada.'
+        'mal —por ejemplo una tarifa que se corrigió después—, ' +
+        this.anulelaYVuelvaAGenerarla(consecuencia)
       );
     }
     return null;
   });
 
   /**
+   * ¿QUIEN MIRA PUEDE ANULAR? La pregunta de permiso del botón Anular (`puedeAnular`) y del
+   * `POST /anular`, escrita UNA vez para que los consejos que nombran Anular hagan la
+   * misma. Compras tiene 'editar' y no 'administrar': ve el candado de Recalcular, y un
+   * "anúlela" ahí lo mandaba a un botón que no le sale y que el servidor le rebota con 403.
+   */
+  private readonly tienePermisoDeAnular = computed(() =>
+    this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * ¿QUIEN MIRA PUEDE BORRAR UN PAGO? La de la papelera de la tabla de pagos y la del
+   * `DELETE /pagos/{id}`: 'liquidaciones:eliminar', que Compras tampoco tiene.
+   */
+  readonly tienePermisoDeEliminarPagos = computed(() =>
+    this.auth.hasPermission('liquidaciones', 'eliminar'),
+  );
+
+  /**
+   * "anúlela y vuelva a generarla: …", o a quién pedírselo. El Administrador Empresa tiene
+   * los dos permisos, así que mandar donde él no es mandar a un botón que no existe.
+   */
+  private anulelaYVuelvaAGenerarla(consecuencia: string): string {
+    return this.tienePermisoDeAnular()
+      ? `anúlela y vuelva a generarla: ${consecuencia}`
+      : 'pídale a un Administrador de la empresa que la anule y la vuelva a generar: ' +
+          consecuencia;
+  }
+
+  /**
+   * QUÉ HACER CON LAS CIFRAS DE UNA QUINCENA QUE YA TIENE ABONOS, para quien mira.
+   *
+   * EL MISMO CONSEJO DEL SERVIDOR PARA ESTA QUINCENA, en el mismo orden (el candado de su
+   * anticipo, `_consejo_del_candado`, y el de su día, `_consejo_del_abono`): primero
+   * Corregir si el botón la acepta —conserva los pagos y sus soportes—, después el ajuste,
+   * y de último borrar los pagos, contados y con la advertencia de los soportes. Medido con
+   * 100 L × $1.800 = $180.000 y abonos de $50.000 y $20.000 (saldo $80.000): acá decía "Si
+   * de verdad hay que rehacerlas, primero elimine el abono." —en singular con dos, sin
+   * nombrar Corregir aunque el botón estaba al lado, y sin decir que los soportes se
+   * pierden— mientras el anticipo de esa misma quincena decía "use 'Corregir esta
+   * quincena', que conserva los pagos y sus soportes … Elimine primero esos 2 pagos solo
+   * si …: con ellos se van sus soportes, que no se recuperan". Borrar uno de los dos no
+   * destraba nada: la quincena sigue 'parcial' con el otro.
+   *
+   * Corregir, con la pregunta del botón (`usarCorregir`). Borrar los pagos, solo si
+   * borrarlos todos la deja sin pagos (`losPagosSeBorranTodos`), y con el permiso de la
+   * papelera; sin él, a quién pedírselo. Lo que no cambia es lo que el servidor manda a
+   * todos: el ajuste en la quincena siguiente.
+   */
+  private consejoConLosAbonos(): string {
+    const pagos = this.liq().pagos.length;
+    const ajuste = 'registre el ajuste en la quincena siguiente';
+    const usar = this.usarCorregir();
+    const corregir = usar
+      ? `Si sus cifras quedaron mal, ${usar}, que conserva ` +
+        `${pagos === 1 ? 'el pago' : 'los pagos'} y sus soportes, o ${ajuste}`
+      : `Si sus cifras quedaron mal, ${ajuste}`;
+    if (!this.losPagosSeBorranTodos()) return `${corregir}.`;
+    const esePago = pagos === 1 ? 'ese pago' : `esos ${pagos} pagos`;
+    const conEllos = pagos === 1 ? 'con él' : 'con ellos';
+    const soportes = `${conEllos} se van sus soportes, que no se recuperan`;
+    const puedeBorrar = this.tienePermisoDeEliminarPagos();
+    if (usar) {
+      const borrar = puedeBorrar
+        ? `Elimine primero ${esePago} solo si de verdad hay que rehacerlas`
+        : 'Si de verdad hay que rehacerlas, pídale a un Administrador de la empresa que ' +
+          `elimine primero ${esePago}`;
+      return `${corregir}. ${borrar}: ${soportes}.`;
+    }
+    // Corregir rebota (la quincena del flete): borrar los pagos es la única salida por
+    // dentro, y va con su advertencia.
+    return puedeBorrar
+      ? `Elimine primero ${esePago} si de verdad hay que rehacerlas —${soportes}—, o ${ajuste}.`
+      : 'Si de verdad hay que rehacerlas, pídale a un Administrador de la empresa que ' +
+          `elimine primero ${esePago} —${soportes}—, o ${ajuste}.`;
+  }
+
+  /**
+   * "use 'Corregir esta quincena'" a quien tiene el botón, "pídale a un Administrador de la
+   * empresa que use …" a quien no; null si Corregir rebota esta fila.
+   *
+   * Son las dos preguntas del `_usar_corregir` del servidor y en su orden: la de la fila
+   * (`corregirAceptaLaFila`) y la de quien mira. Con las dos, es `puedeCorregir`: la misma
+   * expresión del botón, así que el consejo no puede nombrar uno que no esté.
+   */
+  private usarCorregir(): string | null {
+    if (this.puedeCorregir()) return "use 'Corregir esta quincena'";
+    return this.corregirAceptaLaFila()
+      ? "pídale a un Administrador de la empresa que use 'Corregir esta quincena'"
+      : null;
+  }
+
+  /**
+   * ¿BORRAR TODOS LOS PAGOS DE LA TABLA LA DEJA SIN PAGOS? La pregunta del servidor antes de
+   * mandar a borrarlos (`_pagos_que_se_pueden_borrar`): lo que suma la tabla tiene que
+   * cubrir `pagado`. No lo cubre en la 'pagada' de antes de los abonos, que trae parte de
+   * la plata en `pagado` sin renglón: borrados los renglones seguiría con pagos, y el
+   * consejo mandaría a botar unos soportes para nada. En centavos, como el renglón Pagado.
+   */
+  private readonly losPagosSeBorranTodos = computed(() => {
+    const enLaTabla = Math.round(this.entregadoEnPagos() * 100);
+    return enLaTabla > 0 && enLaTabla >= Math.round(Number(this.liq().pagado ?? 0) * 100);
+  });
+
+  /**
+   * "lo que Henri quedó debiendo ($ 120.000)", o sin la cifra si ya no queda deuda anotada.
+   *
+   * Una fila de antes del arreglo pudo quedar con la marca de "ya cobrada" y el saldo en
+   * positivo (se le borró el pago después de que la siguiente cobrara la deuda): ahí decir
+   * "lo que quedó debiendo ($ 0) ya se le cobró" es falso. Lo cierto es que la deuda que
+   * dejó ya se cobró en la otra.
+   */
+  private loQueQuedoDebiendo(): string {
+    return this.leQuedaDebiendo()
+      ? `lo que ${this.tercero()} quedó debiendo (${this.enPesos(this.liq().le_queda_debiendo)})`
+      : 'la deuda que dejó esta quincena';
+  }
+
+  /**
    * "NO SE PUEDE, Y PRIMERO HAY QUE ANULAR ESA OTRA": el aviso de la deuda congelada.
    *
-   * En cuanto la deuda de esta liquidación se cobró en otra, el servidor rebota anular y
-   * recalcular: cambiarle el total le cambiaría el descuento a un comprobante ya
-   * emitido, y el dueño terminaría con dos papeles que no cuadran. Lo importante del
-   * mensaje no es el "no": es NOMBRAR la liquidación que hay que anular primero, porque
-   * sin eso el usuario queda atascado sin saber por dónde salir. Está redactado con las
-   * mismas palabras que el error del backend, a propósito: si el usuario alcanza a
-   * oprimir el botón desde otra pantalla, el mensaje que recibe es el mismo.
+   * En cuanto la deuda de esta liquidación se cobró en otra, el servidor rebota anular,
+   * recalcular y corregir: cambiarle el total le cambiaría el descuento a un comprobante
+   * ya emitido, y el dueño terminaría con dos papeles que no cuadran.
+   *
+   * EL TEXTO LO ESCRIBE EL SERVIDOR (`avisos_deuda_cobrada`), uno por acción y para quien
+   * está mirando: es el mismo 422 que daría esa acción sobre esta fila. "Anule primero esa
+   * liquidación" no siempre es la salida —la otra puede ser una v2, que no se anula nunca,
+   * o tener pagos encima, o anularla puede no destrabar esta— y esa pregunta mira cifras de
+   * la OTRA quincena que esta pantalla no tiene. Se pinta tal cual.
+   *
+   * La redacción de acá queda solo para una respuesta vieja que no lo trae, y nombra la
+   * liquidación con su período porque sin eso el usuario queda atascado. La salida va con
+   * el permiso de quien mira: Compras ve el candado de Recalcular y no puede anular.
    */
   private avisoDeudaCongelada(verbo: 'anular' | 'recalcular' | 'corregir'): string {
+    const delServidor = this.liq().avisos_deuda_cobrada?.[verbo];
+    if (delServidor) return delServidor;
+    const salida = this.tienePermisoDeAnular()
+      ? 'Anule primero esa liquidación'
+      : 'Pídale a un Administrador de la empresa que anule primero esa liquidación';
     return (
-      `No se puede ${verbo} esta liquidación: lo que ${this.tercero()} quedó debiendo ` +
-      `(${this.enPesos(this.liq().le_queda_debiendo)}) ya se le cobró en ` +
-      `${this.dondeSeCobro()}. Anule ` +
-      'primero esa liquidación —así esta deuda vuelve a quedar libre— y vuelva a intentarlo.'
+      `No se puede ${verbo} esta liquidación: ${this.loQueQuedoDebiendo()} ya se le cobró ` +
+      `en ${this.dondeSeCobro()}. ${salida} —así esta deuda vuelve a quedar libre— y ` +
+      'vuelva a intentarlo.'
     );
   }
+
+  /**
+   * POR QUÉ NO SE LE PUEDE BORRAR UN PAGO, o null si sí se puede.
+   *
+   * Con la deuda de esta quincena ya cobrada en otra, `eliminar_pago` rebota (la misma
+   * pregunta del servidor: `deuda_ya_cobrada`). Medido antes de ese guardia: Henri, 250 L
+   * × $2.000 = $500.000 pagados con un pago de $500.000, corregida a $1.600 ($400.000,
+   * debe $100.000) y la quincena siguiente ya le descontó esos $100.000. Borrar el pago
+   * la dejaba en "parcial · $400.000 por pagar" sin deuda, la otra seguía descontando los
+   * $100.000, y al pagar las dos la leche sumaba $700.000 y la plata $600.000.
+   *
+   * El texto lo escribe el servidor (`avisos_deuda_cobrada.eliminar_pago`); el de acá es
+   * para una respuesta vieja, y no nombra ninguna salida: esa depende de la otra quincena.
+   * Dice "el saldo" y no "lo que quedó debiendo": en una fila que ya quedó con el saldo en
+   * positivo, borrar otro pago no mueve la deuda, pero sí el saldo.
+   */
+  readonly motivoNoEliminarPago = computed<string | null>(() => {
+    if (!this.deudaYaCobrada()) return null;
+    const delServidor = this.liq().avisos_deuda_cobrada?.eliminar_pago;
+    if (delServidor) return delServidor;
+    return (
+      `No se puede eliminar un pago de esta liquidación: ${this.loQueQuedoDebiendo()} ya se ` +
+      `le cobró en ${this.dondeSeCobro()}. Borrar el pago le cambiaría el saldo a esta ` +
+      'quincena sin cambiar el descuento que ya se hizo en esa otra, y las dos dejarían de ' +
+      'cuadrar.'
+    );
+  });
 
   /**
    * ANULAR: se ofrece solo donde el `anular` del backend lo acepta.
@@ -1444,7 +1766,7 @@ export class LiquidacionDetailDialog {
       !this.tieneDeudaBorrada() &&
       !this.deudaYaCobrada() &&
       !this.fueCorregida() &&
-      this.auth.hasPermission('liquidaciones', 'administrar'),
+      this.tienePermisoDeAnular(),
   );
 
   /**
@@ -1454,7 +1776,7 @@ export class LiquidacionDetailDialog {
   readonly motivoNoAnular = computed(() => {
     const estado = this.liq().estado;
     if (estado !== 'borrador' && estado !== 'aprobada') return null;
-    if (!this.auth.hasPermission('liquidaciones', 'administrar')) return null;
+    if (!this.tienePermisoDeAnular()) return null;
     if (this.tieneDeudaBorrada()) return this.avisoDeudaBorrada('anular');
     if (this.deudaYaCobrada()) return this.avisoDeudaCongelada('anular');
     if (this.fueCorregida()) {
@@ -1485,12 +1807,21 @@ export class LiquidacionDetailDialog {
    *    tiene EXACTAMENTE UN ROL: Administrador Empresa. Que es literal lo que se pidió.
    */
   readonly puedeCorregir = computed(
+    () => this.corregirAceptaLaFila() && this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * LA MITAD DE `puedeCorregir` QUE MIRA LA FILA Y NO A QUIEN MIRA: las cuatro primeras
+   * condiciones de arriba. Va aparte para el consejo de quien no tiene el permiso
+   * (`usarCorregir`): a Compras el servidor le dice "pídale a un Administrador de la empresa
+   * que use 'Corregir esta quincena'" justo cuando esta da sí.
+   */
+  private readonly corregirAceptaLaFila = computed(
     () =>
       (this.liq().estado === 'pagada' || this.liq().estado === 'parcial') &&
       this.liq().tipo === 'proveedor' &&
       !this.deudaYaCobrada() &&
-      !this.tieneDeudaBorrada() &&
-      this.auth.hasPermission('liquidaciones', 'administrar'),
+      !this.tieneDeudaBorrada(),
   );
 
   /**
@@ -1546,13 +1877,22 @@ export class LiquidacionDetailDialog {
         // El motivo que se acaba de escribir se pide de nuevo: la banda de arriba lo
         // muestra, y hasta acá solo llegó la liquidación.
         this.cargarCorrecciones();
+        // "Se le pagó de más" con la pregunta del PDF (`causaDeLaDeuda`), igual que el
+        // renglón de cierre: la de $500.000 con $300.000 de anticipo, pagada con $200.000 y
+        // corregida a $1.000 el litro, debe $250.000 y el papel dice "LE QUEDA DEBIENDO";
+        // de esos, $50.000 son anticipo y no plata entregada de más.
+        const rotuloDeLaDeuda =
+          causaDeLaDeuda(corregida) === 'entregado_de_mas'
+            ? 'Se le pagó de más'
+            : 'Le queda debiendo';
         this.snackbar.open(
           Number(corregida.saldo ?? 0) > 0
             ? `Quincena corregida. Queda por entregarle ${this.enPesos(corregida.saldo)}: ` +
                 'oprima Pagar cuando le entregue esa plata'
             : Number(corregida.le_queda_debiendo ?? 0) > 0
-              ? `Quincena corregida. Se le pagó de más ${this.enPesos(corregida.le_queda_debiendo)}: ` +
-                'se le descuenta solo en la quincena siguiente'
+              ? `Quincena corregida. ${rotuloDeLaDeuda} ` +
+                `${this.enPesos(corregida.le_queda_debiendo)}: se le descuenta solo en la ` +
+                'quincena siguiente'
               : 'Quincena corregida',
           'OK',
           { duration: 9000 },
@@ -1588,20 +1928,34 @@ export class LiquidacionDetailDialog {
    * lo devolvió), la banda SALE IGUAL sin el motivo: "hay una versión 2" ya es la mitad
    * importante, y callarla mientras carga sería peor.
    */
-  readonly bandaDeCorreccion = computed<{ fecha: string | null; motivo: string | null } | null>(
-    () => {
-      if (!this.fueCorregida()) return null;
-      const ultima = this.correcciones()[this.correcciones().length - 1] ?? null;
-      return {
-        // EN HORA DE COLOMBIA, no la del computador: `created_at` es un instante en UTC
-        // y recortarle los diez primeros caracteres mostraba el día de UTC. Una
-        // corrección hecha a las 7 de la noche acá cae en el día siguiente allá, así que
-        // la banda decía una fecha y el papel —que sí convierte— decía la anterior.
-        fecha: ultima ? fechaEnHoraDeColombia(ultima.created_at) : null,
-        motivo: ultima?.motivo ?? null,
-      };
-    },
-  );
+  readonly bandaDeCorreccion = computed<{
+    fecha: string | null;
+    motivo: string | null;
+    queHacerConElPapel: string;
+  } | null>(() => {
+    if (!this.fueCorregida()) return null;
+    const ultima = this.correcciones()[this.correcciones().length - 1] ?? null;
+    return {
+      // EN HORA DE COLOMBIA, no la del computador: `created_at` es un instante en UTC
+      // y recortarle los diez primeros caracteres mostraba el día de UTC. Una
+      // corrección hecha a las 7 de la noche acá cae en el día siguiente allá, así que
+      // la banda decía una fecha y el papel —que sí convierte— decía la anterior.
+      fecha: ultima ? fechaEnHoraDeColombia(ultima.created_at) : null,
+      motivo: ultima?.motivo ?? null,
+      // CON LA DEUDA BORRADA, ESTA VERSIÓN TAMPOCO SE ENTREGA. La banda mandaba a
+      // "entregarle esta versión" al lado del aviso rojo que pide repararla antes de
+      // cualquier otra cosa, y sin los botones de compartir. Medido: la v2 de la de
+      // $180.000 contra $300.000, corregida con un día de $50.000, imprime "SALDO A PAGAR
+      // $50.000" a un productor que todavía debe $70.000. La pregunta es la de esos
+      // botones (`tieneDeudaBorrada`), y la frase no promete ninguna reparación.
+      queHacerConElPapel: this.tieneDeudaBorrada()
+        ? `El papel que ${this.tercero()} tiene en la mano puede ser el anterior. No le ` +
+          'entregue esta versión todavía: primero hay que reparar la quincena (ver el aviso ' +
+          'rojo).'
+        : `El papel que ${this.tercero()} tiene en la mano puede ser el anterior: entréguele ` +
+          'esta versión y recójale la vieja.',
+    };
+  });
 
   // ------------------------------- el historial completo de correcciones
   /**
@@ -1663,10 +2017,17 @@ export class LiquidacionDetailDialog {
    * EL RÓTULO DEL BOTÓN DE PDF. Con una corrección encima ya no basta con "PDF": lo que
    * el dueño necesita mandar es EL COMPROBANTE CORREGIDO, y el que el productor tiene en
    * la mano es el viejo.
+   *
+   * Salvo con la deuda borrada: "Descargar comprobante corregido" se lee como "este es el
+   * que se manda", y ese papel no se le entrega a nadie hasta repararla (ver la banda).
+   * El dueño sí lo puede bajar y mirar.
    */
-  readonly rotuloPdf = computed(() =>
-    this.fueCorregida() ? `Descargar comprobante corregido (v${this.version()})` : 'PDF',
-  );
+  readonly rotuloPdf = computed(() => {
+    if (!this.fueCorregida()) return 'PDF';
+    return this.tieneDeudaBorrada()
+      ? 'Descargar PDF (pendiente de reparar)'
+      : `Descargar comprobante corregido (v${this.version()})`;
+  });
 
   /** Pide el motivo de la corrección. Solo cuando hay algo que pedir; ver `version`. */
   private cargarCorrecciones(): void {
@@ -1694,14 +2055,33 @@ export class LiquidacionDetailDialog {
    * abono y el /pagar): ese "saldo" trae sumada la deuda que se borró. La quincena de
    * $180.000 contra $300.000 de adelanto, corregida con un día de $50.000, dice "Saldo a
    * pagar $ 50.000" cuando Henri todavía debe $70.000.
+   *
+   * Ni con la deuda cobrada que ya no cuadra (`avisoDeudaQueNoCuadra`): el servidor rebota
+   * el abono y el /pagar en las dos puntas.
    */
   readonly puedePagar = computed(
     () =>
       (this.liq().estado === 'aprobada' || this.liq().estado === 'parcial') &&
       Number(this.liq().saldo ?? 0) > 0 &&
       !this.tieneDeudaBorrada() &&
+      !this.avisoDeudaQueNoCuadra() &&
       this.auth.hasPermission('liquidaciones', 'administrar'),
   );
+
+  /**
+   * EL TOOLTIP DE PAGAR. "Registrar otro pago" solo si ya hubo uno (`conAbonos`): la
+   * parcial v2 sin pagos —$36.000 por entregar después de corregir la que los anticipos
+   * cubrían— no tiene ningún pago anterior, y el botón sí se ofrece porque el servidor
+   * acepta ese pago.
+   */
+  readonly tooltipPagar = computed(() => {
+    const l = this.liq();
+    const queda = `queda debiendo ${this.enPesos(l.saldo)}`;
+    if (this.conAbonos()) return `Registrar otro pago: ${queda}`;
+    return l.estado === 'parcial'
+      ? `Registrar un pago: ${queda}`
+      : 'Registrar el pago (puede ser parcial)';
+  });
 
   /**
    * EL SALDO QUEDÓ EXACTO EN CERO: no hay plata por entregar, y nadie quedó debiendo.
@@ -1738,10 +2118,21 @@ export class LiquidacionDetailDialog {
 
   /**
    * EL CERO LO HIZO LA DEUDA DE LA QUINCENA PASADA: `POST /pagar` rebota y la quincena se
-   * queda 'aprobada' a propósito (`_no_sale_un_peso_por_la_deuda` en el backend). La
-   * pregunta es la del servidor, en `laDeudaViejaSeLlevoElNeto`, no una copia.
+   * queda 'aprobada' a propósito (`_no_sale_un_peso_por_la_deuda` en el backend).
+   *
+   * LA RESPUESTA LA DA EL SERVIDOR (`aviso_sin_un_peso_por_la_deuda`): con el campo puesto
+   * manda él, también cuando dice null —ese guardia no salta y Pagar no rebota por eso—.
+   * Así "Marcar pagada" se esconde exactamente donde el servidor lo rebota, sin copiar sus
+   * tres condiciones. Una respuesta vieja no lo trae: ahí se deduce con esas condiciones
+   * (`laDeudaViejaSeLlevoElNeto`), como antes.
    */
-  readonly laDeudaViejaCubrioLaQuincena = computed(() => laDeudaViejaSeLlevoElNeto(this.liq()));
+  readonly laDeudaViejaCubrioLaQuincena = computed(() => {
+    const l = this.liq();
+    if (l.aviso_sin_un_peso_por_la_deuda !== undefined) {
+      return !!comoFrase(l.aviso_sin_un_peso_por_la_deuda);
+    }
+    return laDeudaViejaSeLlevoElNeto(l);
+  });
 
   /**
    * Cerrar la quincena que no hay que pagar: la misma situación más el permiso de Pagar,
@@ -1752,32 +2143,142 @@ export class LiquidacionDetailDialog {
       this.quincenaSaldadaSinCerrar() &&
       !this.laDeudaViejaCubrioLaQuincena() &&
       !this.tieneDeudaBorrada() &&
+      !this.avisoDeudaQueNoCuadra() &&
       this.auth.hasPermission('liquidaciones', 'administrar'),
   );
 
   /**
-   * LA AYUDA DE LA LÍNEA DE ESTADOS, cuando la de siempre nombraría un botón que no está.
+   * APROBAR: la pregunta del botón, escrita una vez para el botón y para la ayuda de la
+   * línea de estados que dice "apruébala". Es la del `POST /aprobar`: borrador y permiso
+   * 'administrar', que Compras y Consulta no tienen (el servidor les responde 403).
+   */
+  readonly puedeAprobar = computed(
+    () =>
+      this.liq().estado === 'borrador' &&
+      this.auth.hasPermission('liquidaciones', 'administrar'),
+  );
+
+  /**
+   * LA AYUDA DE LA LÍNEA DE ESTADOS, cuando la de siempre nombraría un botón que no está o
+   * afirmaría una plata que no salió.
    *
    * La de 'aprobada' dice "usa Pagar cuando entregues el dinero", y hay tres aprobadas sin
    * ese botón: la que trae la deuda borrada, la que la deuda vieja dejó en cero (no hay
    * botón de ninguna clase) y la que sus propios anticipos dejaron en cero (el botón es
-   * "Marcar pagada"). Sale de las MISMAS señales que ponen o quitan esos botones, sin el
-   * permiso: la ayuda describe la quincena, igual para todos. Null = la del estado.
+   * "Marcar pagada"). La de 'pagada' dice "El pago quedó registrado" y la de 'parcial' "Se
+   * le abonó una parte", y hay pagadas y parciales sin un solo pago (ver `cerradaSinPago`
+   * y `conAbonos`). Null = la del estado.
+   *
+   * Y CON EL PERMISO DE QUIEN MIRA. "usa Pagar", "usa Marcar pagada" y "apruébala" nombran
+   * botones que solo tiene 'administrar': Compras y Consulta abren este detalle, no los
+   * ven, y el servidor les rebota /pagar, /pagos y /aprobar con 403. Medido con Compras en
+   * la aprobada de $180.000: la ayuda decía "usa Pagar" y el candado de Recalcular, en el
+   * mismo diálogo, "pídale a un Administrador de la empresa que la anule". Por eso cada
+   * botón se nombra con la MISMA señal que lo pone (`puedePagar`, `puedeCerrarSinPago`,
+   * `puedeAprobar`), y sin ella se dice quién lo hace. Lo que se afirma de la plata ("sin
+   * ningún abono registrado", "Se le abonó una parte", "no hay plata por entregar") es igual
+   * para todos: solo cambia la parte que nombra el botón. Para el Administrador no cambia
+   * nada: donde tiene el botón, la ayuda es la de siempre.
+   *
+   * Solo donde la línea de estados muestra la ayuda de ese estado (`estadoComoSeLee`): la
+   * de "pagada · quedó debiendo" ya dice lo cierto y no se pisa.
    */
   readonly ayudaDelEstado = computed<string | null>(() => {
-    if (this.liq().estado === 'anulada') return null;
+    const l = this.liq();
+    if (l.estado === 'anulada') return null;
     if (this.tieneDeudaBorrada()) {
       return (
         'Esta quincena trae una deuda borrada de antes de los abonos: hay que repararla ' +
         'antes de pagarla o corregirla.'
       );
     }
+    // La deuda cobrada que ya no cuadra: ni Pagar ni "Marcar pagada" están (el servidor los
+    // rebota), y "usa Pagar" o "un Administrador registra el pago" mandarían a un botón que
+    // rebota también para él. El porqué completo es el del candado de Pagar.
+    if (this.avisoDeudaQueNoCuadra() && (l.estado === 'aprobada' || l.estado === 'parcial')) {
+      return (
+        'Los comprobantes de esta deuda ya no cuadran entre sí: hay que revisarlos antes de ' +
+        'entregarle plata.'
+      );
+    }
+    if (l.estado === 'pagada' && estadoComoSeLee(l) === 'pagada') return this.cerradaSinPago();
+    // EL BORRADOR: "apruébala" solo con el botón Aprobar delante.
+    if (l.estado === 'borrador') {
+      return this.puedeAprobar()
+        ? null
+        : 'Falta revisar los valores y que un Administrador de la empresa la apruebe para ' +
+            'poder pagarla.';
+    }
+    const comoSeLee = estadoComoSeLee(l);
+    const conSaldo = Number(l.saldo ?? 0) > 0;
+    // Con saldo por entregar y sin la deuda borrada (ya descartada arriba), el único "no"
+    // de Pagar es el permiso: ahí se dice quién registra el pago.
+    const queHacerConElSaldo = this.puedePagar()
+      ? 'usa "Pagar" cuando entregues el dinero.'
+      : 'el pago lo registra un Administrador de la empresa cuando se entregue el dinero.';
+    // LA PARCIAL SIN UN SOLO ABONO: la v2 de la quincena que sus anticipos cubrían exacto
+    // ($180.000 contra $180.000), corregida con un día olvidado de 20 L, queda 'parcial'
+    // con pagado $0 y $36.000 por entregar. "Se le abonó una parte" manda al dueño a buscar
+    // un abono que no existe. El servidor acepta ese pago, así que a quien tiene el botón
+    // se le nombra.
+    if (l.estado === 'parcial' && comoSeLee === 'parcial' && conSaldo && !this.conAbonos()) {
+      const quedo = this.fueCorregida()
+        ? 'Se corrigió y quedó un saldo por entregar'
+        : 'Quedó un saldo por entregar';
+      return `${quedo}, sin ningún abono registrado: ${queHacerConElSaldo}`;
+    }
+    // La parcial con abonos y la aprobada con saldo: con el botón, la ayuda de siempre.
+    if (l.estado === 'parcial' && comoSeLee === 'parcial' && conSaldo && !this.puedePagar()) {
+      return (
+        'Se le abonó una parte y todavía queda debiendo: el pago del resto lo registra un ' +
+        'Administrador de la empresa.'
+      );
+    }
+    if (l.estado === 'aprobada' && comoSeLee === 'aprobada' && conSaldo && !this.puedePagar()) {
+      return `Los valores quedaron en firme: ${queHacerConElSaldo}`;
+    }
     if (!this.quincenaSaldadaSinCerrar()) return null;
-    return this.laDeudaViejaCubrioLaQuincena()
-      ? 'Los valores quedaron en firme y no queda un peso por entregarle: no hay que ' +
-          'pagarla ni marcarla pagada.'
-      : 'Los valores quedaron en firme y no hay plata por entregar: usa "Marcar pagada" ' +
-          'para cerrarla.';
+    if (this.laDeudaViejaCubrioLaQuincena()) {
+      return (
+        'Los valores quedaron en firme y no queda un peso por entregarle: no hay que ' +
+        'pagarla ni marcarla pagada.'
+      );
+    }
+    return this.puedeCerrarSinPago()
+      ? 'Los valores quedaron en firme y no hay plata por entregar: usa "Marcar pagada" ' +
+          'para cerrarla.'
+      : 'Los valores quedaron en firme y no hay plata por entregar: un Administrador de la ' +
+          'empresa la marca pagada para cerrarla.';
+  });
+
+  /**
+   * POR QUÉ ESTA 'pagada' QUEDÓ CERRADA SIN QUE SE REGISTRARA UN PAGO, o null si se pagó.
+   *
+   * Lo dice el servidor (`cerrada_sin_pago`), con la misma frase que dan sus días y sus
+   * anticipos trabados: es su pregunta (`pagada_sin_que_saliera_un_peso`), y copiarla acá
+   * sería darle a la línea de estados la oportunidad de contradecir al día de Recepción.
+   * Medido: la quincena 2 de Henri vale $200.000, cobra los $120.000 de la 1 y se le pagan
+   * los $80.000 del neto; se corrige el precio a $1.200 (valor $120.000) y se borra el
+   * pago. Queda pagada v2 con pagado $0 y sin pagos, y la línea decía "El pago quedó
+   * registrado" sobre una tabla de pagos vacía.
+   *
+   * Una respuesta vieja no trae el campo: ahí se usa la pregunta de los botones
+   * (`laDeudaViejaSeLlevoElNeto`) y se nombran los renglones que hicieron el cero, que con
+   * la calculadora suman el valor total. Sin "sin que saliera un peso": si hubo un adelanto,
+   * ese sí salió en la mano.
+   */
+  readonly cerradaSinPago = computed<string | null>(() => {
+    const l = this.liq();
+    if (l.estado !== 'pagada') return null;
+    // Con el campo puesto manda el servidor, también cuando dice null: esa es la pagada que
+    // de verdad se pagó (o que sus anticipos cubrieron), y ahí "El pago quedó registrado"
+    // es cierto.
+    if (l.cerrada_sin_pago !== undefined) return comoFrase(l.cerrada_sin_pago);
+    if (this.tienePagos() || !this.saldoEnCero() || !this.laDeudaViejaCubrioLaQuincena()) {
+      return null;
+    }
+    const cubre = this.queCubreElValor();
+    return cubre ? `Quedó cerrada como pagada sin ningún pago registrado: ${cubre}.` : null;
   });
 
   /**
@@ -1795,6 +2296,26 @@ export class LiquidacionDetailDialog {
     // valor total ($230.000)" no cuadra con nada. Lo explica el aviso de arriba.
     if (!this.quincenaSaldadaSinCerrar() || this.tieneDeudaBorrada()) return null;
     const l = this.liq();
+    const cubre = this.queCubreElValor();
+    if (!cubre) {
+      return (
+        `No hay nada que entregarle a ${this.tercero()}: el valor total de esta quincena ` +
+        `es ${this.enPesos(l.valor_total)}.`
+      );
+    }
+    return (
+      `No hay nada que entregarle a ${this.tercero()}: ${cubre}, así que el saldo quedó en ` +
+      `${this.enPesos('0')}.`
+    );
+  });
+
+  /**
+   * "los anticipos aplicados ($ 80.000) y lo que ya venía debiendo de antes ($ 120.000)
+   * cubren EXACTO el valor total de la quincena ($ 200.000)": los renglones que hicieron
+   * el cero, en el orden del resumen. Null si no hay ninguno (la quincena vale $0).
+   */
+  private queCubreElValor(): string | null {
+    const l = this.liq();
     const partes: string[] = [];
     if (Number(l.anticipos ?? 0) > 0) {
       partes.push(`los anticipos aplicados (${this.enPesos(l.anticipos)})`);
@@ -1803,12 +2324,7 @@ export class LiquidacionDetailDialog {
       partes.push(`lo que ya venía debiendo de antes (${this.enPesos(l.saldo_anterior)})`);
     }
     if (this.tienePagos()) partes.push(`lo que ya se le pagó (${this.enPesos(l.pagado)})`);
-    if (partes.length === 0) {
-      return (
-        `No hay nada que entregarle a ${this.tercero()}: el valor total de esta quincena ` +
-        `es ${this.enPesos(l.valor_total)}.`
-      );
-    }
+    if (partes.length === 0) return null;
     const cuenta =
       partes.length === 1
         ? partes[0]
@@ -1819,25 +2335,41 @@ export class LiquidacionDetailDialog {
     // descuido, y esta frase habla de plata que no se le entregó a nadie.
     const plural = partes.length > 1 || Number(l.anticipos ?? 0) > 0;
     return (
-      `No hay nada que entregarle a ${this.tercero()}: ${cuenta} ` +
-      `${plural ? 'cubren' : 'cubre'} EXACTO el valor total de la quincena ` +
-      `(${this.enPesos(l.valor_total)}), así que el saldo quedó en ${this.enPesos('0')}.`
+      `${cuenta} ${plural ? 'cubren' : 'cubre'} EXACTO el valor total de la quincena ` +
+      `(${this.enPesos(l.valor_total)})`
     );
-  });
+  }
 
   /**
-   * LA NOTA DEL CERO QUE SE PINTA, y la razón del candado de Pagar cuando no hay botón.
+   * LA NOTA DEL CERO QUE SE PINTA debajo del resumen.
    *
    * Cuando el cero lo hizo la deuda arrastrada no hay "Marcar pagada" (el servidor la
-   * rebota), y sin decir por qué el dueño se queda buscando cómo cerrarla. Se le dice que
-   * se queda aprobada, con la misma razón que da el backend.
+   * rebota), y sin decirlo el dueño se queda buscando cómo cerrarla. Se le dice que se
+   * queda aprobada, y nada más: el PORQUÉ es el del servidor y lo dice el candado de
+   * Pagar (`motivoNoPagar`) con sus palabras. Esta nota decía su propia razón —"marcarla
+   * pagada trabaría sus días con un aviso que no es cierto"— y ya no lo era: medido con la
+   * de $170.000 − $50.000 de adelanto − $120.000 de deuda, si quedara 'pagada' su día
+   * diría "los anticipos ($50.000) y lo que quedó debiendo ($120.000) cubrieron exacto su
+   * valor ($170.000)", que es cierto. Pegarle aquí la frase del servidor repetiría la cifra
+   * de la deuda con otro formato y otro nombre al lado de la cuenta de esta misma nota.
    */
   readonly notaSaldoEnCero = computed<string | null>(() => {
     const explicacion = this.explicacionSaldoEnCero();
     if (!explicacion || !this.laDeudaViejaCubrioLaQuincena()) return explicacion;
+    // "Se queda aprobada" solo sobre una aprobada: con otro estado sería falso.
+    if (this.liq().estado !== 'aprobada') return explicacion;
+    if (this.liq().aviso_sin_un_peso_por_la_deuda !== undefined) {
+      return `${explicacion} Se queda aprobada.`;
+    }
+    // Una respuesta vieja no trae la frase del servidor: la razón va acá, la misma para la
+    // nota y para el candado, y sin afirmar nada del aviso de los días. Lo cierto es la
+    // regla, dicha como la dice el servidor: cuando lo que venía debiendo de antes se llevó
+    // lo que faltaba del neto, no sale un peso y la quincena no se marca pagada. "Lo que
+    // faltaba" y no "el neto": en la de $170.000 el adelanto de $50.000 sí salió.
     return (
-      `${explicacion} Se queda aprobada: no queda un peso por entregarle, y marcarla ` +
-      'pagada trabaría sus días con un aviso que no es cierto.'
+      `${explicacion} Se queda aprobada: no queda un peso por entregarle, y cuando lo que ` +
+      'venía debiendo de antes se lleva lo que faltaba del neto, el sistema no la marca ' +
+      'pagada.'
     );
   });
 
@@ -1850,6 +2382,10 @@ export class LiquidacionDetailDialog {
     // Antes que todo, igual que en el `pagar` del backend: con la deuda borrada el saldo
     // que se pagaría trae esa deuda sumada.
     if (this.tieneDeudaBorrada()) return this.avisoDeudaBorrada('pagar');
+    // Después, como en el `pagar` del servidor, la deuda cobrada que ya no cuadra: va antes
+    // de "quedó debiendo", que en la que cobró hablaría de una deuda que la otra ya no tiene.
+    const descuadre = this.avisoDeudaQueNoCuadra();
+    if (descuadre) return descuadre;
     if (this.leQuedaDebiendo()) {
       const cierre = this.deudaYaCobrada()
         ? 'Esa deuda ya se le cobró en otra liquidación.'
@@ -1868,9 +2404,11 @@ export class LiquidacionDetailDialog {
         `${this.enPesos(liq.le_queda_debiendo)} ${porque}. ${cierre}`
       );
     }
-    // El cero que hizo la deuda arrastrada: no hay botón, y el candado dice por qué.
+    // El cero que hizo la deuda arrastrada: no hay botón, y el candado dice por qué con el
+    // texto del 422 de Pagar (`aviso_sin_un_peso_por_la_deuda`), tal cual. Una respuesta
+    // vieja no lo trae: ahí va la nota, que lleva la razón escrita acá.
     if (this.quincenaSaldadaSinCerrar() && this.laDeudaViejaCubrioLaQuincena()) {
-      return this.notaSaldoEnCero();
+      return this.liq().aviso_sin_un_peso_por_la_deuda || this.notaSaldoEnCero();
     }
     // No queda otro caso: con saldo en cero hay botón (ver `puedeCerrarSinPago`) y con
     // saldo por pagar también. Se devuelve null en vez de un texto de relleno, que dejaría
@@ -1883,7 +2421,9 @@ export class LiquidacionDetailDialog {
    * "Saldo a pagar $ 50.000" de la quincena con la deuda borrada: ahí es que no se puede.
    */
   readonly rotuloNoPagar = computed(() =>
-    this.tieneDeudaBorrada() ? 'No se puede pagar' : 'No hay nada que pagar',
+    this.tieneDeudaBorrada() || this.avisoDeudaQueNoCuadra()
+      ? 'No se puede pagar'
+      : 'No hay nada que pagar',
   );
 
   /** El tooltip del botón dice para qué sirve y, si aplica, lo que va a costar. */

@@ -66,8 +66,13 @@ export function precioTecleado(texto: string): number | null {
  *    que "los anticipos suman más que esta quincena" es literalmente falso, y él va a
  *    ir a buscar unos anticipos que no existen.
  *  · 'las_dos' — hubo anticipos que se comieron la quincena Y además ya se le había
- *    entregado plata. No debería pasar (con el neto por debajo de cero el servidor
- *    rebota el pago), pero si pasa hay que decirlo entero en vez de escoger una mitad.
+ *    entregado plata. Pagar no lo produce (con el neto por debajo de cero el servidor
+ *    rebota el pago), pero CORREGIR SÍ, y nada lo impide: 250 L × $2.000 = $500.000 con
+ *    $300.000 de anticipo, pagada con $200.000 y corregida a $1.000 el litro, queda con
+ *    valor $250.000, neto −$50.000, pagado $200.000 y debiendo $250.000. El PDF la cierra
+ *    en "LE QUEDA DEBIENDO" (no es plata entregada de más: $50.000 son anticipo), así que
+ *    "se le pagó de más" es solo para 'entregado_de_mas'. Hay que decirlo entero en vez de
+ *    escoger una mitad.
  *
  * LA CUENTA QUE LO DECIDE, y sale de la única identidad que este proyecto garantiza
  * siempre: neto_a_pagar = pagado + saldo, y `le_queda_debiendo` es el saldo volteado.
@@ -97,6 +102,11 @@ export function causaDeLaDeuda(
  * allá es `pagado > 0`). La quincena 1 dejó debiendo $120.000 y la 2 vale justo
  * $120.000: no sale un peso, y la 2 se queda 'aprobada' A PROPÓSITO. Ofrecer "Marcar
  * pagada" ahí es ofrecer un botón que siempre falla.
+ *
+ * SOLO PARA UNA RESPUESTA VIEJA. El servidor ya manda la respuesta escrita
+ * (`aviso_sin_un_peso_por_la_deuda`: el texto del 422 de Pagar, o null cuando ese guardia
+ * no salta), y con el campo puesto manda él: ver `laDeudaViejaCubrioLaQuincena` en el
+ * detalle. Estas tres condiciones quedan para cuando no viene.
  */
 export function laDeudaViejaSeLlevoElNeto(
   liq: Pick<Liquidacion, 'saldo' | 'saldo_anterior' | 'pagado'>,
@@ -118,6 +128,30 @@ export function deudaBorradaPorReparar(
   liq: Pick<Liquidacion, 'estado' | 'deuda_borrada_por_la_migracion'>,
 ): boolean {
   return liq.estado !== 'anulada' && Number(liq.deuda_borrada_por_la_migracion ?? 0) > 0;
+}
+
+/**
+ * ¿YA SALIÓ PLATA POR PAGOS CONTRA ESTA QUINCENA? Es la pregunta de la palabra "abono".
+ *
+ * No sale del estado guardado: la quincena que sus anticipos cubrían exacto ($180.000
+ * contra $180.000), corregida con un día olvidado de 20 L, queda 'parcial' v2 con pagado
+ * $0 y sin un solo pago, y ahí "Se le abonó una parte" o "Con abonos" mandan al dueño a
+ * buscar con la calculadora un abono que no existe: lo que hay son $36.000 por entregar.
+ *
+ * La respuesta la da el servidor (`con_abonos`, la misma que usan sus textos). Una
+ * respuesta vieja no la trae, y ahí se deduce con lo que sí viene: hay pagos en la lista,
+ * o hay `pagado` sin pagos y sin deuda borrada, que es la 'pagada' de antes de los pagos
+ * parciales (ahí la plata sí salió, y el detalle la pinta en el renglón "Pagado"). Con la
+ * deuda borrada `pagado` lleva metida esa deuda y no dice nada de lo entregado.
+ */
+export function conAbonos(
+  liq: Pick<Liquidacion, 'con_abonos' | 'pagos' | 'pagado' | 'deuda_borrada_por_la_migracion'>,
+): boolean {
+  if (typeof liq.con_abonos === 'boolean') return liq.con_abonos;
+  return (
+    (liq.pagos?.length ?? 0) > 0 ||
+    (Number(liq.pagado ?? 0) > 0 && !(Number(liq.deuda_borrada_por_la_migracion ?? 0) > 0))
+  );
 }
 
 /**

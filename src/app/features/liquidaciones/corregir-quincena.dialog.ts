@@ -16,7 +16,12 @@ import { Liquidacion, LiquidacionDetalle, Monto } from '../../core/models';
 import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import { SpinnerBoton } from '../../shared/spinner-boton';
-import { MENOS, ROTULO_SALDO_ANTERIOR, precioTecleado } from './cifras-de-la-quincena';
+import {
+  MENOS,
+  ROTULO_SALDO_ANTERIOR,
+  causaDeLaDeuda,
+  precioTecleado,
+} from './cifras-de-la-quincena';
 import {
   AnticipoDeLaQuincena,
   DiaSuelto,
@@ -71,11 +76,29 @@ export interface RenglonDelCuadre {
 
 /** La cifra grande de una de las dos columnas, con el rótulo que le corresponde. */
 export interface CierreDelCuadre {
-  /** "QUEDA POR ENTREGARLE" o "SE LE PAGÓ DE MÁS". Son dos frases, no un signo. */
+  /**
+   * "QUEDA POR ENTREGARLE", "SE LE PAGÓ DE MÁS" o "LE QUEDA DEBIENDO". Son frases, no un
+   * signo.
+   */
   rotulo: string;
   cifra: string;
   /** La plata va al revés: la debe el productor, no la quesera. */
   alReves: boolean;
+}
+
+/**
+ * EL RÓTULO DE LA PLATA AL REVÉS, con las palabras del PDF y la misma pregunta
+ * (`causaDeLaDeuda`): "SE LE PAGÓ DE MÁS" solo cuando la deuda es toda plata entregada
+ * (neto ≥ 0 y pagado > neto). Medido: 250 L × $2.000 con $300.000 de anticipo, pagada con
+ * $200.000 y corregida a $1.000 el litro, queda debiendo $250.000 con neto −$50.000; el
+ * papel dice "LE QUEDA DEBIENDO" y este cuadre decía "SE LE PAGÓ DE MÁS $250.000", cuando
+ * en efectivo solo salieron $200.000.
+ */
+function rotuloDeLaDeuda(pagado: Monto | undefined, neto: Monto | undefined): string {
+  return causaDeLaDeuda({ pagado: pagado ?? '0', neto_a_pagar: neto ?? '0' }) ===
+    'entregado_de_mas'
+    ? 'SE LE PAGÓ DE MÁS'
+    : 'LE QUEDA DEBIENDO';
 }
 
 /**
@@ -1484,25 +1507,66 @@ export class CorregirQuincenaDialog {
    * obligaría a escoger un rótulo para las dos, y uno de los dos estaría mintiendo.
    */
   readonly cierreAntes = computed<CierreDelCuadre>(() => {
-    const saldo = Number(this.previa()?.saldo_antes ?? 0);
+    const p = this.previa();
+    const saldo = Number(p?.saldo_antes ?? 0);
     return saldo < 0
-      ? { rotulo: 'SE LE PAGÓ DE MÁS', cifra: pesosExactos(-saldo), alReves: true }
+      ? {
+          rotulo: rotuloDeLaDeuda(p?.pagado, p?.neto_antes),
+          cifra: pesosExactos(-saldo),
+          alReves: true,
+        }
       : { rotulo: 'QUEDA POR ENTREGARLE', cifra: pesosExactos(saldo), alReves: false };
   });
 
   /**
    * LA CIFRA GRANDE DE VERDAD: cómo queda después de corregir.
    *
-   * Sale de los dos campos separados que manda el servidor (`queda_por_entregar` y
-   * `se_le_pago_de_mas`, los dos en positivo) y no de voltearle el signo al saldo: son
-   * dos frases distintas y la pantalla no tiene que deducir cuál decir a partir de un
-   * signo. Se cumple exacto: `neto_despues = pagado + saldo_despues`.
+   * Sale de los campos separados que manda el servidor (`queda_por_entregar`,
+   * `se_le_pago_de_mas` y `le_queda_debiendo`, todos en positivo) y no de voltearle el signo
+   * al saldo: son frases distintas y la pantalla no tiene que deducir cuál decir a partir
+   * de un signo. Se cumple exacto: `neto_despues = pagado + saldo_despues`.
+   *
+   * EL RÓTULO DE LA DEUDA TAMBIÉN LO DECIDE EL SERVIDOR: la manda en `se_le_pago_de_mas`
+   * solo cuando el PDF va a decir "SE LE PAGÓ DE MÁS", y en `le_queda_debiendo` cuando va a
+   * decir "LE QUEDA DEBIENDO". Medido con 250 L × $2.000 contra $300.000 de anticipo,
+   * pagada con $200.000 y corregida a $1.000: el servidor mandaba $250.000 en
+   * `se_le_pago_de_mas` y el aviso "esa plata ya salió de la caja en efectivo", cuando en
+   * efectivo salieron $200.000. Ahora manda los $250.000 en `le_queda_debiendo`, y acá se
+   * pinta el rótulo del campo que trae la cifra, sin volver a hacer la pregunta.
+   *
+   * Una respuesta vieja no trae `le_queda_debiendo`, y su `se_le_pago_de_mas` es la deuda
+   * entera: ahí el rótulo sale de la pregunta del PDF hecha acá (`rotuloDeLaDeuda`).
    */
   readonly cierreAhora = computed<CierreDelCuadre>(() => {
     const p = this.previa();
     if (!p) return { rotulo: 'QUEDA POR ENTREGARLE', cifra: pesosExactos(0), alReves: false };
+    if (p.le_queda_debiendo !== undefined) {
+      if (Number(p.se_le_pago_de_mas ?? 0) > 0) {
+        return {
+          rotulo: 'SE LE PAGÓ DE MÁS',
+          cifra: pesosExactos(p.se_le_pago_de_mas),
+          alReves: true,
+        };
+      }
+      if (Number(p.le_queda_debiendo ?? 0) > 0) {
+        return {
+          rotulo: 'LE QUEDA DEBIENDO',
+          cifra: pesosExactos(p.le_queda_debiendo),
+          alReves: true,
+        };
+      }
+      return {
+        rotulo: 'QUEDA POR ENTREGARLE',
+        cifra: pesosExactos(p.queda_por_entregar),
+        alReves: false,
+      };
+    }
     return Number(p.se_le_pago_de_mas ?? 0) > 0
-      ? { rotulo: 'SE LE PAGÓ DE MÁS', cifra: pesosExactos(p.se_le_pago_de_mas), alReves: true }
+      ? {
+          rotulo: rotuloDeLaDeuda(p.pagado, p.neto_despues),
+          cifra: pesosExactos(p.se_le_pago_de_mas),
+          alReves: true,
+        }
       : {
           rotulo: 'QUEDA POR ENTREGARLE',
           cifra: pesosExactos(p.queda_por_entregar),

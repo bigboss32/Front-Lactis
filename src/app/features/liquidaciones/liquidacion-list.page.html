@@ -54,11 +54,17 @@
       </button>
 
       <!--
-        Las que ya tienen abonos van en su propia tarjeta y no revueltas con las
-        aprobadas: son la pregunta nueva del dueño ("¿a quién le quedé debiendo
-        una parte?"), y así cada tarjeta sigue filtrando por UN estado.
+        Las parciales van en su propia tarjeta y no revueltas con las aprobadas: son la
+        pregunta nueva del dueño ("¿a quién le quedé debiendo una parte?"), y así cada
+        tarjeta sigue filtrando por UN estado.
         Solo aparece cuando hay alguna: si no, sería una tarjeta en cero que le
         quita espacio a las tres de siempre.
+
+        EL TÍTULO NO DICE "ABONOS": 'parcial' es también la quincena corregida después de
+        cerrada que quedó con saldo sin un solo pago (los anticipos cubrían exacto sus
+        $180.000 y un día olvidado de 20 L dejó $36.000 por entregar). "Con abonos" mandaba
+        al dueño a buscar un abono que no existe. El conteo es el del filtro 'parcial' del
+        servidor, así que la tarjeta y la lista filtrada siguen diciendo lo mismo.
       -->
       @if (r.parciales > 0) {
         <button
@@ -66,13 +72,13 @@
           class="tarjeta azul"
           [class.activa]="estado.value === 'parcial'"
           [attr.aria-pressed]="estado.value === 'parcial'"
-          matTooltip="Mostrar solo las liquidaciones con abonos y saldo pendiente"
+          matTooltip="Mostrar solo las liquidaciones en parcial: ya tienen abonos o se corrigieron después de cerradas, y todavía tienen saldo pendiente"
           (click)="filtrarPorEstado('parcial')"
         >
           <span class="icono"><mat-icon aria-hidden="true">hourglass_bottom</mat-icon></span>
           <span class="textos">
             <span class="cifra">{{ r.parciales }}</span>
-            <span class="titulo">Con abonos, debiendo</span>
+            <span class="titulo">Parciales, con saldo pendiente</span>
             <span class="detalle">{{ r.saldoParciales | money }} sin pagar</span>
           </span>
         </button>
@@ -156,6 +162,33 @@
         </div>
       }
     </div>
+  } @else if (resumenFallo() && !errorCarga()) {
+    <!--
+      LOS TOTALES NO LLEGARON, Y SE DICE. Sin tarjetas en $0 (afirmarían que nadie debe
+      nada) y sin esconder la tabla, que sí cargó. Antes la fila de tarjetas desaparecía
+      callada: con el front nuevo publicado antes que el servidor, `/resumen` respondía 422
+      y el dueño dejaba de ver "Le quedaron debiendo $120.000" sin ningún aviso. Si la
+      lista también falló, ya lo dice su propio aviso, y su Reintentar pide las dos cosas.
+
+      SIN ADIVINAR LA CAUSA: lo que pasó lo dice el texto del servidor o del interceptor,
+      tal cual, como en el aviso de la lista (ver `resumenFallo`). Antes decía siempre que
+      "no alcanzó a llegar", también cuando el servidor sí respondió con un 422 o un 500.
+    -->
+    <div class="aviso-totales" role="alert">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <span>
+        <span class="linea">No se pudieron cargar los totales.</span>
+        @if (resumenFallo()?.detalle; as detalle) {
+          <span class="linea detalle-del-fallo">{{ detalle }}</span>
+        }
+        <span class="linea">
+          Eso no quiere decir que no haya nada por pagar ni que nadie deba.
+        </span>
+      </span>
+      <button mat-stroked-button type="button" (click)="cargarResumen()">
+        <mat-icon>refresh</mat-icon> Reintentar
+      </button>
+    </div>
   }
 
   <div class="page-toolbar">
@@ -173,7 +206,8 @@
         <mat-option [value]="null">Todos</mat-option>
         <mat-option value="borrador">Borrador</mat-option>
         <mat-option value="aprobada">Aprobada</mat-option>
-        <mat-option value="parcial">Parcial (con abonos)</mat-option>
+        <!-- Sin "con abonos": la corregida que quedó con saldo es 'parcial' sin ninguno. -->
+        <mat-option value="parcial">Parcial (con saldo pendiente)</mat-option>
         <mat-option value="pagada">Pagada</mat-option>
         <mat-option value="anulada">Anulada</mat-option>
       </mat-select>
@@ -264,14 +298,8 @@
               } @else {
                 {{ fila.saldo | money }}
                 @if (esPorPagar(fila)) {
-                  <span
-                    class="badge-por-pagar"
-                    [matTooltip]="
-                      fila.estado === 'parcial'
-                        ? 'Ya se le abonó una parte; esto es lo que todavía se le debe'
-                        : 'Liquidación aprobada con saldo pendiente de pago'
-                    "
-                  >
+                  <!-- "Ya se le abonó" solo si hubo abono: ver `tooltipPorPagar`. -->
+                  <span class="badge-por-pagar" [matTooltip]="tooltipPorPagar(fila)">
                     por pagar
                   </span>
                 }

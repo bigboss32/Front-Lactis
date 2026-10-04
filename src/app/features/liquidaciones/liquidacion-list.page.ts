@@ -30,6 +30,7 @@ import { dateToIso } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe, pesosExactos } from '../../shared/pipes';
 import {
   causaDeLaDeuda,
+  conAbonos,
   deudaBorradaPorReparar,
   porQueSeLePagoDeMas,
 } from './cifras-de-la-quincena';
@@ -45,7 +46,10 @@ interface ResumenEstados {
   borradores: number;
   aprobadas: number;
   saldoAprobadas: number;
-  /** Liquidaciones a las que ya se les abonó algo y todavía deben. */
+  /**
+   * Las 'parcial': con abonos y todavía debiendo, o corregidas después de cerradas con un
+   * saldo por entregar (esas pueden no tener ningún abono).
+   */
   parciales: number;
   saldoParciales: number;
   pagadas: number;
@@ -180,6 +184,32 @@ function cifraDelResumen(valor: Monto | null | undefined): number {
       .tarjeta.rojo  { --color-tarjeta: #e57373; }
     }
 
+    /*
+     * EL AVISO DE QUE LOS TOTALES NO LLEGARON, en el lugar de las tarjetas. Chico y de una
+     * línea: la tabla de abajo sí cargó y es lo que se sigue leyendo. El icono va con el
+     * color de error del tema, como el de la consulta fallida de la lista.
+     */
+    .aviso-totales {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      border: 1px solid var(--mat-sys-outline-variant);
+      border-radius: 12px;
+      background: var(--mat-sys-surface-container-low);
+      color: var(--mat-sys-on-surface-variant);
+      font-size: 0.85rem;
+
+      mat-icon { flex: none; color: var(--mat-sys-error); }
+      > span { flex: 1 1 260px; }
+      // Una línea por cosa: qué faltó, lo que dijo el servidor (si dijo algo) y la
+      // aclaración. Pegadas, un detalle del backend sin punto final se leía con la de abajo.
+      .linea { display: block; }
+      button mat-icon { color: inherit; }
+    }
+
     // -------------------------------------- borde de fila según estado
     tr.fila-borrador td:first-child { border-left: 4px solid color-mix(in srgb, #b26a00 75%, transparent); }
     tr.fila-aprobada td:first-child { border-left: 4px solid color-mix(in srgb, #1565c0 75%, transparent); }
@@ -290,6 +320,13 @@ export class LiquidacionListPage implements OnInit {
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenEstados | null>(null);
+  /**
+   * La última consulta de los totales falló (o trajo una cifra ilegible), con lo que se
+   * sabe del fallo: el texto del servidor o del interceptor (`detalleDeError`, la misma
+   * fuente de `errorCarga`), o null si no hay ninguno. Null del todo = no falló. Va APARTE
+   * de `errorCarga`: ese esconde la tabla, y la lista sí cargó. Ver `cargarResumen`.
+   */
+  readonly resumenFallo = signal<{ detalle: string | null } | null>(null);
 
   readonly tipo = new FormControl<string | null>(null);
   readonly estado = new FormControl<string | null>(null);
@@ -364,7 +401,17 @@ export class LiquidacionListPage implements OnInit {
    * backend, que es el que ve todas las filas.
    *
    * Si la respuesta falla o trae una cifra que no se puede leer, no se pintan tarjetas:
-   * una tarjeta en $0 afirmaría que nadie debe nada.
+   * una tarjeta en $0 afirmaría que nadie debe nada. Pero SE DICE que faltan, con su
+   * Reintentar (`resumenFallo`): sin aviso, la fila de tarjetas desaparecía y "Le
+   * quedaron debiendo $120.000" se dejaba de ver sin que nada lo explicara.
+   *
+   * EL AVISO NO ADIVINA LA CAUSA. Decía siempre "la consulta de los totales no alcanzó a
+   * llegar", y con el front publicado antes que el servidor la consulta sí llegó: el
+   * servidor respondió 422 (y con un 500 respondió tres veces). Se guarda el texto que ya
+   * separa cada caso —el del backend en un 4xx, el del interceptor sin red, con tiempo
+   * agotado o con un 5xx—, igual que `errorCarga`, y el aviso lo muestra tal cual. Una
+   * cifra ilegible no trae texto: ahí el aviso dice solo que no se pudieron cargar, sin
+   * culpar a la red y sin pintar la cifra.
    */
   async cargarResumen(): Promise<void> {
     try {
@@ -392,8 +439,10 @@ export class LiquidacionListPage implements OnInit {
         porReparar,
         deudaBorrada,
       });
-    } catch {
+      this.resumenFallo.set(null);
+    } catch (err) {
       this.resumen.set(null);
+      this.resumenFallo.set({ detalle: detalleDeError(err, '') || null });
     }
   }
 
@@ -412,9 +461,10 @@ export class LiquidacionListPage implements OnInit {
   }
 
   /**
-   * Saldo pendiente real: liquidación en firme (aprobada o con abonos) a la que
-   * todavía se le debe algo. La 'parcial' cuenta: se le pagó una parte y el
-   * resto sigue siendo deuda; dejarla por fuera escondería plata por pagar.
+   * Saldo pendiente real: liquidación en firme (aprobada o parcial) a la que
+   * todavía se le debe algo. La 'parcial' cuenta: tenga abonos o haya quedado con
+   * saldo al corregirla, lo que falta sigue siendo deuda; dejarla por fuera
+   * escondería plata por pagar.
    */
   esPorPagar(fila: Liquidacion): boolean {
     return (
@@ -424,6 +474,20 @@ export class LiquidacionListPage implements OnInit {
       // no deja pagarlo: "por pagar" sería falso (tampoco entra en la tarjeta).
       !this.tieneDeudaBorrada(fila)
     );
+  }
+
+  /**
+   * EL TOOLTIP DE LA MARCA "por pagar". "Ya se le abonó una parte" solo si de verdad salió
+   * plata por pagos (`conAbonos`, la pregunta del servidor), no porque el estado diga
+   * 'parcial': la quincena que sus anticipos cubrían exacto ($180.000 contra $180.000),
+   * corregida con un día olvidado de 20 L, queda 'parcial' con pagado $0 y $36.000 por
+   * entregar, y ahí el dueño buscaba con la calculadora un abono que no existe.
+   */
+  tooltipPorPagar(fila: Liquidacion): string {
+    if (conAbonos(fila)) return 'Ya se le abonó una parte; esto es lo que todavía se le debe';
+    return fila.estado === 'parcial'
+      ? 'En firme y con saldo pendiente de pago, sin ningún abono registrado todavía'
+      : 'Liquidación aprobada con saldo pendiente de pago';
   }
 
   /**
@@ -490,7 +554,13 @@ export class LiquidacionListPage implements OnInit {
     // NO se le adelantó nada, se le ENTREGÓ de más. La marca lo separa de una vez porque
     // es plata que YA SALIÓ de la caja —no un anticipo que estaba previsto— y el dueño la
     // busca en otro lado: en el comprobante corregido, no en la lista de anticipos.
-    if (causaDeLaDeuda(fila) !== 'anticipos') return 'se le pagó de más';
+    //
+    // Con la MISMA pregunta del PDF y del renglón de cierre del detalle: solo
+    // 'entregado_de_mas'. En 'las_dos' (250 L × $2.000 con $300.000 de anticipo, pagada con
+    // $200.000 y corregida a $1.000: debe $250.000) el papel cierra en "LE QUEDA DEBIENDO",
+    // y la marca decía "se le pagó de más" por los mismos $250.000, de los que $50.000 son
+    // anticipo.
+    if (causaDeLaDeuda(fila) === 'entregado_de_mas') return 'se le pagó de más';
     return 'quedó debiendo';
   }
 
@@ -534,11 +604,20 @@ export class LiquidacionListPage implements OnInit {
     // entregaron $500.000 y la quincena corregida quedó en $400.000. Se recupera igual
     // —descontándolo de la quincena siguiente— pero hay que decir de dónde salió, porque
     // el dueño va a ir a buscar un anticipo que no existe.
-    if (causaDeLaDeuda(fila) !== 'anticipos') {
+    const causa = causaDeLaDeuda(fila);
+    if (causa === 'entregado_de_mas') {
       return (
         `A ${quien} se le pagó de más: ${porQueSeLePagoDeMas(fila, pesosExactos)}, así que ` +
         `quedó debiendo ${cifra}. Esa plata se le descuenta en la próxima quincena que se ` +
         `le liquide después de esta${aunqueBorrador}`
+      );
+    }
+    // 'las_dos': quedó debiendo, como dicen el PDF y el detalle, y la frase nombra las dos
+    // partes —lo entregado y los anticipos— en vez de llamarlo todo "pagado de más".
+    if (causa === 'las_dos') {
+      return (
+        `${quien} quedó debiendo ${cifra}: ${porQueSeLePagoDeMas(fila, pesosExactos)}. Se le ` +
+        `cobra en la próxima quincena que se le liquide después de esta${aunqueBorrador}`
       );
     }
     return (

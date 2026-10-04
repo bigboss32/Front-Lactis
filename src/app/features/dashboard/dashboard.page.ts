@@ -12,11 +12,13 @@ import { ChartData, ChartOptions } from 'chart.js';
 import { firstValueFrom } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
+import { AuthService } from '../../core/auth/auth.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Dashboard, Monto, SerieDia } from '../../core/models';
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { notaQuincenasPorReparar } from '../contabilidad/quincenas-por-reparar';
 
 /** Variación del último día frente al anterior en una serie diaria. */
 interface Tendencia {
@@ -47,6 +49,8 @@ interface Kpi {
   tendencia?: Tendencia | null;
   /** Comparativo frente al período anterior (quincena/mes). */
   comparativo?: Comparativo | null;
+  /** Lo que la cifra deja por fuera, dicho al pie de la tarjeta. */
+  nota?: string | null;
 }
 
 @Component({
@@ -61,6 +65,7 @@ interface Kpi {
 })
 export class DashboardPage implements OnInit {
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
   private readonly snackbar = inject(MatSnackBar);
 
   readonly datos = signal<Dashboard | null>(null);
@@ -101,9 +106,18 @@ export class DashboardPage implements OnInit {
         titulo: 'Cartera pendiente', icono: 'account_balance_wallet', color: CHART_COLORS[3],
         valor: d.cartera_pendiente, tipo: 'money', link: '/ventas/cartera',
       },
+      /*
+       * Las quincenas con deuda borrada por la migración no entran en esta cifra (el
+       * servidor no deja pagarlas), y sin la nota el "$ 0" se leía como "no se le debe
+       * nada a nadie". Ver `notaQuincenasPorReparar`.
+       */
       {
         titulo: 'Liquidaciones por pagar', icono: 'request_quote', color: CHART_COLORS[7],
         valor: d.liquidaciones_por_pagar, tipo: 'money', link: '/liquidaciones',
+        nota: notaQuincenasPorReparar(
+          d.quincenas_por_reparar,
+          this.auth.hasPermission('liquidaciones'),
+        ),
       },
       /*
        * LO QUE LOS TERCEROS LE QUEDARON DEBIENDO A ÉL, en su propia tarjeta.

@@ -174,8 +174,10 @@
                     </span>
                   }
                   @case ('parcial') {
+                    <!-- "Con abono" solo si de verdad hubo uno (`rotuloParcial`): la
+                         quincena corregida queda 'parcial' sin un solo pago. -->
                     <span class="liq pagada" [matTooltip]="tooltipEditar(fila)">
-                      <mat-icon>lock</mat-icon> Con abono
+                      <mat-icon>lock</mat-icon> {{ rotuloParcial(fila) }}
                     </span>
                   }
                   @case ('aprobada') {

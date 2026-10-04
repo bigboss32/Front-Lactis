@@ -13,6 +13,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { ChartData } from 'chart.js';
 import { debounceTime, firstValueFrom, merge } from 'rxjs';
 
+import { AuthService } from '../../core/auth/auth.service';
 import { Monto, Balance, EstadoResultados, LibroDiario } from '../../core/models';
 import { AppChart, CHART_COLORS } from '../../shared/chart';
 import { PageHeader } from '../../shared/page-header';
@@ -21,6 +22,7 @@ import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
 import { ContabilidadService } from './contabilidad.service';
+import { notaQuincenasPorReparar } from './quincenas-por-reparar';
 
 const ETIQUETAS_ORIGEN: Record<string, string> = {
   venta: 'Venta',
@@ -150,6 +152,14 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
       .etiqueta { color: var(--mat-sys-on-surface-variant); font-size: 0.85rem; margin: 0; }
       .valor { margin: 4px 0 0; font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
     }
+    /* Lo que "Liquidaciones por pagar" deja por fuera, en el ámbar de los avisos. */
+    .tarjeta-saldo .nota-reparar {
+      margin: 6px 0 0;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      color: #a06000;
+    }
+    :host-context(html.dark) .tarjeta-saldo .nota-reparar { color: #ffb74d; }
     .fecha-corte { color: var(--mat-sys-on-surface-variant); font-size: 0.85rem; margin: 0 0 12px; }
     tr.mat-mdc-footer-row { font-weight: 600; }
     .contenido-tab { padding-top: 16px; }
@@ -157,6 +167,7 @@ const ETIQUETAS_ORIGEN: Record<string, string> = {
 })
 export class ContabilidadPage implements OnInit {
   private readonly servicio = inject(ContabilidadService);
+  private readonly auth = inject(AuthService);
   private readonly estadoFiltros = inject(EstadoFiltrosService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -171,6 +182,18 @@ export class ContabilidadPage implements OnInit {
   readonly balance = signal<Balance | null>(null);
 
   readonly columnasLibro = ['fecha', 'origen', 'concepto', 'ingreso', 'egreso'];
+
+  /**
+   * La nota de "Liquidaciones por pagar": las quincenas con deuda borrada por la migración
+   * no entran en esa cifra, y el balance es una lista de pasivos donde el "$ 0" se leía
+   * como "no se le debe nada a nadie". La misma redacción del tablero.
+   */
+  readonly notaPorReparar = computed<string | null>(() =>
+    notaQuincenasPorReparar(
+      this.balance()?.quincenas_por_reparar,
+      this.auth.hasPermission('liquidaciones'),
+    ),
+  );
 
   /** Donut de gastos por categoría para la pestaña de estado de resultados. */
   readonly donutGastos = computed<ChartData<'doughnut'> | null>(() => {

@@ -82,6 +82,12 @@
                   {{ c.porcentaje | cantidad }}% {{ c.etiqueta }}
                 </p>
               }
+              @if (kpi.nota) {
+                <p class="kpi-nota">
+                  <mat-icon aria-hidden="true">report</mat-icon>
+                  <span>{{ kpi.nota }}</span>
+                </p>
+              }
             </div>
           </mat-card>
         </a>
