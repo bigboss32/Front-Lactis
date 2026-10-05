@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, ElementRef, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -36,6 +36,7 @@ import {
   deudaBorradaPorReparar,
   laDeudaViejaSeLlevoElNeto,
   porQueSeLePagoDeMas,
+  precioComoSeEscribe,
   precioTecleado,
 } from './cifras-de-la-quincena';
 import {
@@ -78,6 +79,37 @@ const ESTADOS_QUE_ACEPTAN_RECALCULO: readonly string[] = ['borrador'];
  * y acá van seguidos de otra oración o como la línea de ayuda, que siempre lo lleva. Las
  * palabras no se tocan. Null si no vino nada que decir.
  */
+/**
+ * El tope que el servidor le pone a un precio por litro (`LiquidacionDetallePrecioUpdate.precio_litro`,
+ * le=1_000_000): mismo número a propósito, para no ofrecer lo que siempre rebota.
+ */
+export const PRECIO_MAXIMO_POR_LITRO = 1_000_000;
+
+/** Cuánto hay que esperar, con el puntero en el borde, antes de que el diálogo empiece a correr. */
+export const ESPERA_DEL_BORDE_MS = 250;
+/** Lo que mide la franja de arriba y la de abajo donde, arrastrando, el contenido se desplaza. */
+export const FRANJA_DEL_BORDE_PX = 56;
+
+/**
+ * Cuántos píxeles se desplaza el contenido en cada cuadro de animación mientras se arrastra el
+ * precio: positivo hacia abajo, negativo hacia arriba, 0 si el puntero está lejos de los bordes.
+ *
+ * Arranca despacio (1 px por cuadro, unas 1,5 filas por segundo) y acelera con el cuadrado de
+ * lo adentro que esté el puntero en la franja, hasta 18. Un puntero que se pasó del todo del
+ * borde (con el mouse capturado puede salirse de la ventana) corre a esa velocidad máxima.
+ */
+export function pasoDelDesplazamiento(
+  y: number,
+  arriba: number,
+  abajo: number,
+  franja = FRANJA_DEL_BORDE_PX,
+): number {
+  const profundidad = (hondo: number): number => 1 + 17 * Math.min(1, Math.max(0, hondo / franja)) ** 2;
+  if (y > abajo - franja) return profundidad(y - (abajo - franja));
+  if (y < arriba + franja) return -profundidad(arriba + franja - y);
+  return 0;
+}
+
 function comoFrase(texto: string | null | undefined): string | null {
   const limpio = texto?.trim();
   if (!limpio) return null;
@@ -158,14 +190,41 @@ interface RenglonComparable {
   ],
   templateUrl: './liquidacion-detail.dialog.html',
   styles: `
+    /* El productor primero y grande; "Liquidación de proveedor" chico y debajo. El texto leído
+       sigue siendo "Liquidación de proveedor — Moisés": solo cambia cómo se acomoda. */
+    .titulo-detalle {
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 2px;
+      margin: 0;
+      padding-bottom: 8px;
+    }
+    .titulo-detalle .tercero {
+      font-size: 1.4rem;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    .titulo-detalle .tipo-documento {
+      font-size: 0.8rem;
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .titulo-detalle .separador { display: none; }
+    /* Material le pone al título un ::before de 40 px (para alinear la línea base del texto) y con
+       las dos líneas del título dejaba un hueco enorme antes de los pasos. */
+    .titulo-detalle::before { display: none; }
+
     .info {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 32px;
-      margin-bottom: 8px;
+      align-items: center;
+      gap: 6px 24px;
+      margin: 0 0 12px;
+      font-size: 0.9rem;
     }
+    .info > div { display: flex; align-items: center; gap: 8px; }
     .etiqueta {
-      display: block;
       font-size: 0.75rem;
       color: var(--mat-sys-on-surface-variant);
     }
@@ -174,8 +233,60 @@ interface RenglonComparable {
       font-size: 1rem;
       font-weight: 500;
     }
+    .titulo-seccion {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .cuenta-dias {
+      padding: 1px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--mat-sys-on-surface-variant);
+      background: color-mix(in srgb, var(--mat-sys-on-surface) 8%, transparent);
+    }
     table { width: 100%; }
     .num { text-align: right; }
+    /* La tabla de días, más baja: 15 renglones de 52 px eran media pantalla de scroll. */
+    table.mat-mdc-table {
+      --mat-table-row-item-container-height: 38px;
+      --mat-table-header-container-height: 40px;
+      font-size: 0.9rem;
+    }
+    table.mat-mdc-table .mat-mdc-row:nth-child(even) {
+      background: color-mix(in srgb, var(--mat-sys-on-surface) 3.5%, transparent);
+    }
+    table.mat-mdc-table .mat-mdc-row:hover {
+      background: color-mix(in srgb, var(--mat-sys-primary) 7%, transparent);
+    }
+    table.mat-mdc-table td.mat-mdc-cell { font-variant-numeric: tabular-nums; }
+    table.mat-mdc-table .mat-mdc-header-cell {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    /* EL RESUMEN, COMO TARJETA Y ARRIBA: los totales ya no quedan escondidos debajo de 15
+       filas. Las cifras de apoyo van atenuadas y las que se cuadran a mano —el valor total y
+       el saldo— grandes y separadas por una línea. */
+    .resumen-tarjeta {
+      margin: 4px 0 16px;
+      padding: 10px 16px 14px;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--mat-sys-on-surface) 5%, transparent);
+      /* Las dos columnas o una sola se deciden por lo que mide la tarjeta (el diálogo), no por
+         el ancho de la pantalla: entre 641 y ~700 px de pantalla el diálogo ya no daba para dos
+         columnas y los rótulos se partían en dos renglones. */
+      container: resumen / inline-size;
+    }
+    .resumen-tarjeta h3 {
+      margin: 0 0 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--mat-sys-on-surface-variant);
+    }
     /*
       LA BANDA DEL COMPROBANTE CORREGIDO. Pegada arriba (sticky) a propósito: este
       comprobante tiene un gemelo con otra cifra en la mano del productor, y esa
@@ -421,12 +532,52 @@ interface RenglonComparable {
       color: var(--mat-sys-on-surface-variant);
       white-space: nowrap;
     }
+    /* Dos columnas: el desglose a la izquierda y, a la derecha, desde el valor total hasta el
+       saldo. Cada renglón lleva su fila y su columna en --f y --c (ver ubicacionDelResumen). */
     .resumen {
       display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 4px 32px;
-      max-width: 420px;
+      grid-template-columns: 1fr auto 1fr auto;
+      align-items: center;
+      gap: 0;
+      font-size: 0.9rem;
     }
+    .resumen > span {
+      position: relative;
+      grid-row: var(--f);
+      grid-column: var(--c);
+      padding: 3px 0;
+    }
+    .resumen > span:not(.destacado):not(.al-reves) { color: var(--mat-sys-on-surface-variant); }
+    .resumen > span.num { padding-left: 24px; }
+    /* El grupo de la derecha, separado del desglose por una línea vertical continua (sin
+       espacio entre filas, para que la línea no quede a trozos). */
+    .resumen > span.derecha:not(.num) {
+      margin-left: 28px;
+      padding-left: 28px;
+      border-left: 1px solid color-mix(in srgb, var(--mat-sys-on-surface) 14%, transparent);
+    }
+    /* Lo que se cuadra a mano (el total y el saldo): más grande, y con una línea encima. La
+       línea es un pseudo-elemento y no un borde: un borde o un margen le suman alto a la fila,
+       y como la fila la comparten las dos columnas, dejaba un hueco debajo del renglón de al lado. */
+    .resumen > span.destacado {
+      font-size: 1.02rem;
+      font-weight: 600;
+    }
+    .resumen > span.destacado::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: color-mix(in srgb, var(--mat-sys-on-surface) 14%, transparent);
+    }
+    /* El primero de su columna no lleva línea encima: no hay nada arriba que separar. */
+    .resumen > span.destacado.arriba::before { display: none; }
+    /* La cifra final —el saldo, o lo que le queda debiendo— es la que el dueño busca: la más
+       grande de la tarjeta. */
+    .resumen > span.num.final { font-size: 1.3rem; font-weight: 700; }
+    .resumen > span.final-rotulo { font-size: 1.1rem; font-weight: 700; }
     /* Las cifras NO se parten nunca: "− $ 120.000" cortado entre el signo y la plata se
        lee como dos cosas distintas. El rótulo sí puede envolver —"Lo que quedó debiendo
        de la quincena pasada" no cabe en una línea en un celular— y para eso está el
@@ -435,12 +586,37 @@ interface RenglonComparable {
     .resumen .destacado { font-weight: 600; }
     /* En celular el diálogo va a lo ancho de la pantalla: 32px entre el rótulo y la
        cifra le roban el espacio al rótulo largo y lo parten en cuatro líneas. */
-    @media (max-width: 560px) {
-      .resumen {
-        gap: 4px 12px;
-        max-width: none;
+    /* En celular, una sola columna: cada renglón en su fila, en el orden en que se resta. */
+    @container resumen (max-width: 600px) {
+      .resumen { grid-template-columns: 1fr auto; }
+      .resumen > span {
+        grid-row: auto;
+        grid-column: auto;
       }
+      .resumen > span.num { padding-left: 12px; }
+      .resumen > span.derecha:not(.num) {
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
+      }
+      /* En una sola columna el valor total sí tiene un desglose encima: lleva su línea. */
+      .resumen > span.destacado.arriba::before { display: block; }
     }
+
+    /* EL PIE, MÁS LIVIANO: los secundarios son botones de texto y van apretados para que quepan
+       en una sola fila junto al botón principal; Cerrar se queda a la izquierda. */
+    mat-dialog-actions {
+      flex-wrap: wrap;
+      gap: 2px 4px;
+      padding: 10px 16px 14px;
+    }
+    mat-dialog-actions > button[mat-button] {
+      padding: 0 8px;
+      min-width: 0;
+      margin-left: 0;
+    }
+    mat-dialog-actions > button[mat-flat-button] { margin-left: 4px; }
+    mat-dialog-actions > button[mat-dialog-close] { margin-right: auto; }
     /* El renglón "Le queda debiendo": la plata va al revés de lo normal (la debe el
        tercero, no la quesera), así que se marca en el color de error del tema. No es
        una alarma de sistema; es que el dueño no puede confundirlo con algo por pagar. */
@@ -452,7 +628,7 @@ interface RenglonComparable {
      * cliente se le cobró de más.
      */
     .nota-le-debe {
-      max-width: 420px;
+      max-width: none;
       margin: 10px 0 0;
       font-size: 0.8125rem;
       line-height: 1.35;
@@ -468,7 +644,7 @@ interface RenglonComparable {
      */
     .nota-saldo-anterior,
     .nota-saldo-cero {
-      max-width: 420px;
+      max-width: none;
       margin: 10px 0 0;
       font-size: 0.8125rem;
       line-height: 1.35;
@@ -477,7 +653,7 @@ interface RenglonComparable {
     /* Las quincenas que dejaron la deuda, cuando fueron varias: sus cifras suman el
        renglón del resumen y el dueño las cuadra a mano, así que van una por línea. */
     .origenes-deuda {
-      max-width: 420px;
+      max-width: none;
       margin: 4px 0 0;
       padding-left: 20px;
       font-size: 0.8125rem;
@@ -487,7 +663,7 @@ interface RenglonComparable {
     /* El flete de la leche del proveedor: un dato, no un descuento suyo. Mismo tono
        discreto que la nota de arriba, porque tampoco es una alerta. */
     .nota-flete {
-      max-width: 420px;
+      max-width: none;
       margin: 10px 0 0;
       font-size: 0.8125rem;
       line-height: 1.35;
@@ -540,6 +716,101 @@ interface RenglonComparable {
       .precio-editable .lapiz { opacity: 0.6; }
     }
 
+    /* EL PRECIO DE TODOS LOS DÍAS: una barra a la vista, antes de la tabla. */
+    .precio-masivo {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 8px 14px;
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--mat-sys-primary) 9%, transparent);
+    }
+    /* Mientras se arrastra la barra se queda pegada arriba: el aviso "Suelte para copiar $X a N
+       días" es lo que dice qué se va a mandar, y cuando el borde hace correr la tabla la barra se
+       iba de la pantalla y se soltaba a ciegas. Fondo opaco para que no se vean las filas por
+       debajo. */
+    .precio-masivo.arrastrando {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      background: color-mix(
+        in srgb,
+        var(--mat-sys-primary) 14%,
+        var(--mat-dialog-container-color, var(--mat-sys-surface-container-high))
+      );
+      box-shadow: 0 4px 10px -4px color-mix(in srgb, #000 40%, transparent);
+    }
+    .precio-masivo-campo { display: flex; flex-direction: column; gap: 3px; }
+    .entrada-precio:has(input[readonly]) { opacity: 0.7; }
+    .entrada-precio {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0 8px;
+      border: 1px solid var(--mat-sys-outline);
+      border-radius: 6px;
+      background: var(--mat-sys-surface);
+    }
+    .entrada-precio:focus-within { border-color: var(--mat-sys-primary); }
+    .entrada-precio .signo { color: var(--mat-sys-on-surface-variant); }
+    .entrada-precio input {
+      width: 110px;
+      padding: 7px 0;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      color: var(--mat-sys-on-surface);
+      background: transparent;
+      border: none;
+      outline: none;
+    }
+    .pista-precio {
+      flex: 1 1 220px;
+      align-self: center;
+      font-size: 0.78rem;
+      line-height: 1.35;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .pista-precio strong { color: var(--mat-sys-primary); font-size: 0.85rem; }
+    /* El cuadrito de la esquina del precio, que se arrastra hacia abajo. Solo se ve al pasar por
+       la fila (y siempre, atenuado, donde no hay mouse). */
+    .celda-precio { position: relative; }
+    .asa-precio {
+      position: absolute;
+      right: 6px;
+      bottom: 5px;
+      width: 11px;
+      height: 11px;
+      border-radius: 2px;
+      background: var(--mat-sys-primary);
+      border: 2px solid var(--mat-sys-surface);
+      box-sizing: content-box;
+      cursor: crosshair;
+      opacity: 0;
+      touch-action: none;
+      transition: opacity 120ms ease;
+    }
+    tr.mat-mdc-row:hover .asa-precio,
+    .asa-precio:hover { opacity: 1; }
+    @media (hover: none) {
+      .asa-precio { opacity: 0.7; width: 15px; height: 15px; }
+    }
+    /* Con el dedo: el cuadrito pasa al borde de la celda y deja el lápiz libre (antes lo tapaba
+       y un toque en la esquina del lápiz caía en el cuadrito), y su área de toque es de 24 px de
+       ancho por todo el alto de la fila. El campo del precio mide 44 de alto y 16 de letra (con
+       menos, iOS le hace zoom a la pantalla al enfocar). */
+    @media (pointer: coarse) {
+      .con-asa { padding-right: 30px; }
+      .asa-precio { right: 3px; }
+      .asa-precio::after { content: ''; position: absolute; inset: -12px -3px -12px -5px; }
+      .entrada-precio input { padding: 12px 0; font-size: 16px; }
+    }
+    table.en-arrastre { user-select: none; cursor: crosshair; }
+    tr.fila-origen > td { background: color-mix(in srgb, var(--mat-sys-primary) 14%, transparent) !important; }
+    tr.fila-destino > td {
+      background: color-mix(in srgb, var(--mat-sys-primary) 24%, transparent) !important;
+    }
     .precio-edicion {
       display: inline-flex;
       align-items: center;
@@ -647,6 +918,7 @@ export class LiquidacionDetailDialog {
   private readonly dialog = inject(MatDialog);
   private readonly snackbar = inject(MatSnackBar);
   private readonly auth = inject(AuthService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly data = inject<{ item: Liquidacion }>(MAT_DIALOG_DATA);
 
@@ -1081,6 +1353,31 @@ export class LiquidacionDetailDialog {
   });
 
   /**
+   * EL RESUMEN EN DOS COLUMNAS, SIN TOCAR SU ESTRUCTURA. A la izquierda lo que arma el total
+   * (litros, precio, valor bruto, bonificaciones, descuentos); a la derecha desde el valor
+   * total hasta el saldo, que es lo que el dueño cuadra con la calculadora. Los renglones
+   * siguen siendo una lista plana de pares rótulo + cifra en el mismo orden (las pruebas y
+   * el cuadre los leen así): lo único que cambia es la fila y la columna que cada uno ocupa
+   * en la rejilla, que van como variables de CSS. En celular la rejilla vuelve a una columna.
+   * Si no hay renglón de "valor total" (no debería pasar) todo queda en una sola columna.
+   */
+  readonly ubicacionDelResumen = computed(() => {
+    const filas = this.renglonesResumen();
+    const corte = filas.findIndex((r) => r.clave === 'valor_total');
+    // El bloque de la derecha se centra a lo alto del desglose: si a la izquierda hay cinco
+    // renglones y a la derecha tres, arranca en la fila 2.
+    const sobra = corte > 0 ? Math.max(0, corte - (filas.length - corte)) : 0;
+    const arriba = Math.floor(sobra / 2);
+    return filas.map((_, i) =>
+      corte > 0
+        ? i < corte
+          ? { fila: i + 1, columna: 1, derecha: false, primera: i === 0 }
+          : { fila: i - corte + 1 + arriba, columna: 3, derecha: true, primera: i === corte && arriba === 0 }
+        : { fila: i + 1, columna: 1, derecha: false, primera: i === 0 },
+    );
+  });
+
+  /**
    * EL FLETE DE LA LECHE DEL PROVEEDOR, dicho aparte y explicando por qué no se resta.
    *
    * Esta cifra estaba dentro de la columna del resumen y la descuadraba: el dueño la
@@ -1309,9 +1606,9 @@ export class LiquidacionDetailDialog {
   private cancelando = false;
 
   editarPrecio(detalle: LiquidacionDetalle): void {
-    if (!this.puedeEditarPrecio() || this.guardandoId()) return;
+    if (!this.puedeEditarPrecio() || this.ocupado()) return;
     this.cancelando = false;
-    this.textoPrecio.set(String(Number(detalle.precio_litro)));
+    this.textoPrecio.set(precioComoSeEscribe(Number(detalle.precio_litro)));
     this.editandoId.set(detalle.id);
   }
 
@@ -1338,7 +1635,10 @@ export class LiquidacionDetailDialog {
   }
 
   async guardarPrecio(detalle: LiquidacionDetalle): Promise<void> {
-    if (this.guardandoId()) return;
+    // Dos escrituras sobre la misma quincena a la vez (el lápiz y "Poner a todos", o el lápiz y
+    // Aprobar) se pisan en el servidor —el PUT de un día no toma el candado— y la pantalla se
+    // queda con la respuesta que llegue última, no con lo que quedó guardado.
+    if (this.ocupado()) return;
     // Si mientras el campo estaba abierto la quincena dejó de aceptar el precio (llegó la
     // recarga con la deuda ya cobrada en otra), se cierra sin mandar nada: cada salida del
     // campo volvía a mandar el PUT y a recibir el mismo 422.
@@ -1381,6 +1681,374 @@ export class LiquidacionDetailDialog {
     } finally {
       this.guardandoId.set(null);
     }
+  }
+
+  // ------------------------------ el mismo precio para varios días de una vez
+  /**
+   * EL PRECIO CASI NUNCA CAMBIA A MITAD DE QUINCENA, y corregirlo día por día eran 15 lápices.
+   * Hay dos puertas, las dos contra `POST /liquidaciones/{id}/precios` (todo o nada):
+   *   · el campo "Precio por litro de todos los días" y su botón, que se ve a la primera;
+   *   · el cuadrito de cada precio, que se arrastra hacia abajo (o arriba) para copiar ESE
+   *     precio a las filas por las que pasa, como en una hoja de cálculo.
+   * Solo se ofrecen donde se ofrece el lápiz (`puedeEditarPrecio`): el servidor rechaza lo
+   * mismo en los dos.
+   */
+  readonly aplicandoPrecios = signal(false);
+
+  /**
+   * ALGO SE ESTÁ ESCRIBIENDO EN ESTA LIQUIDACIÓN: una acción del pie (aprobar, pagar, anular…),
+   * el precio de un día o el de varios. Mientras dura, nada más se escribe: ni los botones del
+   * pie ni el lápiz ni la barra de precios. Cada una por su lado dejaba pasar a las otras, y
+   * Aprobar con el precio de un día todavía en camino aprobaba con el precio viejo.
+   */
+  readonly ocupado = computed(
+    () => this.procesando() || this.guardandoId() !== null || this.aplicandoPrecios(),
+  );
+
+  /** Lo que escribió el dueño; null = no ha escrito nada y se ve el precio que ya comparten. */
+  private readonly precioMasivoEscrito = signal<string | null>(null);
+
+  /** El precio que hoy tienen TODOS los días, o null si no es el mismo en todos. */
+  readonly precioComunDeLosDias = computed<number | null>(() => {
+    const precios = new Set(this.liq().detalles.map((d) => Number(d.precio_litro)));
+    return precios.size === 1 ? [...precios][0] : null;
+  });
+
+  /** Con lo que arranca el campo: el precio común escrito como se teclea, o vacío. */
+  readonly textoPrecioMasivo = computed(() => {
+    const escrito = this.precioMasivoEscrito();
+    if (escrito !== null) return escrito;
+    const comun = this.precioComunDeLosDias();
+    return comun === null ? '' : precioComoSeEscribe(comun);
+  });
+
+  private readonly precioMasivo = computed(() => precioTecleado(this.textoPrecioMasivo()));
+
+  /** Cuántos días cambiarían de precio con lo escrito (los que ya lo tienen no cuentan). */
+  readonly diasQueCambiarian = computed(() => {
+    const precio = this.precioMasivo();
+    if (precio === null) return 0;
+    return this.liq().detalles.filter((d) => Number(d.precio_litro) !== precio).length;
+  });
+
+  readonly mostrarPrecioMasivo = computed(
+    () => this.puedeEditarPrecio() && this.liq().detalles.length > 1,
+  );
+
+  readonly puedeAplicarATodos = computed(
+    () =>
+      this.diasQueCambiarian() > 0 &&
+      (this.precioMasivo() ?? 0) <= PRECIO_MAXIMO_POR_LITRO &&
+      !this.ocupado(),
+  );
+
+  /**
+   * "Poner $ 2.000 a los 15 días" cuando cambian todos; "Poner $ 2.000 a 3 días" cuando solo
+   * algunos. LLEVA EL PRECIO COMO SE LEYÓ: con el punto del teclado numérico, "2000.50" se lee
+   * 200.050 (el punto separa miles) y el dueño no tenía dónde verlo hasta que la quincena
+   * entera ya estaba guardada.
+   */
+  readonly rotuloAplicarATodos = computed(() => {
+    if (this.aplicandoPrecios()) return 'Guardando…';
+    const cambian = this.diasQueCambiarian();
+    const total = this.liq().detalles.length;
+    const precio = this.precioMasivo();
+    if (cambian === 0) return 'Poner a todos los días';
+    if (precio !== null && precio > PRECIO_MAXIMO_POR_LITRO) {
+      return `El máximo es ${this.enPesos(String(PRECIO_MAXIMO_POR_LITRO))}`;
+    }
+    const cuanto = precio === null ? '' : ` ${this.enPesos(String(precio))}`;
+    if (cambian === total) return `Poner${cuanto} a los ${total} días`;
+    return `Poner${cuanto} a ${cambian} ${cambian === 1 ? 'día' : 'días'}`;
+  });
+
+  alEscribirPrecioMasivo(valor: string): void {
+    this.precioMasivoEscrito.set(valor);
+  }
+
+  async aplicarPrecioATodos(): Promise<void> {
+    const precio = this.precioMasivo();
+    if (precio === null) {
+      this.snackbar.open('Escriba el precio por litro en pesos, por ejemplo 2000', 'OK', {
+        duration: 4000,
+      });
+      return;
+    }
+    if (this.ocupado()) return;
+    // Más del tope del servidor no se pregunta ni se manda (Enter en el campo no pasa por el botón apagado).
+    if (precio > PRECIO_MAXIMO_POR_LITRO) {
+      this.snackbar.open(
+        `El precio por litro no puede pasar de ${this.enPesos(String(PRECIO_MAXIMO_POR_LITRO))}`,
+        'OK',
+        { duration: 4000 },
+      );
+      return;
+    }
+    // Un precio muy lejos del de hoy casi siempre es un dedo de más o un punto mal leído, y
+    // aplicado a toda la quincena de una vez: se confirma, diciendo cómo se leyó.
+    const referencia = this.precioDeReferencia();
+    if (referencia > 0 && (precio > referencia * 3 || precio < referencia / 3)) {
+      const sigue = await this.confirmarPrecioLejano(precio, referencia);
+      if (!sigue) return;
+    }
+    await this.guardarPrecios(precio, null);
+  }
+
+  /** El precio de hoy de la quincena: el común, o el promedio de los días que tienen precio. */
+  private precioDeReferencia(): number {
+    const comun = this.precioComunDeLosDias();
+    if (comun !== null) return comun;
+    const precios = this.liq()
+      .detalles.map((d) => Number(d.precio_litro))
+      .filter((p) => p > 0);
+    return precios.length === 0 ? 0 : precios.reduce((a, b) => a + b, 0) / precios.length;
+  }
+
+  private async confirmarPrecioLejano(precio: number, referencia: number): Promise<boolean> {
+    const dias = this.diasQueCambiarian();
+    // Con un solo precio en todos los días se dice tal cual; si hay varios, que es un promedio.
+    const hoy =
+      this.precioComunDeLosDias() !== null
+        ? `hoy todos los días están a ${this.enPesos(String(referencia))}`
+        : `hoy el promedio de la quincena es ${this.enPesos(String(Math.round(referencia)))}`;
+    const confirmado = await firstValueFrom(
+      this.dialog
+        .open(ConfirmDialog, {
+          data: {
+            titulo: 'Confirmar el precio',
+            mensaje:
+              `Lo que escribió se leyó como ${this.enPesos(String(precio))} por litro, y ${hoy}. ` +
+              `¿Poner ${this.enPesos(String(precio))} ${dias === 1 ? 'al día' : `a los ${dias} días`}?`,
+            accion: 'Poner el precio',
+            peligro: false,
+          },
+        })
+        .afterClosed(),
+    );
+    return confirmado === true;
+  }
+
+  /**
+   * Manda el precio a esos días (null = todos) y pinta lo que el servidor devuelve: nunca el
+   * precio por adelantado. Si el servidor rechaza algún día —uno quedaría en negativo—, no
+   * cambia ninguno y el mensaje dice cuál.
+   */
+  private async guardarPrecios(precio: number, ids: readonly string[] | null): Promise<void> {
+    if (this.ocupado()) return;
+    if (!this.puedeEditarPrecio()) return;
+    const antes = this.liq();
+    const pedidos = ids === null ? antes.detalles : antes.detalles.filter((d) => ids.includes(d.id));
+    const cambian = pedidos.filter((d) => Number(d.precio_litro) !== precio).length;
+    if (cambian === 0) return; // ya estaban a ese precio: no se molesta al servidor
+    const abierto = this.editandoId();
+    if (abierto !== null && (ids === null || ids.includes(abierto))) {
+      // El campo de un día que se va a sobrescribir se cierra sin guardarlo: lo que valía ya
+      // no importa. Un lápiz abierto en OTRO día se deja como está, con lo que lleva escrito:
+      // cerrarlo era perder sin avisar lo que el dueño estaba tecleando.
+      this.cancelando = true;
+      this.editandoId.set(null);
+    }
+    this.aplicandoPrecios.set(true);
+    try {
+      const actualizada = await firstValueFrom(this.servicio.actualizarPrecios(antes.id, precio, ids));
+      this.liq.set(actualizada);
+      this.cambio.set(null);
+      this.precioMasivoEscrito.set(null);
+      this.snackbar.open(
+        `Precio de ${cambian} ${cambian === 1 ? 'día' : 'días'} puesto en ` +
+          `${this.enPesos(String(precio))}. Valor total: ${this.enPesos(actualizada.valor_total)}`,
+        'OK',
+        { duration: 7000 },
+      );
+    } catch (err) {
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible cambiar el precio de esos días');
+    } finally {
+      this.aplicandoPrecios.set(false);
+    }
+  }
+
+  // ------------------------------ el cuadrito del precio, arrastrado hacia abajo
+  /** El arrastre en curso: la fila de donde sale el precio y la fila sobre la que está el puntero. */
+  readonly arrastre = signal<{ origen: number; hasta: number } | null>(null);
+
+  /** Las filas que recibirían el precio si se soltara ahora: las que hay entre las dos, sin la de origen. */
+  readonly filasDelArrastre = computed<number[]>(() => {
+    const a = this.arrastre();
+    if (!a || a.origen === a.hasta) return [];
+    const filas: number[] = [];
+    for (let i = Math.min(a.origen, a.hasta); i <= Math.max(a.origen, a.hasta); i++) {
+      if (i !== a.origen) filas.push(i);
+    }
+    return filas;
+  });
+
+  enDestinoDelArrastre(fila: number): boolean {
+    return this.filasDelArrastre().includes(fila);
+  }
+
+  /** Lo que dice la barra mientras se arrastra: qué se va a copiar y a cuántos días. */
+  readonly textoDelArrastre = computed<string | null>(() => {
+    const a = this.arrastre();
+    if (!a) return null;
+    const origen = this.liq().detalles[a.origen];
+    const n = this.filasDelArrastre().length;
+    if (!origen || n === 0) return 'Arrastre hacia abajo o hacia arriba para copiar este precio';
+    return `Suelte para copiar ${this.enPesos(origen.precio_litro)} a ${n} ${n === 1 ? 'día' : 'días'}`;
+  });
+
+  private ultimoPuntero = { x: 0, y: 0 };
+  /** Dónde se apretó el cuadrito, y el puntero que lo apretó (un segundo dedo no lo reinicia). */
+  private puntoDeSalida = { x: 0, y: 0 };
+  private punteroDelArrastre: number | null = null;
+  /** El puntero ya se movió de verdad: solo entonces el borde de la tabla hace correr el contenido. */
+  private arrastreMovido = false;
+  private cuadroDelDesplazamiento: number | null = null;
+  /** Desde cuándo está el puntero dentro de la franja del borde (null si no está). */
+  private enElBordeDesde: number | null = null;
+
+  private readonly alDestruirse = inject(DestroyRef).onDestroy(() => this.pararDesplazamiento());
+
+  /** Para `trackBy` de la tabla de días: la fila es el día, no el objeto que llegó en la última respuesta. */
+  readonly porId = (_indice: number, detalle: LiquidacionDetalle): string => detalle.id;
+
+  /** Un día sin precio (en $0) no tiene nada que copiar: el servidor rechaza un precio de 0. */
+  tienePrecio(detalle: LiquidacionDetalle): boolean {
+    return Number(detalle.precio_litro) > 0;
+  }
+
+  empezarArrastre(evento: PointerEvent, fila: number): void {
+    // Solo el botón principal y el primer puntero: con el botón derecho se arrastraba y al soltar
+    // salía el menú del navegador, y un segundo dedo (o la palma) reiniciaba el arrastre con
+    // OTRO precio sin que el aviso lo dijera.
+    if (evento.button !== 0 || !evento.isPrimary || this.arrastre()) return;
+    if (!this.puedeEditarPrecio() || this.ocupado()) return;
+    const origen = this.liq().detalles[fila];
+    if (!origen || !this.tienePrecio(origen)) return;
+    evento.preventDefault();
+    evento.stopPropagation();
+    (evento.currentTarget as HTMLElement | null)?.setPointerCapture?.(evento.pointerId);
+    this.punteroDelArrastre = evento.pointerId;
+    // El puntero también se escucha en la ventana: si el cuadrito desaparece a mitad del gesto (la
+    // tabla se repinta, o el permiso de editar se cae con una recarga), el navegador suelta la
+    // captura y nadie más oía el pointerup. Sin esto el arrastre quedaba trabado para siempre.
+    window.addEventListener('pointerup', this.alTerminarEnLaVentana);
+    window.addEventListener('pointercancel', this.alTerminarEnLaVentana);
+    this.ultimoPuntero = { x: evento.clientX, y: evento.clientY };
+    this.puntoDeSalida = { x: evento.clientX, y: evento.clientY };
+    this.arrastreMovido = false;
+    this.arrastre.set({ origen: fila, hasta: fila });
+    this.cancelarElCuadro();
+    this.cuadroDelDesplazamiento = requestAnimationFrame(this.desplazarSiHaceFalta);
+  }
+
+  moverArrastre(evento: PointerEvent): void {
+    if (!this.arrastre() || evento.pointerId !== this.punteroDelArrastre) return;
+    this.ultimoPuntero = { x: evento.clientX, y: evento.clientY };
+    if (
+      !this.arrastreMovido &&
+      Math.hypot(evento.clientX - this.puntoDeSalida.x, evento.clientY - this.puntoDeSalida.y) >= 4
+    ) {
+      this.arrastreMovido = true;
+    }
+    this.seguirAlPuntero();
+  }
+
+  soltarArrastre(evento?: PointerEvent): void {
+    if (evento && evento.pointerId !== this.punteroDelArrastre) return;
+    const a = this.arrastre();
+    const filas = this.filasDelArrastre();
+    this.pararDesplazamiento();
+    this.arrastre.set(null);
+    if (!a || filas.length === 0) return;
+    const detalles = this.liq().detalles;
+    const origen = detalles[a.origen];
+    const ids = filas.map((i) => detalles[i]?.id).filter((id): id is string => !!id);
+    if (!origen || !this.tienePrecio(origen) || ids.length === 0) return;
+    void this.guardarPrecios(Number(origen.precio_litro), ids);
+  }
+
+  cancelarArrastre(evento?: PointerEvent): void {
+    if (evento && evento.pointerId !== this.punteroDelArrastre) return;
+    this.pararDesplazamiento();
+    this.arrastre.set(null);
+  }
+
+  /**
+   * La fila de la tabla a la altura del puntero (su índice), o null si no hay tabla.
+   *
+   * Se mide solo por la altura, con las cajas de las filas, y no con `elementFromPoint`: con el
+   * mouse capturado el puntero sigue llegando aunque se salga del diálogo o de la ventana
+   * (ahí `elementFromPoint` no devuelve nada y la fila elegida se quedaba pegada mientras el
+   * contenido seguía corriendo), y no importa que se desvíe a los lados. Fuera del área
+   * visible se mide como si estuviera en su borde; por encima de la primera fila cuenta la
+   * primera, y por debajo de la última, la última.
+   */
+  protected filaBajoElPuntero(_x: number, y: number): number | null {
+    const raiz: HTMLElement = this.host.nativeElement;
+    const filas = Array.from(raiz.querySelectorAll<HTMLElement>('tr[data-fila]'));
+    if (filas.length === 0) return null;
+    const visible = raiz.querySelector('mat-dialog-content')?.getBoundingClientRect();
+    const altura = visible ? Math.min(Math.max(y, visible.top), visible.bottom - 1) : y;
+    const cajas = filas.map((f) => f.getBoundingClientRect());
+    const dentro = cajas.findIndex((c) => altura >= c.top && altura < c.bottom);
+    const elegida = dentro >= 0 ? dentro : altura < cajas[0].top ? 0 : filas.length - 1;
+    return Number(filas[elegida].getAttribute('data-fila'));
+  }
+
+  private seguirAlPuntero(): void {
+    const a = this.arrastre();
+    if (!a) return;
+    const fila = this.filaBajoElPuntero(this.ultimoPuntero.x, this.ultimoPuntero.y);
+    if (fila !== null && fila !== a.hasta) this.arrastre.set({ ...a, hasta: fila });
+  }
+
+  /**
+   * CON 15 FILAS LA TABLA NO CABE EN LA PANTALLA: arrastrando cerca del borde de abajo (o de
+   * arriba) el contenido del diálogo se desplaza solo, y la fila que queda bajo el puntero se
+   * vuelve a medir. Sin esto, copiar un precio al final de la quincena era imposible.
+   */
+  private readonly desplazarSiHaceFalta = (ahora: number): void => {
+    if (!this.arrastre()) return;
+    const contenido = this.host.nativeElement.querySelector('mat-dialog-content');
+    if (contenido) {
+      const caja = contenido.getBoundingClientRect();
+      // Sin haber movido el puntero no se corre: apretar el cuadrito de la última fila visible y
+      // quedarse quieto no es pedir que la tabla baje.
+      const paso = this.arrastreMovido
+        ? pasoDelDesplazamiento(this.ultimoPuntero.y, caja.top, caja.bottom)
+        : 0;
+      if (paso === 0) {
+        this.enElBordeDesde = null;
+      } else {
+        // Un puntero que solo pasa por la franja, o que llega a una fila de abajo y suelta, no
+        // debe mover la tabla: recién cuando se queda ahí un momento empieza a correr.
+        this.enElBordeDesde ??= ahora;
+        if (ahora - this.enElBordeDesde >= ESPERA_DEL_BORDE_MS) contenido.scrollTop += paso;
+      }
+      this.seguirAlPuntero();
+    }
+    this.cuadroDelDesplazamiento = requestAnimationFrame(this.desplazarSiHaceFalta);
+  };
+
+  /** Suelta el cuadro de animación pendiente, para no dejar dos bucles corriendo a la vez. */
+  private cancelarElCuadro(): void {
+    if (this.cuadroDelDesplazamiento !== null) cancelAnimationFrame(this.cuadroDelDesplazamiento);
+    this.cuadroDelDesplazamiento = null;
+  }
+
+  private readonly alTerminarEnLaVentana = (evento: PointerEvent): void => {
+    if (!this.arrastre() || evento.pointerId !== this.punteroDelArrastre) return;
+    if (evento.type === 'pointercancel') this.cancelarArrastre(evento);
+    else this.soltarArrastre(evento);
+  };
+
+  private pararDesplazamiento(): void {
+    window.removeEventListener('pointerup', this.alTerminarEnLaVentana);
+    window.removeEventListener('pointercancel', this.alTerminarEnLaVentana);
+    this.cancelarElCuadro();
+    this.enElBordeDesde = null;
+    this.arrastreMovido = false;
+    this.punteroDelArrastre = null;
   }
 
   /**
@@ -2453,6 +3121,7 @@ export class LiquidacionDetailDialog {
    * se quedaba sin saber si su corrección de la tarifa había entrado.
    */
   async recalcular(): Promise<void> {
+    if (this.ocupado()) return;
     const antes = this.liq();
     // Se pregunta ANTES de oprimir, no después: recalcular una APROBADA la devuelve
     // a borrador y hay que volver a darle el visto bueno; enterarse cuando ya se ve
@@ -2981,6 +3650,7 @@ export class LiquidacionDetailDialog {
     accion: () => Observable<Liquidacion>,
     mensaje: string,
   ): Promise<void> {
+    if (this.ocupado()) return;
     // El aviso del recálculo habla de un antes y un ahora que dejan de ser los de
     // la pantalla en cuanto se aprueba, se paga o se anula: se cierra.
     this.cambio.set(null);

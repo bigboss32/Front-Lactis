@@ -93,34 +93,39 @@ const AYUDAS: Record<string, string> = {
   styles: `
     :host {
       display: block;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
     }
 
+    // Los tres pasos en UNA línea: círculo y nombre juntos, unidos por una raya que se
+    // estira. Antes eran círculos de 40 px con el nombre debajo: casi 100 px de alto para
+    // decir en qué estado está.
     .pasos {
       display: flex;
+      align-items: center;
+      gap: 8px;
       list-style: none;
       margin: 0;
       padding: 0;
     }
 
     .paso {
-      position: relative;
-      flex: 1;
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       min-width: 0;
     }
 
-    // Línea conectora entre el paso anterior y este.
+    .paso + .paso { flex: 1 1 auto; }
+
+    // Línea conectora entre el paso anterior y este. NO se encoge a nada: en un celular de 375 px
+    // los tres pasos no cabían con la raya a 12 px y ella era la que cedía hasta quedar en 0
+    // (tres círculos sueltos). Lo que sobra se recorta de los círculos y las letras, abajo.
     .paso + .paso::before {
       content: '';
-      position: absolute;
-      top: 19px;
-      left: calc(-50% + 28px);
-      right: calc(50% + 28px);
+      flex: 1 0 14px;
+      min-width: 14px;
       height: 3px;
+      margin-right: 2px;
       border-radius: 2px;
       background: var(--mat-sys-outline-variant);
     }
@@ -135,17 +140,17 @@ const AYUDAS: Record<string, string> = {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 40px;
-      height: 40px;
+      flex: none;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
-      z-index: 1;
       background: var(--mat-sys-surface-container-highest);
       color: var(--mat-sys-on-surface-variant);
 
       mat-icon {
-        font-size: 20px;
-        width: 20px;
-        height: 20px;
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
       }
     }
 
@@ -157,16 +162,33 @@ const AYUDAS: Record<string, string> = {
 
     // Anillo que resalta el paso actual.
     .actual .circulo {
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 25%, transparent);
     }
 
     .etiqueta {
       font-size: 0.8rem;
-      text-align: center;
+      white-space: nowrap;
       color: var(--mat-sys-on-surface-variant);
     }
 
     .completado .etiqueta { color: var(--mat-sys-on-surface); }
+
+    // Celular: círculos y letras más chicos y menos aire, para que entren los tres pasos con sus rayas.
+    @media (max-width: 420px) {
+      .pasos { gap: 4px; }
+      .paso { gap: 4px; }
+      .circulo {
+        width: 24px;
+        height: 24px;
+
+        mat-icon {
+          font-size: 16px;
+          width: 16px;
+          height: 16px;
+        }
+      }
+      .etiqueta { font-size: 0.72rem; }
+    }
 
     .actual .etiqueta {
       color: var(--mat-sys-primary);
@@ -189,8 +211,7 @@ const AYUDAS: Record<string, string> = {
     :host-context(html.dark) .banner-anulada { color: #e57373; }
 
     .ayuda {
-      margin: 10px 0 0;
-      text-align: center;
+      margin: 8px 0 0;
       font-size: 0.85rem;
       color: var(--mat-sys-on-surface-variant);
     }

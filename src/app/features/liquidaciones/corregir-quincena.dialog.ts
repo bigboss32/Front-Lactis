@@ -20,6 +20,7 @@ import {
   MENOS,
   ROTULO_SALDO_ANTERIOR,
   causaDeLaDeuda,
+  precioComoSeEscribe,
   precioTecleado,
 } from './cifras-de-la-quincena';
 import {
@@ -1062,7 +1063,7 @@ export class CorregirQuincenaDialog {
   editarPrecio(detalle: LiquidacionDetalle): void {
     if (this.guardando()) return;
     this.cancelando = false;
-    this.textoPrecio.set(String(Number(this.precioQueValdria(detalle))));
+    this.textoPrecio.set(precioComoSeEscribe(Number(this.precioQueValdria(detalle))));
     this.editandoId.set(detalle.id);
   }
 
@@ -1335,7 +1336,7 @@ export class CorregirQuincenaDialog {
     // a borrar. Y el sobre saldría con las dos cosas puestas sobre el mismo adelanto.
     if (this.estaAnulado(anticipo.anticipo_id)) return;
     this.cancelandoValor = false;
-    this.textoValor.set(String(Number(this.valorQueValdria(anticipo))));
+    this.textoValor.set(precioComoSeEscribe(Number(this.valorQueValdria(anticipo))));
     this.editandoAnticipoId.set(anticipo.anticipo_id);
   }
 

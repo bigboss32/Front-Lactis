@@ -659,6 +659,29 @@ export class LiquidacionesService extends CrudService<Liquidacion> {
   }
 
   /**
+   * Le pone el MISMO precio por litro a varios días del borrador de una sola vez
+   * (`POST /liquidaciones/{id}/precios`). `detalleIds` en null son todos los días; con una
+   * lista, solo esos.
+   *
+   * El precio casi nunca cambia a mitad de quincena y corregirlo día por día eran 15 pantallas
+   * de lápiz. El servidor lo hace TODO O NADA —cambia todos los días pedidos o ninguno— y
+   * recalcula una sola vez: esa es la razón de que no se repita `actualizarPrecioDetalle` de a
+   * uno desde acá, que podía dejar la quincena a medio cambiar si el día 9 fallaba.
+   *
+   * Devuelve la liquidación entera recalculada, como el de un día.
+   */
+  actualizarPrecios(
+    id: string,
+    precioLitro: number,
+    detalleIds: readonly string[] | null,
+  ): Observable<Liquidacion> {
+    return this.api.post<Liquidacion>(`${this.base}/${id}/precios`, {
+      precio_litro: precioLitro,
+      detalle_ids: detalleIds,
+    });
+  }
+
+  /**
    * Vuelve a cuadrar la liquidación con lo que hay hoy en el sistema.
    *
    * Dos casos, y los dos terminan igual: el comprobante muestra una cifra que ya

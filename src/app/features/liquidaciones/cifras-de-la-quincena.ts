@@ -46,6 +46,16 @@ export const MENOS = '−';
  * una quincena ya pagada— y los dos tienen que entender lo mismo. Dos lectores de plata
  * es como termina uno guardando $1,75 donde el otro guarda $1.750.
  */
+/**
+ * Un número como se TECLEA para que `precioTecleado` lo lea de vuelta igual: la coma es el
+ * decimal y no lleva puntos de miles. "1750.5" (lo que da `String(1750.5)`) se lee como
+ * 17.505: el punto es el separador de miles, y quien prellenaba el campo con `String(...)` y
+ * dejaba salir sin tocar nada guardaba un precio diez veces mayor.
+ */
+export function precioComoSeEscribe(numero: number): string {
+  return String(numero).replace('.', ',');
+}
+
 export function precioTecleado(texto: string): number | null {
   const limpio = texto.trim().replace(/\s|\$/g, '').replace(/\./g, '').replace(',', '.');
   if (!/^\d+(\.\d+)?$/.test(limpio)) return null;

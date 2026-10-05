@@ -152,6 +152,11 @@ mat-sidenav-content {
 // Los diálogos nunca exceden el ancho de la pantalla (clave en celular).
 .cdk-overlay-pane:has(.mat-mdc-dialog-container) { max-width: 96vw; }
 
+// El detalle de una liquidación es un documento con tablas, no un formulario: Material 3 recorta
+// el contenedor de TODO diálogo a 560 px aunque se pida más ancho, y ahí el detalle diario y el
+// resumen se apretaban. Con esta clase (la pone `verDetalle`) el tope sube a lo que se pidió.
+.dialogo-detalle { --mat-dialog-container-max-width: 96vw; }
+
 @media (max-width: 900px) {
   .page { padding: 12px; }
 
