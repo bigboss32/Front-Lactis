@@ -1,16 +1,12 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
-import { AbstractControl, FormControl, ReactiveFormsModule } from '@angular/forms';
+import { AbstractControl, FormControl } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
-import { MatSelectModule } from '@angular/material/select';
 import { MatSortModule, Sort } from '@angular/material/sort';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
@@ -23,7 +19,9 @@ import { Liquidacion, Monto } from '../../core/models';
 import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
-import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { FiltroPorOpciones, OpcionDeFiltro } from '../../shared/filtro-por-opciones';
+import { quincenaExacta } from '../../shared/quincena';
+import { SelectorQuincena } from '../../shared/selector-quincena';
 import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso } from '../../shared/date-utils';
@@ -87,11 +85,10 @@ function cifraDelResumen(valor: Monto | null | undefined): number {
 @Component({
   selector: 'app-liquidacion-list',
   imports: [
-    ReactiveFormsModule, DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
-    MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule, MatDatepickerModule,
+    DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
+    MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule,
     PageHeader, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
-    RangoFechasRapido, MatSortModule,
+    SelectorQuincena, FiltroPorOpciones, MatSortModule,
   ],
   templateUrl: './liquidacion-list.page.html',
   styles: `
@@ -328,10 +325,56 @@ export class LiquidacionListPage implements OnInit {
    */
   readonly resumenFallo = signal<{ detalle: string | null } | null>(null);
 
+  /**
+   * LOS ESTADOS Y LOS TIPOS, COMO BOTONES. Mandan el mismo valor que mandaba el
+   * desplegable, así que la consulta y el filtro guardado en la sesión no cambian.
+   * "Parcial" no dice "con abonos": también es la corregida que quedó con saldo sin ningún
+   * pago, y la ayuda habla de saldo pendiente, que es verdad para las dos.
+   */
+  readonly estados: readonly OpcionDeFiltro[] = [
+    { valor: 'borrador', etiqueta: 'Borrador', ayuda: 'Sin aprobar: todavía se pueden revisar' },
+    {
+      valor: 'aprobada',
+      etiqueta: 'Aprobada',
+      ayuda:
+        'Aprobadas y en firme, con saldo por pagar o ya cubiertas. Las que quedaron con el ' +
+        'tercero debiendo salen en «Pagada»',
+    },
+    {
+      valor: 'parcial',
+      etiqueta: 'Parcial',
+      ayuda:
+        'En firme y con saldo pendiente (con pagos, o corregidas después de cerradas). ' +
+        'Incluye las marcadas «deuda borrada», que no se pueden pagar hasta repararlas',
+    },
+    {
+      valor: 'pagada',
+      etiqueta: 'Pagada',
+      ayuda: 'Pagadas, y las que quedaron en firme con el tercero debiendo',
+    },
+    { valor: 'anulada', etiqueta: 'Anulada', ayuda: 'Dadas de baja: no se pagan ni se deben' },
+  ];
+  readonly tipos: readonly OpcionDeFiltro[] = [
+    { valor: 'proveedor', etiqueta: 'Proveedor', ayuda: 'Las liquidaciones de la leche' },
+    { valor: 'transportador', etiqueta: 'Transportador', ayuda: 'Las liquidaciones del flete' },
+  ];
+
   readonly tipo = new FormControl<string | null>(null);
   readonly estado = new FormControl<string | null>(null);
   readonly desde = new FormControl<Date | null>(null);
   readonly hasta = new FormControl<Date | null>(null);
+
+  /**
+   * LA ÚLTIMA CONSULTA MANDA. Cada filtro que cambia pide la lista y las tarjetas de nuevo
+   * sin cancelar la anterior, y la respuesta que llegara de última se quedaba con la
+   * pantalla aunque fuera la vieja. Con los botones de quincena es fácil de provocar: un
+   * doble clic marca y desmarca "1.ª quincena", y si la respuesta del "marcar" llegaba
+   * después, las fechas quedaban vacías con la tabla y las tarjetas del 1 al 15. Eran cifras
+   * de un período distinto del que dicen las fechas, sin ningún aviso. Cada consulta
+   * anota su turno y solo la del último turno escribe en pantalla.
+   */
+  private turnoDeLaLista = 0;
+  private turnoDelResumen = 0;
 
   constructor() {
     const filtros: AbstractControl[] = [this.tipo, this.estado, this.desde, this.hasta];
@@ -346,6 +389,15 @@ export class LiquidacionListPage implements OnInit {
       { tipo: this.tipo, estado: this.estado, desde: this.desde, hasta: this.hasta },
       this.destroyRef,
     );
+    // LAS FECHAS GUARDADAS DE ANTES SOLO SE CONSERVAN SI SON UNA QUINCENA. La pantalla
+    // anterior dejaba escribir cualquier rango ("Este mes", "Hoy", fechas sueltas) y la
+    // sesión lo recuerda: restaurado ahora, la lista y las tarjetas saldrían de esos 4 días
+    // con la barra idéntica a la de "sin filtro" —ninguna quincena marcada, ninguna fecha
+    // a la vista—, y el dueño leería una cifra parcial como si fuera todo el historial.
+    if (!quincenaExacta(this.desde.value, this.hasta.value)) {
+      this.desde.setValue(null, { emitEvent: false });
+      this.hasta.setValue(null, { emitEvent: false });
+    }
     this.cargar();
     void this.cargarResumen();
   }
@@ -357,6 +409,7 @@ export class LiquidacionListPage implements OnInit {
   }
 
   async cargar(): Promise<void> {
+    const turno = ++this.turnoDeLaLista;
     this.cargando.set(true);
     this.errorCarga.set(null);
     try {
@@ -370,9 +423,11 @@ export class LiquidacionListPage implements OnInit {
           hasta: dateToIso(this.hasta.value),
         }),
       );
+      if (turno !== this.turnoDeLaLista) return;
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
     } catch (err) {
+      if (turno !== this.turnoDeLaLista) return;
       // Se limpia lo anterior: si la consulta falló, los saldos que quedaran en
       // pantalla ya no se pueden confirmar y se leerían como si fueran de hoy.
       this.filas.set([]);
@@ -384,7 +439,9 @@ export class LiquidacionListPage implements OnInit {
         ),
       );
     } finally {
-      this.cargando.set(false);
+      // Solo la última consulta apaga el "cargando": una vieja que termina tarde no puede
+      // decir que ya está, con la nueva todavía en camino.
+      if (turno === this.turnoDeLaLista) this.cargando.set(false);
     }
   }
 
@@ -414,6 +471,7 @@ export class LiquidacionListPage implements OnInit {
    * culpar a la red y sin pintar la cifra.
    */
   async cargarResumen(): Promise<void> {
+    const turno = ++this.turnoDelResumen;
     try {
       const r = await firstValueFrom(
         this.servicio.resumen({
@@ -422,6 +480,7 @@ export class LiquidacionListPage implements OnInit {
           hasta: dateToIso(this.hasta.value),
         }),
       );
+      if (turno !== this.turnoDelResumen) return;
       // Las de la deuda borrada son opcionales (una respuesta vieja no las trae) y ahí se
       // leen como cero. Pero si el servidor dice que hay alguna, la cifra tiene que venir
       // legible: "2 quincenas por reparar · $ NaN" no se le puede mostrar al dueño.
@@ -441,6 +500,7 @@ export class LiquidacionListPage implements OnInit {
       });
       this.resumenFallo.set(null);
     } catch (err) {
+      if (turno !== this.turnoDelResumen) return;
       this.resumen.set(null);
       this.resumenFallo.set({ detalle: detalleDeError(err, '') || null });
     }
@@ -710,7 +770,11 @@ export class LiquidacionListPage implements OnInit {
 
   verDetalle(fila: Liquidacion): void {
     this.dialog
-      .open(LiquidacionDetailDialog, { data: { item: fila }, width: '760px' })
+      .open(LiquidacionDetailDialog, {
+        data: { item: fila },
+        width: '760px',
+        panelClass: 'dialogo-detalle',
+      })
       .afterClosed()
       .subscribe(() => {
         this.cargar();

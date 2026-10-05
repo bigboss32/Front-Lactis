@@ -181,19 +181,23 @@ describe('LiquidacionListPage: las parciales y los totales', () => {
     );
   });
 
-  it('el filtro de estado dice "Parcial (con saldo pendiente)", no "(con abonos)"', async () => {
+  it('el botón de estado "Parcial" habla de saldo pendiente, no de "abonos"', async () => {
     await armar();
 
-    const selects = fixture.nativeElement.querySelectorAll('mat-select');
-    const estado = selects[1] as HTMLElement;
-    (estado.querySelector('.mat-mdc-select-trigger') as HTMLElement).click();
-    await refrescar();
-
-    const opciones = Array.from(document.querySelectorAll('mat-option')).map((o) =>
-      comoSeLee(o.textContent),
+    const botones = fixture.debugElement.queryAll(By.css('app-filtro-por-opciones .opcion'));
+    const ayudaDe = (d: (typeof botones)[number]): string =>
+      d.injector.get(MatTooltip, null)?.message ?? '';
+    const parcial = botones.find((d) => comoSeLee(d.nativeElement.textContent) === 'Parcial');
+    expect(parcial).toBeDefined();
+    // La ayuda dice lo que el servidor devuelve de verdad: también la corregida sin ningún pago
+    // y la marcada "deuda borrada", que no se puede pagar.
+    expect(ayudaDe(parcial!)).toBe(
+      'En firme y con saldo pendiente (con pagos, o corregidas después de cerradas). ' +
+        'Incluye las marcadas «deuda borrada», que no se pueden pagar hasta repararlas',
     );
-    expect(opciones).toContain('Parcial (con saldo pendiente)');
-    expect(opciones.join(' ')).not.toContain('abono');
+    // Ni el rótulo ni la ayuda de ningún botón de estado o de tipo dan a las parciales por abonadas.
+    const todo = botones.map((d) => `${comoSeLee(d.nativeElement.textContent)} ${ayudaDe(d)}`);
+    expect(todo.join(' ')).not.toContain('abono');
   });
 
   it('la marca "por pagar" dice "Ya se le abonó" solo donde hubo abono', async () => {

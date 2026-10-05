@@ -14,30 +14,15 @@ import { firstValueFrom } from 'rxjs';
 
 import { dateToIso, hoyDate, isoToDate } from '../../shared/date-utils';
 import { avisarErrorAlGuardar } from '../../shared/errores-ui';
+import {
+  diasDeLaQuincena,
+  etiquetaDelMes,
+  MESES,
+  mesVecino,
+  rangoQuincena,
+} from '../../shared/quincena';
 import { SpinnerBoton } from '../../shared/spinner-boton';
 import { LiquidacionesService, OmitidoAlGenerar, ResultadoGenerar } from './liquidaciones.service';
-
-const MESES = [
-  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
-];
-
-function toIso(fecha: Date): string {
-  const mes = `${fecha.getMonth() + 1}`.padStart(2, '0');
-  const dia = `${fecha.getDate()}`.padStart(2, '0');
-  return `${fecha.getFullYear()}-${mes}-${dia}`;
-}
-
-/** Rango ISO de una quincena: 1.ª = día 1 al 15; 2.ª = día 16 a fin de mes. */
-function rangoQuincena(anio: number, mes: number, quincena: 1 | 2): { inicio: string; fin: string } {
-  if (quincena === 1) {
-    return { inicio: toIso(new Date(anio, mes, 1)), fin: toIso(new Date(anio, mes, 15)) };
-  }
-  return {
-    inicio: toIso(new Date(anio, mes, 16)),
-    fin: toIso(new Date(anio, mes + 1, 0)), // día 0 del mes siguiente = último día del mes
-  };
-}
 
 /** Quincena anterior completa: 1–15 o 16–fin de mes, según la fecha actual. */
 function quincenaAnterior(): { inicio: string; fin: string } {
@@ -172,6 +157,7 @@ export interface CierreGenerar {
             type="button"
             class="q-btn"
             [class.activa]="quincenaActiva() === 1"
+            [attr.aria-pressed]="quincenaActiva() === 1"
             (click)="aplicarQuincena(1)"
           >
             <mat-icon>event</mat-icon>
@@ -182,6 +168,7 @@ export interface CierreGenerar {
             type="button"
             class="q-btn"
             [class.activa]="quincenaActiva() === 2"
+            [attr.aria-pressed]="quincenaActiva() === 2"
             (click)="aplicarQuincena(2)"
           >
             <mat-icon>event</mat-icon>
@@ -396,7 +383,7 @@ export class GenerarQuincenaDialog {
     mes: Number(this.quincena.inicio.slice(5, 7)) - 1,
   });
 
-  readonly etiquetaMes = computed(() => `${MESES[this.mesSel().mes]} ${this.mesSel().anio}`);
+  readonly etiquetaMes = computed(() => etiquetaDelMes(this.mesSel()));
   readonly diasQ1 = computed(() => this.rangoDias(1));
   readonly diasQ2 = computed(() => this.rangoDias(2));
 
@@ -535,13 +522,11 @@ export class GenerarQuincenaDialog {
   }
 
   mesAnterior(): void {
-    const { anio, mes } = this.mesSel();
-    this.mesSel.set(mes === 0 ? { anio: anio - 1, mes: 11 } : { anio, mes: mes - 1 });
+    this.mesSel.set(mesVecino(this.mesSel(), -1));
   }
 
   mesSiguiente(): void {
-    const { anio, mes } = this.mesSel();
-    this.mesSel.set(mes === 11 ? { anio: anio + 1, mes: 0 } : { anio, mes: mes + 1 });
+    this.mesSel.set(mesVecino(this.mesSel(), 1));
   }
 
   aplicarQuincena(quincena: 1 | 2): void {
@@ -556,8 +541,7 @@ export class GenerarQuincenaDialog {
   /** Días de la quincena del mes seleccionado, ej. "16 al 31". */
   private rangoDias(quincena: 1 | 2): string {
     const { anio, mes } = this.mesSel();
-    const r = rangoQuincena(anio, mes, quincena);
-    return `${Number(r.inicio.slice(8, 10))} al ${Number(r.fin.slice(8, 10))}`;
+    return diasDeLaQuincena(anio, mes, quincena);
   }
 
   /**
