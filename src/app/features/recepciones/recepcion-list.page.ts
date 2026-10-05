@@ -4,7 +4,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -30,23 +29,29 @@ import {
   trabadoSinPlataEntregada,
 } from '../../core/models';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
-import { avisarErrorAlGuardar } from '../../shared/errores-ui';
+import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
-import { RangoFechasRapido } from '../../shared/rango-fechas-rapido';
+import { FiltroPorOpciones, OpcionDeFiltro } from '../../shared/filtro-por-opciones';
+import { quincenaDeLaFecha, quincenaExacta, rangoQuincena } from '../../shared/quincena';
+import { SelectorQuincena } from '../../shared/selector-quincena';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
-import { dateToIso } from '../../shared/date-utils';
+import { dateToIso, isoToDate } from '../../shared/date-utils';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
 import { avisoDelGuardado } from './aviso-del-guardado';
 import { CierreRecepcion, RecepcionFormDialog } from './recepcion-form.dialog';
 import { RecepcionGrillaTab } from './recepcion-grilla.tab';
 import { RecepcionesService } from './recepciones.service';
 
-/** Quincena actual: del 1 (o del 16) hasta hoy, según el día del mes. */
+/**
+ * La quincena de hoy, ENTERA (1–15 o 16–fin de mes). Antes era "del 1 (o del 16) hasta hoy",
+ * pero el filtro de quincena marca un botón solo cuando las fechas son una quincena justa, y
+ * un rango que se queda en hoy no marcaba ninguno: la barra no habría dicho qué se filtraba.
+ */
 function quincenaActual(): { desde: Date; hasta: Date } {
-  const hoy = new Date();
-  const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() <= 15 ? 1 : 16);
-  return { desde: inicio, hasta: hoy };
+  const { anio, mes, quincena } = quincenaDeLaFecha();
+  const rango = rangoQuincena(anio, mes, quincena);
+  return { desde: isoToDate(rango.inicio)!, hasta: isoToDate(rango.fin)! };
 }
 
 @Component({
@@ -54,9 +59,9 @@ function quincenaActual(): { desde: Date; hasta: Date } {
   imports: [
     ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatDatepickerModule, MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
     PageHeader, MoneyPipe, CantidadPipe, DatePipe, HasPermissionDirective,
-    RecepcionGrillaTab, RangoFechasRapido, MatSortModule,
+    RecepcionGrillaTab, SelectorQuincena, FiltroPorOpciones, MatSortModule,
   ],
   templateUrl: './recepcion-list.page.html',
   styles: `
@@ -84,6 +89,23 @@ function quincenaActual(): { desde: Date; hasta: Date } {
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 12px;
     }
+    .resumen-nota {
+      flex-basis: 100%;
+      color: var(--mat-sys-on-surface-variant);
+      font-size: 0.78rem;
+      font-weight: 400;
+    }
+    .error-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 32px 16px;
+      text-align: center;
+    }
+    .error-state mat-icon { font-size: 40px; width: 40px; height: 40px; color: var(--mat-sys-error); }
+    .error-state p { margin: 0; }
+    .error-state .aclara { font-size: 0.85rem; color: var(--mat-sys-on-surface-variant); }
     .stat { display: flex; flex-direction: column; }
     .stat .valor { font-size: 1.15rem; font-weight: 600; }
     .stat .etiqueta { color: var(--mat-sys-on-surface-variant); font-size: 0.8rem; }
@@ -138,11 +160,23 @@ export class RecepcionListPage implements OnInit {
   );
   readonly total = signal(0);
   readonly cargando = signal(false);
+  /** La última consulta de la lista falló: el texto, o null si no. Esconde la tabla (ver la plantilla). */
+  readonly errorCarga = signal<string | null>(null);
+  /**
+   * Hay proveedor, ruta o búsqueda puestos en la lista. El RESUMEN de arriba es del período y no
+   * recibe esos filtros (el servidor no los acepta): con alguno puesto, sus cifras no son las
+   * de la lista de abajo, y se dice.
+   */
+  readonly conFiltros = signal(false);
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenPeriodo | null>(null);
   readonly proveedores = signal<Proveedor[]>([]);
   readonly rutas = signal<Ruta[]>([]);
+  /** Las rutas como botones, igual que el estado de las liquidaciones: el valor es el id. */
+  readonly opcionesDeRuta = computed<OpcionDeFiltro[]>(() =>
+    this.rutas().map((ruta) => ({ valor: ruta.id, etiqueta: ruta.nombre })),
+  );
 
   /** Total pagado en el período: leche (valor neto) + transporte. */
   readonly totalConTransporte = computed(() => {
@@ -190,6 +224,17 @@ export class RecepcionListPage implements OnInit {
       },
       this.destroyRef,
     );
+    // LAS FECHAS GUARDADAS DE ANTES SOLO SE CONSERVAN SI SON UNA QUINCENA (o ninguna fecha,
+    // que es "sin filtro de fechas" elegido a propósito). La pantalla anterior dejaba escribir
+    // cualquier rango ("Hoy", "Este mes", fechas sueltas) y la sesión lo recuerda: restaurado
+    // ahora, la lista saldría de esos 4 días con la barra sin marcar ninguna quincena, y se
+    // leería una cifra parcial como si fuera todo. Se vuelve a la quincena de hoy.
+    const hayFechas = this.desde.value !== null || this.hasta.value !== null;
+    if (hayFechas && !quincenaExacta(this.desde.value, this.hasta.value)) {
+      const hoy = quincenaActual();
+      this.desde.setValue(hoy.desde, { emitEvent: false });
+      this.hasta.setValue(hoy.hasta, { emitEvent: false });
+    }
     this.cargar();
     this.cargarResumen();
     // Aquí el selector de proveedor es un FILTRO DE CONSULTA, no un campo para
@@ -200,10 +245,26 @@ export class RecepcionListPage implements OnInit {
     // se registra leche nueva— sigue yendo estado=activo.
     firstValueFrom(
       this.api.get<Page<Proveedor>>('/proveedores', { page_size: 100 }),
-    ).then((respuesta) => this.proveedores.set(respuesta.items));
+    ).then((respuesta) => {
+      this.proveedores.set(respuesta.items);
+      // Igual con el proveedor guardado, solo si llegó la lista entera (con más de 100 puede
+      // faltar en la primera página sin que haya dejado de existir).
+      const guardado = this.proveedorId.value;
+      if (guardado && respuesta.items.length < 100 && !respuesta.items.some((p) => p.id === guardado)) {
+        this.proveedorId.setValue(null);
+      }
+    });
     firstValueFrom(
       this.api.get<Page<Ruta>>('/rutas', { page_size: 100, estado: 'activo' }),
-    ).then((respuesta) => this.rutas.set(respuesta.items));
+    ).then((respuesta) => {
+      this.rutas.set(respuesta.items);
+      // Una ruta guardada de la sesión anterior que ya no es ninguna opción (se desactivó) NO se
+      // deja puesta: filtraba la lista sin que ningún botón la marcara.
+      const guardada = this.rutaId.value;
+      if (guardada && !respuesta.items.some((ruta) => ruta.id === guardada)) {
+        this.rutaId.setValue(null);
+      }
+    });
   }
 
   recargar(): void {
@@ -212,8 +273,19 @@ export class RecepcionListPage implements OnInit {
     this.cargarResumen();
   }
 
+  /**
+   * Cada consulta anota su turno y solo la del último escribe en pantalla: cambiar de
+   * quincena de seguido dejaba que la respuesta de la anterior, si llegaba de última, se
+   * quedara con la lista y con el resumen mientras la barra marcaba otra quincena.
+   */
+  private turnoDeLaLista = 0;
+  private turnoDelResumen = 0;
+
   async cargar(): Promise<void> {
+    const turno = ++this.turnoDeLaLista;
     this.cargando.set(true);
+    this.errorCarga.set(null);
+    this.conFiltros.set(!!this.proveedorId.value || !!this.rutaId.value || !!this.buscar.value);
     try {
       const respuesta = await firstValueFrom(
         this.servicio.filtrar({
@@ -226,14 +298,32 @@ export class RecepcionListPage implements OnInit {
           hasta: dateToIso(this.hasta.value),
         }),
       );
+      if (turno !== this.turnoDeLaLista) return;
+      // Después de borrar o de mover días, la página donde se estaba puede haber quedado fuera de
+      // rango: sin filas pero con total, y el mensaje decía "no hay recepciones". Se va a la última.
+      if (respuesta.items.length === 0 && respuesta.total > 0 && this.page() > 1) {
+        this.page.set(Math.max(1, Math.ceil(respuesta.total / this.pageSize())));
+        await this.cargar();
+        return;
+      }
       this.filas.set(respuesta.items);
       this.total.set(respuesta.total);
+    } catch (err) {
+      if (turno !== this.turnoDeLaLista) return;
+      // Se limpia lo anterior: si la consulta falló, las filas que quedaran en pantalla ya no son
+      // las de estos filtros y se leerían como si lo fueran (o como "no hay nada").
+      this.filas.set([]);
+      this.total.set(0);
+      this.errorCarga.set(
+        detalleDeError(err, 'No se pudieron cargar las recepciones. Revise la conexión e intente de nuevo.'),
+      );
     } finally {
-      this.cargando.set(false);
+      if (turno === this.turnoDeLaLista) this.cargando.set(false);
     }
   }
 
   async cargarResumen(): Promise<void> {
+    const turno = ++this.turnoDelResumen;
     const desde = dateToIso(this.desde.value);
     const hasta = dateToIso(this.hasta.value);
     if (!desde || !hasta) {
@@ -241,10 +331,16 @@ export class RecepcionListPage implements OnInit {
       return;
     }
     try {
-      this.resumen.set(await firstValueFrom(this.servicio.resumenPeriodo(desde, hasta)));
+      const resumen = await firstValueFrom(this.servicio.resumenPeriodo(desde, hasta));
+      if (turno === this.turnoDelResumen) this.resumen.set(resumen);
     } catch {
-      this.resumen.set(null);
+      if (turno === this.turnoDelResumen) this.resumen.set(null);
     }
+  }
+
+  reintentar(): void {
+    this.cargar();
+    this.cargarResumen();
   }
 
   cambiarPagina(evento: PageEvent): void {

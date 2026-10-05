@@ -30,8 +30,11 @@ import { ApiService } from '../../core/api.service';
 import { Page, Ruta, Transportador, diaTrabadoPorPago } from '../../core/models';
 import { AuthService } from '../../core/auth/auth.service';
 import { CantidadPipe, MoneyPipe } from '../../shared/pipes';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { avisarErrorAlGuardar } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { avisoDelGuardado } from './aviso-del-guardado';
+import { leerLitros, litrosComoSeEscriben } from './litros-escritos';
 import {
   CierreRecepcion,
   RecepcionDialogData,
@@ -298,6 +301,111 @@ function quincenaDeHoy(): Quincena {
       outline: 2px solid var(--mat-sys-primary);
       outline-offset: -2px;
     }
+    /* ------------------------------------- la celda como campo de texto */
+    /*
+     * El campo va POSICIONADO sobre la celda y no dentro del flujo: un input tiene un ancho
+     * de fábrica (unos 150px) y metido en la celda ensanchaba cada día de 56 a 150px y
+     * deshacía la cuadrícula. Así el ancho de la columna lo siguen mandando el encabezado y
+     * el total del pie, como antes, y el campo ocupa lo que la celda mide. El alto sí hay
+     * que fijarlo en la celda, porque lo que va posicionado no empuja.
+     */
+    td.celda { position: relative; height: 46px; }
+    .celda-input {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      box-sizing: border-box;
+      width: calc(100% - 6px);
+      height: calc(100% - 6px);
+      min-width: 0;
+      margin: 0;
+      padding: 2px;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      color: inherit;
+      background: transparent;
+      border: 1px solid color-mix(in srgb, var(--mat-sys-outline) 55%, transparent);
+      border-radius: 6px;
+      /* El teclado numérico y el lápiz entregan solo cifras: sin flechitas ni autocompletado. */
+      -webkit-appearance: none;
+      appearance: none;
+      caret-color: var(--mat-sys-primary);
+      /* Si el número no cabe en la celda se corta con "…" y no en seco: "1500,2" por "1500,25" era
+         una cifra distinta a la guardada. Al enfocarlo se ensancha (ver :focus). */
+      text-overflow: ellipsis;
+    }
+    .celda-input:hover { border-color: var(--mat-sys-outline); }
+    .celda-input:focus {
+      outline: 2px solid var(--mat-sys-primary);
+      outline-offset: -1px;
+      background: var(--mat-sys-surface-container-high);
+      /* El campo enfocado se ensancha lo que haga falta para que se vea TODO lo escrito
+         (1500,25 no cabe en 40 px) y queda por encima de las celdas vecinas. */
+      z-index: 3;
+      min-width: calc(100% - 6px);
+      width: max(calc(100% - 6px), 78px);
+      left: calc(50% - max(calc(50% - 3px), 39px));
+    }
+    /* Sin registro: el recuadro va a trazos y más tenue, para que se vea DÓNDE se anota. */
+    .celda-input.vacia {
+      border-style: dashed;
+      border-color: color-mix(in srgb, var(--mat-sys-outline) 40%, transparent);
+    }
+    /* Escrito y sin guardar: ámbar, el mismo de los avisos del sistema. */
+    .celda-input.pendiente {
+      border-color: #b26a00;
+      background: color-mix(in srgb, #b26a00 14%, transparent);
+    }
+    :host-context(html.dark) .celda-input.pendiente {
+      border-color: #ffb74d;
+      background: color-mix(in srgb, #ffb74d 14%, transparent);
+    }
+    .celda-input.guardando { opacity: 0.55; cursor: progress; }
+    /* La franja ámbar del día que ya está en una liquidación, igual que en el botón. */
+    .celda-input.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #b26a00 55%, transparent);
+    }
+    :host-context(html.dark) .celda-input.en-liquidacion {
+      box-shadow: inset 0 -3px 0 color-mix(in srgb, #ffb74d 55%, transparent);
+    }
+    /* El camioncito va sobre el campo, en la esquina de abajo, y no le quita el toque. */
+    .carrito.en-campo {
+      position: absolute;
+      left: 6px;
+      bottom: 5px;
+      pointer-events: none;
+    }
+    /*
+     * El ícono que abre el día completo: en la esquina de arriba, y SOLO sobre la celda que
+     * tiene el mouse encima o el foco. Siempre visible taparía los números de las 16 columnas;
+     * en la tablet, tocar la celda para escribir es lo que lo muestra. Fuera del orden del
+     * teclado (tabindex -1): con Tab se salta de campo en campo, y el teclado lo abre con
+     * Alt+Enter o F2.
+     */
+    .abrir-dia {
+      position: absolute;
+      /* Sobre la esquina del campo y no sobre sus números: con el cuadro de 40 px, un círculo
+         de 22 dentro tapaba los últimos dígitos de lo que se estaba escribiendo. */
+      top: -5px;
+      right: -4px;
+      z-index: 4;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--mat-sys-on-primary-container);
+      background: var(--mat-sys-primary-container);
+    }
+    .abrir-dia mat-icon { font-size: 12px; width: 12px; height: 12px; }
+    td.celda:hover .abrir-dia,
+    td.celda:focus-within .abrir-dia { display: flex; }
+
     /* Celda vacía: el "+" solo se insinúa al pasar el mouse o enfocar */
     .celda-btn.vacia .mas {
       font-size: 20px;
@@ -468,6 +576,27 @@ function quincenaDeHoy(): Quincena {
       font-weight: 500;
       color: var(--mat-sys-on-surface);
     }
+    /* Las muestras de la leyenda de los campos: el recuadro de siempre, a trazos si no hay día. */
+    .muestra.vacia { border-style: dashed; }
+    .muestra.pendiente {
+      border-color: #b26a00;
+      background: color-mix(in srgb, #b26a00 14%, transparent);
+    }
+    :host-context(html.dark) .muestra.pendiente {
+      border-color: #ffb74d;
+      background: color-mix(in srgb, #ffb74d 14%, transparent);
+    }
+    .ayuda-celdas {
+      margin: 8px 0 0;
+      font-size: 0.8rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+    .ayuda-icono {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      vertical-align: text-bottom;
+    }
     .muestra.pagada {
       background: color-mix(in srgb, #2e7d32 14%, transparent);
       border-color: transparent;
@@ -553,6 +682,10 @@ function quincenaDeHoy(): Quincena {
       td.celda { min-width: 42px; }
       .celda-btn,
       .celda-contenido { min-height: 42px; padding: 4px; }
+      td.celda { height: 42px; }
+      /* En la cuadrícula compacta caben 5 caracteres en el campo: letra y relleno más chicos
+         para que entren 6, y al enfocarlo se ensancha (ver .celda-input:focus). */
+      .celda-input { font-size: 0.75rem; padding: 0 1px; }
       .col-total { padding: 6px 8px; }
     }
 
@@ -756,6 +889,27 @@ export class RecepcionGrillaTab implements OnInit {
    */
   readonly conFiltros = signal(false);
 
+  /**
+   * El transportador con el que se pidió ESTA grilla (un signal, como `conFiltros`: los
+   * controles no son reactivos). Con filtro la grilla trae solo los días de ese transportador y
+   * los demás vienen vacíos aunque tengan leche de otro: anotar litros ahí rebota (409, "ya
+   * existe una recepción de este proveedor en esa fecha") o crea un día que el filtro no
+   * muestra.
+   */
+  private readonly transportadorDeLaGrilla = signal<string | null>(null);
+
+  /**
+   * ¿La celda sin registro es un campo donde se anota? Con permiso de crear, y NO en un
+   * proveedor retirado (el servidor no le registra leche nueva) ni con el filtro de
+   * transportador puesto (ver `transportadorDeLaGrilla`).
+   */
+  puedeAnotarEnVacia(fila: FilaGrilla): boolean {
+    return this.puedeCrear() && fila.proveedor_activo && this.transportadorDeLaGrilla() === null;
+  }
+
+  /** ¿Quien mira puede quitar un día? Lo dice el servidor con `recepcion:eliminar`. */
+  readonly puedeEliminar = computed(() => this.auth.hasPermission('recepcion', 'eliminar'));
+
   /** Total pagado a un proveedor en la quincena: leche (valor neto) + transporte. */
   totalFila(fila: FilaGrilla): number {
     return Number(fila.valor_neto) + Number(fila.valor_transporte);
@@ -839,30 +993,68 @@ export class RecepcionGrillaTab implements OnInit {
     this.cargar();
   }
 
+  /**
+   * Cada pedido de la grilla anota su turno y solo el último escribe en pantalla: pasar de
+   * quincena de seguido, o guardar una celda mientras se cambia de quincena, dejaba que la
+   * respuesta que llegara de última se quedara con la tabla aunque fuera de otra quincena.
+   */
+  private turnoDeLaGrilla = 0;
+
   async cargar(): Promise<void> {
+    await this.traerLaGrilla(true);
+  }
+
+  /**
+   * Vuelve a pedir la grilla SIN la barra de carga y sin vaciarla si falla: se usa después de
+   * guardar una celda, y lo que se ve en pantalla (los totales de cada fila y de cada día)
+   * tiene que ser lo que calculó el servidor, no lo que se cree que debería dar.
+   */
+  private async refrescar(tras: 'guardado' | 'fallo'): Promise<void> {
+    await this.traerLaGrilla(false, tras);
+  }
+
+  private async traerLaGrilla(completa: boolean, tras: 'guardado' | 'fallo' = 'fallo'): Promise<void> {
+    const turno = ++this.turnoDeLaGrilla;
     // Cada carga vuelve a mirar el reloj, así enQuincenaActual(), indiceHoy() y el
     // resaltado de la columna se recalculan si de por medio pasó la medianoche.
     this.refrescarHoy();
-    this.cargando.set(true);
+    if (completa) this.cargando.set(true);
     // Se recuerda con qué filtros se pidió ESTA grilla, para que el mensaje de
     // "no hay filas" corresponda a lo que se está mostrando.
     const buscar = this.buscar.value || null;
     const rutaId = this.rutaId.value;
     const transportadorId = this.transportadorId.value;
     this.conFiltros.set(!!buscar || !!rutaId || !!transportadorId);
+    this.transportadorDeLaGrilla.set(transportadorId);
     try {
       const { desde, hasta } = this.rango();
-      this.grilla.set(
-        await firstValueFrom(
-          this.servicio.grilla(desde, hasta, buscar, rutaId, transportadorId),
-        ),
+      const respuesta = await firstValueFrom(
+        this.servicio.grilla(desde, hasta, buscar, rutaId, transportadorId),
       );
+      if (turno !== this.turnoDeLaGrilla) return;
+      this.grilla.set(respuesta);
     } catch (err) {
-      this.grilla.set(null);
-      this.mostrarError(err, 'No fue posible cargar la grilla');
+      if (turno !== this.turnoDeLaGrilla) return;
+      if (completa) {
+        this.grilla.set(null);
+        this.mostrarError(err, 'No fue posible cargar la grilla');
+      } else if (tras === 'guardado') {
+        // Lo escrito ya quedó guardado: la tabla que se ve es la de antes del guardado, y se
+        // dice, en vez de callar o de vaciarla. Siempre con ESTE texto: el que trae el error
+        // (el aviso genérico de "no se pudieron cargar los datos") reemplazaba al "guardados"
+        // y no decía que sí se guardó.
+        this.snackbar.open(
+          'Se guardó, pero no se pudo actualizar la grilla: cambie de quincena o recargue para verla al día',
+          'OK',
+          { duration: 9000 },
+        );
+      }
+      // Después de un guardado que falló no se dice nada más: ya salió su aviso.
     } finally {
-      this.cargando.set(false);
-      if (this.centrarPendiente) this.programarCentradoHoy();
+      if (turno === this.turnoDeLaGrilla) {
+        this.cargando.set(false);
+        if (this.centrarPendiente) this.programarCentradoHoy();
+      }
     }
   }
 
@@ -1045,7 +1237,14 @@ export class RecepcionGrillaTab implements OnInit {
    * dueño no podía ni abrir el día para corregir quién recogió. Ahora se abre y
    * el diálogo apaga campo por campo lo que el backend va a rebotar.
    */
-  async clickCelda(fila: FilaGrilla, fechaIso: string): Promise<void> {
+  async clickCelda(filaClic: FilaGrilla, fechaIso: string): Promise<void> {
+    // Si se acaba de escribir en esta celda, el clic del ícono llega MIENTRAS se guarda (salir
+    // del campo guarda, y el clic viene justo detrás): se espera a que termine, y se mira la
+    // celda como quedó. Abrir antes mostraría los litros de antes, y guardar ese diálogo los
+    // volvería a poner; o abriría "nueva recepción" sobre un día que ya se acaba de crear.
+    await this.guardadosEnCamino.get(this.claveDeLaCelda(filaClic.proveedor_id, fechaIso));
+    const fila =
+      this.grilla()?.filas.find((f) => f.proveedor_id === filaClic.proveedor_id) ?? filaClic;
     const celda = fila.celdas[fechaIso];
     if (!celda) {
       if (!this.puedeCrear()) return;
@@ -1059,6 +1258,311 @@ export class RecepcionGrillaTab implements OnInit {
     } catch (err) {
       this.mostrarError(err, 'No fue posible abrir la recepción');
     }
+  }
+
+  // ------------------------------------------------------------ los litros se escriben en la celda
+  /** Las celdas ("proveedor|fecha") con un guardado en camino: no se les vuelve a pedir lo mismo. */
+  private readonly enGuardado = signal<ReadonlySet<string>>(new Set());
+  /** Las que tienen algo escrito que todavía no se guardó. */
+  private readonly sinGuardar = signal<ReadonlySet<string>>(new Set());
+  /** El guardado en camino de cada celda, para poder esperarlo (ver `clickCelda`). */
+  private readonly guardadosEnCamino = new Map<string, Promise<void>>();
+
+  private claveDeLaCelda(proveedorId: string, iso: string): string {
+    return `${proveedorId}|${iso}`;
+  }
+
+  private marcar(
+    conjunto: { update: (f: (v: ReadonlySet<string>) => ReadonlySet<string>) => void },
+    clave: string,
+    puesta: boolean,
+  ): void {
+    conjunto.update((actual) => {
+      if (actual.has(clave) === puesta) return actual;
+      const nuevo = new Set(actual);
+      if (puesta) nuevo.add(clave);
+      else nuevo.delete(clave);
+      return nuevo;
+    });
+  }
+
+  estaGuardando(fila: FilaGrilla, iso: string): boolean {
+    return this.enGuardado().has(this.claveDeLaCelda(fila.proveedor_id, iso));
+  }
+
+  estaPendiente(fila: FilaGrilla, iso: string): boolean {
+    return this.sinGuardar().has(this.claveDeLaCelda(fila.proveedor_id, iso));
+  }
+
+  /** Lo que lleva el campo cuando no se ha tocado: los litros del día, o nada si no hay día. */
+  textoDeLaCelda(celda: CeldaGrilla | undefined): string {
+    return litrosComoSeEscriben(celda?.litros);
+  }
+
+  /** Lo que lee el lector de pantalla al llegar al campo. */
+  etiquetaDelCampo(fila: FilaGrilla, iso: string, celda: CeldaGrilla | undefined): string {
+    const dia = iso.split('-').reverse().join('/');
+    return (
+      (celda ? 'Litros de ' : 'Anotar los litros de ') +
+      `${fila.proveedor_nombre} del ${dia}` +
+      (celda?.liquidada ? ' (ya está en una liquidación sin pagar)' : '') +
+      (celda?.con_transporte ? ', con transporte' : '')
+    );
+  }
+
+  /** Lo que dice el ícono de la esquina de la celda al pasarle el mouse. */
+  tooltipDelDia(celda: CeldaGrilla | undefined, iso: string): string {
+    if (celda) return this.tooltipCelda(celda, iso);
+    const dia = iso.split('-').reverse().slice(0, 2).join('/');
+    return `Abrir el día ${dia} para anotar litros, transportador y precio`;
+  }
+
+  /** Al llegar al campo se selecciona lo que tiene: lo que se escriba reemplaza, no se pega al lado. */
+  alEnfocar(evento: FocusEvent, fila: FilaGrilla, iso: string): void {
+    // Con algo escrito sin guardar (se volvió a la ventana, o a la celda) NO se selecciona todo:
+    // lo que se siga escribiendo se suma, no reemplaza lo que ya estaba.
+    if (this.estaPendiente(fila, iso)) return;
+    const campo = evento.target as HTMLInputElement;
+    // Con un turno de espera: en el celular el toque coloca el cursor DESPUÉS de enfocar y
+    // deshacía la selección.
+    setTimeout(() => campo.select(), 0);
+  }
+
+  /** Cada letra que entra marca la celda como "escrito sin guardar" (o la desmarca si vuelve a lo guardado). */
+  alEscribir(fila: FilaGrilla, iso: string, campo: HTMLInputElement): void {
+    const distinto = campo.value !== this.textoDeLaCelda(fila.celdas[iso]);
+    this.marcar(this.sinGuardar, this.claveDeLaCelda(fila.proveedor_id, iso), distinto);
+  }
+
+  /**
+   * Teclado dentro del campo:
+   *   · Enter baja a la celda de abajo (Mays+Enter, a la de arriba) y por eso guarda esta;
+   *   · Flecha abajo / arriba, igual;
+   *   · Esc deshace lo escrito;
+   *   · Alt+Enter o F2 abren el día completo.
+   * No se toca nada mientras el teclado o el lápiz arman una palabra (`isComposing`): el
+   * reconocedor de escritura entrega el texto por composición y un Enter ahí es suyo.
+   */
+  alTeclear(fila: FilaGrilla, iso: string, evento: KeyboardEvent): void {
+    if (evento.isComposing) return;
+    const campo = evento.target as HTMLInputElement;
+    switch (evento.key) {
+      case 'Enter':
+        evento.preventDefault();
+        if (evento.altKey) void this.guardarYAbrir(fila, iso, campo);
+        else this.moverElFoco(campo, iso, evento.shiftKey ? -1 : 1);
+        break;
+      case 'ArrowDown':
+        evento.preventDefault();
+        this.moverElFoco(campo, iso, 1);
+        break;
+      case 'ArrowUp':
+        evento.preventDefault();
+        this.moverElFoco(campo, iso, -1);
+        break;
+      case 'F2':
+        evento.preventDefault();
+        void this.guardarYAbrir(fila, iso, campo);
+        break;
+      case 'Escape':
+        evento.preventDefault();
+        campo.value = this.textoDeLaCelda(fila.celdas[iso]);
+        this.marcar(this.sinGuardar, this.claveDeLaCelda(fila.proveedor_id, iso), false);
+        campo.blur();
+        break;
+    }
+  }
+
+  /**
+   * Abrir el día con litros escritos y sin guardar: se guardan primero. Si no, el diálogo se
+   * abría con los litros de antes y su Guardar los volvía a poner.
+   */
+  private async guardarYAbrir(fila: FilaGrilla, iso: string, campo: HTMLInputElement): Promise<void> {
+    await this.confirmarLitros(fila, iso, campo);
+    await this.clickCelda(fila, iso);
+  }
+
+  /** Pasa el foco al campo de arriba o de abajo en la MISMA columna; sin más campos, suelta el foco. */
+  private moverElFoco(campo: HTMLInputElement, iso: string, paso: 1 | -1): void {
+    const delDia = Array.from(
+      this.scrollGrilla()?.nativeElement.querySelectorAll<HTMLInputElement>(
+        `input.celda-input[data-dia="${iso}"]`,
+      ) ?? [],
+    );
+    const vecino = delDia[delDia.indexOf(campo) + paso];
+    if (vecino) vecino.focus();
+    else campo.blur();
+  }
+
+  private avisarDeLaCelda(mensaje: string): void {
+    this.snackbar.open(mensaje, 'OK', { duration: 5000 });
+  }
+
+  /**
+   * GUARDA LO QUE SE ESCRIBIÓ EN UNA CELDA, y solo los litros. Se llama al salir del campo.
+   *
+   *   · Lo que no se entiende, vacío, cero o igual a lo que había: no se manda nada, el campo
+   *     vuelve a lo guardado y, si hay algo que decir, se dice. Dejarlo en blanco NO borra el
+   *     día (eso es destructivo y se hace abriéndolo, con su confirmación).
+   *   · Un día sin registro se CREA con la fecha y el proveedor de la celda y esos litros; el
+   *     precio sale del proveedor, igual que en el diálogo.
+   *   · Un día con registro se vuelve a pedir ENTERO antes de tocarlo y se le hace al servidor
+   *     la misma pregunta que el diálogo: si los litros están en firme (`campos_bloqueados`)
+   *     no se escribe y se muestra su aviso tal cual. Si el día está en una liquidación
+   *     APROBADA se confirma antes, con las mismas palabras de la advertencia del diálogo:
+   *     guardar la devuelve a borrador. Después de guardar se dice, igual que el diálogo, qué
+   *     le pasó a las liquidaciones del día (`avisoDelGuardado`).
+   *   · Siempre se vuelve a pedir la grilla, para que los totales sean los del servidor.
+   */
+  async confirmarLitros(fila: FilaGrilla, iso: string, campo: HTMLInputElement): Promise<void> {
+    // Salir del campo no siempre quiere decir "terminé":
+    //   · la VENTANA perdió el foco (otra app, otra pestaña): el campo sigue siendo el activo y
+    //     lo escrito a medias se queda esperando; al volver, el foco se lo devuelve;
+    //   · un DIÁLOGO se abrió (la confirmación de otra celda, el día completo) y se llevó el foco:
+    //     guardar ahí un "5" que iba a ser "52" fue el defecto. MatDialog le devuelve el foco al
+    //     campo al cerrarse.
+    if (document.activeElement === campo && !document.hasFocus()) return;
+    if ((this.dialog.openDialogs?.length ?? 0) > 0) return;
+    const proveedorId = fila.proveedor_id;
+    const nombre = fila.proveedor_nombre;
+    const clave = this.claveDeLaCelda(proveedorId, iso);
+    if (this.enGuardado().has(clave)) return;
+    const celda = fila.celdas[iso];
+    const original = this.textoDeLaCelda(celda);
+    this.marcar(this.sinGuardar, clave, false);
+
+    const lectura = leerLitros(campo.value);
+    if (lectura.tipo === 'vacio') {
+      campo.value = original;
+      if (celda) {
+        // El consejo es el que le sirve a quien lo lee: Eliminar solo lo tiene el rol con
+        // `recepcion:eliminar`; a los demás el servidor se lo rebota (403).
+        this.avisarDeLaCelda(
+          this.puedeEliminar()
+            ? 'Dejar la celda en blanco no borra el día. Para quitarlo, ábralo con el ícono de la ' +
+                'esquina de la celda y use Eliminar.'
+            : 'Dejar la celda en blanco no borra el día. Quitarlo le toca a un Administrador de la empresa.',
+        );
+      }
+      return;
+    }
+    if (lectura.tipo === 'invalido') {
+      campo.value = original;
+      this.avisarDeLaCelda(lectura.motivo);
+      return;
+    }
+    if (celda && Number(celda.litros) === lectura.valor) {
+      campo.value = original;
+      return;
+    }
+
+    const escrito = litrosComoSeEscriben(lectura.valor);
+    const dia = iso.split('-').reverse().slice(0, 2).join('/');
+    let terminado!: () => void;
+    this.guardadosEnCamino.set(clave, new Promise<void>((resolver) => (terminado = resolver)));
+    this.marcar(this.enGuardado, clave, true);
+    campo.value = escrito;
+    try {
+      let aviso: string | null = null;
+      if (!celda) {
+        await firstValueFrom(
+          this.servicio.create({ fecha: iso, proveedor_id: proveedorId, cantidad_litros: lectura.valor }),
+        );
+      } else {
+        const antes = await firstValueFrom(this.servicio.getById(celda.recepcion_id));
+        if (antes.campos_bloqueados?.includes('cantidad_litros')) {
+          campo.value = original;
+          this.avisarDeLaCelda(
+            antes.candado_aviso ??
+              'Los litros de este día quedaron en firme: ábralo para ver qué se puede corregir',
+          );
+          await this.refrescar('fallo');
+          this.sincronizarCampo(proveedorId, iso, campo);
+          return;
+        }
+        if (Number(antes.cantidad_litros) === lectura.valor) {
+          // Alguien ya lo había dejado así entre que se cargó la grilla y ahora.
+          await this.refrescar('fallo');
+          this.sincronizarCampo(proveedorId, iso, campo);
+          return;
+        }
+        const estados = [antes.liquidacion_estado, antes.liquidacion_estado_leche, antes.liquidacion_estado_flete];
+        if (estados.includes('aprobada')) {
+          const sigue = await this.confirmarCambioEnUnaAprobada(
+            nombre,
+            iso,
+            litrosComoSeEscriben(antes.cantidad_litros),
+            escrito,
+          );
+          if (!sigue) {
+            campo.value = original;
+            return;
+          }
+        }
+        const guardada = await firstValueFrom(
+          this.servicio.update(antes.id, { cantidad_litros: lectura.valor }),
+        );
+        aviso = avisoDelGuardado(antes, guardada);
+      }
+      const hecho = `${nombre}, ${dia}: ${escrito} L guardados`;
+      this.snackbar.open(aviso ? `${hecho}. ${aviso}` : hecho, 'OK', {
+        duration: aviso ? 9000 : 2500,
+      });
+      await this.refrescar('guardado');
+      this.sincronizarCampo(proveedorId, iso, campo);
+      this.cambio.emit();
+    } catch (err) {
+      campo.value = original;
+      avisarErrorAlGuardar(this.snackbar, err, 'No fue posible guardar los litros');
+      // La grilla se vuelve a pedir TAMBIÉN cuando falla: con un tiempo agotado no se sabe si el
+      // servidor lo guardó, y con un 409 (ya existe ese día) lo que se ve está viejo; sin
+      // refrescar, la celda se quedaba con el valor de antes y sin salida.
+      await this.refrescar('fallo');
+      this.sincronizarCampo(proveedorId, iso, campo);
+      this.cambio.emit();
+    } finally {
+      this.marcar(this.enGuardado, clave, false);
+      this.guardadosEnCamino.delete(clave);
+      terminado();
+    }
+  }
+
+  /**
+   * Después de volver a pedir la grilla, el campo muestra lo que el servidor dice y no lo que se
+   * tecleó: si el valor de la celda no cambió, Angular no reescribe el campo y se quedaba el
+   * número tecleado (con el filtro de transportador el día nuevo ni aparece en la grilla). Si el
+   * usuario ya volvió a enfocar el campo, no se le toca lo que está escribiendo.
+   */
+  private sincronizarCampo(proveedorId: string, iso: string, campo: HTMLInputElement): void {
+    if (document.activeElement === campo) return;
+    const fila = this.grilla()?.filas.find((f) => f.proveedor_id === proveedorId);
+    campo.value = this.textoDeLaCelda(fila?.celdas[iso]);
+  }
+
+  /** Las mismas palabras de la advertencia del diálogo del día, dichas ANTES de guardar. */
+  private async confirmarCambioEnUnaAprobada(
+    proveedor: string,
+    iso: string,
+    antes: string,
+    ahora: string,
+  ): Promise<boolean> {
+    const dia = iso.split('-').reverse().join('/');
+    const confirmado = await firstValueFrom(
+      this.dialog
+        .open(ConfirmDialog, {
+          data: {
+            titulo: 'Cambiar los litros de un día ya liquidado',
+            mensaje:
+              `Los litros de ${proveedor} del ${dia} pasarían de ${antes} L a ${ahora} L. ` +
+              'Este día ya está en una liquidación aprobada. Si lo cambia, esa liquidación ' +
+              'vuelve a borrador y se recalcula: tendrá que revisarla y aprobarla otra vez.',
+            accion: 'Cambiar los litros',
+            peligro: false,
+          },
+        })
+        .afterClosed(),
+    );
+    return confirmado === true;
   }
 
   /**

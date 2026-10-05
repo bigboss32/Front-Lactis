@@ -33,6 +33,8 @@
       </ng-template>
       <div class="tab-panel">
         <div class="page-toolbar">
+          <app-selector-quincena [desde]="desde" [hasta]="hasta" />
+          <app-filtro-por-opciones etiqueta="Ruta" [opciones]="opcionesDeRuta()" [control]="rutaId" />
           <mat-form-field subscriptSizing="dynamic">
             <mat-label>Buscar proveedor</mat-label>
             <input matInput [formControl]="buscar" placeholder="Nombre del proveedor…" />
@@ -45,15 +47,6 @@
             }
           </mat-form-field>
           <mat-form-field subscriptSizing="dynamic">
-            <mat-label>Ruta</mat-label>
-            <mat-select [formControl]="rutaId">
-              <mat-option [value]="null">Todas</mat-option>
-              @for (ruta of rutas(); track ruta.id) {
-                <mat-option [value]="ruta.id">{{ ruta.nombre }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field subscriptSizing="dynamic">
             <mat-label>Proveedor</mat-label>
             <mat-select [formControl]="proveedorId">
               <mat-option [value]="null">Todos</mat-option>
@@ -62,19 +55,6 @@
               }
             </mat-select>
           </mat-form-field>
-          <mat-form-field subscriptSizing="dynamic">
-            <mat-label>Desde</mat-label>
-            <input matInput [matDatepicker]="pDesde" (click)="pDesde.open()" [formControl]="desde" />
-            <mat-datepicker-toggle matSuffix [for]="pDesde" />
-            <mat-datepicker #pDesde />
-          </mat-form-field>
-          <mat-form-field subscriptSizing="dynamic">
-            <mat-label>Hasta</mat-label>
-            <input matInput [matDatepicker]="pHasta" (click)="pHasta.open()" [formControl]="hasta" />
-            <mat-datepicker-toggle matSuffix [for]="pHasta" />
-            <mat-datepicker #pHasta />
-          </mat-form-field>
-          <app-rango-fechas-rapido [desde]="desde" [hasta]="hasta" />
         </div>
 
         @if (resumen(); as r) {
@@ -84,6 +64,12 @@
               <span class="resumen-rango">
                 {{ r.desde | date: 'dd/MM/yyyy' }} — {{ r.hasta | date: 'dd/MM/yyyy' }}
               </span>
+              @if (conFiltros()) {
+                <span class="resumen-nota">
+                  Son las cifras de todo el período: no cambian con el proveedor, la ruta ni la
+                  búsqueda de abajo.
+                </span>
+              }
             </div>
             <div class="resumen-grid">
               <div class="stat">
@@ -123,6 +109,9 @@
             <mat-progress-bar mode="indeterminate" />
           }
 
+          <!-- La tabla se oculta si la consulta falló: una tabla con solo el encabezado se lee
+               igual que "no hay nada". -->
+          @if (!errorCarga()) {
           <table mat-table [dataSource]="filasOrdenadas()" matSort (matSortChange)="orden.set($event)">
             <ng-container matColumnDef="fecha">
               <th mat-header-cell *matHeaderCellDef mat-sort-header>Fecha</th>
@@ -229,22 +218,38 @@
             <tr mat-header-row *matHeaderRowDef="columnas"></tr>
             <tr mat-row *matRowDef="let fila; columns: columnas"></tr>
           </table>
+          }
 
-          @if (!cargando() && filas().length === 0) {
+          @if (errorCarga(); as error) {
+            <div class="error-state" role="alert">
+              <mat-icon aria-hidden="true">cloud_off</mat-icon>
+              <p>{{ error }}</p>
+              <p class="aclara">Esto no quiere decir que no haya recepciones: la consulta no alcanzó a llegar.</p>
+              <button mat-stroked-button type="button" (click)="reintentar()">
+                <mat-icon>refresh</mat-icon> Reintentar
+              </button>
+            </div>
+          }
+
+          <!-- El estado vacío solo cuando de verdad se consultó y no había nada. -->
+          @if (!cargando() && !errorCarga() && filas().length === 0) {
             <div class="empty-state">
               <mat-icon>water_drop</mat-icon>
               <p>No hay recepciones para los filtros seleccionados</p>
             </div>
           }
 
-          <mat-paginator
-            [length]="total()"
-            [pageIndex]="page() - 1"
-            [pageSize]="pageSize()"
-            [pageSizeOptions]="[10, 20, 50, 100]"
-            (page)="cambiarPagina($event)"
-            showFirstLastButtons
-          />
+          <!-- Sin consulta no hay conteo: el paginador diría "0 de 0". -->
+          @if (!errorCarga()) {
+            <mat-paginator
+              [length]="total()"
+              [pageIndex]="page() - 1"
+              [pageSize]="pageSize()"
+              [pageSizeOptions]="[10, 20, 50, 100]"
+              (page)="cambiarPagina($event)"
+              showFirstLastButtons
+            />
+          }
         </mat-card>
       </div>
     </mat-tab>
