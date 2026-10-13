@@ -287,6 +287,50 @@ describe('SelectorQuincena', () => {
     expect(el().querySelector('.mes')!.getAttribute('title')).toBeNull();
   });
 
+  it('con un rango propio (no es una quincena) el mes NO dice "sin filtro de fechas": dice que hay un rango propio', async () => {
+    await armar(dia(2026, 8, 5), dia(2026, 9, 12));
+
+    const mes = el().querySelector('.mes')!;
+    expect(marcada()).toBeNull();
+    expect(mes.classList).toContain('sin-marcar');
+    expect(mes.getAttribute('title')).toBe(
+      'Las fechas de al lado son un rango propio: elija una quincena para volver a las quincenas',
+    );
+    expect(mes.getAttribute('title')).not.toContain('Sin filtro');
+  });
+
+  it('con una fecha que no sirve (ilegible) el mes NO dice "sin filtro": dice que una fecha no se entiende', async () => {
+    await armar();
+    expect(el().querySelector('.mes')!.getAttribute('title')).toBe('Sin filtro de fechas: elija una quincena');
+
+    anfitrion.desde.setValue(new Date(NaN)); // una casilla con algo que no es fecha: el control queda sin fecha válida
+    fixture.detectChanges();
+    expect(el().querySelector('.mes')!.getAttribute('title')).toBe(
+      'Una de las fechas de al lado no se entiende: corríjala o elija una quincena',
+    );
+
+    anfitrion.desde.setValue(null);
+    fixture.detectChanges();
+    expect(el().querySelector('.mes')!.getAttribute('title')).toBe('Sin filtro de fechas: elija una quincena');
+  });
+
+  it('con solo «Hasta» puesto también es un rango propio: "hasta el 12" no es "sin filtro"', async () => {
+    await armar(null, dia(2026, 9, 12));
+
+    expect(marcada()).toBeNull();
+    expect(el().querySelector('.mes')!.getAttribute('title')).toContain('rango propio');
+  });
+
+  it('con una sola fecha puesta también es un rango propio, y al quitar las dos vuelve el texto de "sin filtro"', async () => {
+    await armar(dia(2026, 8, 5), null);
+    expect(el().querySelector('.mes')!.getAttribute('title')).toContain('rango propio');
+
+    anfitrion.desde.setValue(null);
+    fixture.detectChanges();
+
+    expect(el().querySelector('.mes')!.getAttribute('title')).toBe('Sin filtro de fechas: elija una quincena');
+  });
+
   it('las flechas tienen nombre para quien no las ve', async () => {
     await armar();
     expect(flechas().map((f) => f.getAttribute('aria-label'))).toEqual(['Mes anterior', 'Mes siguiente']);

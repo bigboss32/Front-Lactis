@@ -16,7 +16,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { debounceTime, firstValueFrom } from 'rxjs';
+import { debounceTime, firstValueFrom, merge } from 'rxjs';
 
 import { ApiService } from '../../core/api.service';
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
@@ -33,7 +33,8 @@ import { avisarErrorAlGuardar, detalleDeError } from '../../shared/errores-ui';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { FiltroPorOpciones, OpcionDeFiltro } from '../../shared/filtro-por-opciones';
-import { quincenaDeLaFecha, quincenaExacta, rangoQuincena } from '../../shared/quincena';
+import { quincenaDeLaFecha, rangoQuincena } from '../../shared/quincena';
+import { ProblemaDelRango, RangoDeFechas, problemaDelRango } from '../../shared/rango-de-fechas';
 import { SelectorQuincena } from '../../shared/selector-quincena';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
 import { dateToIso, isoToDate } from '../../shared/date-utils';
@@ -61,7 +62,7 @@ function quincenaActual(): { desde: Date; hasta: Date } {
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
     MatIconModule, MatProgressBarModule, MatTooltipModule, MatTabsModule,
     PageHeader, MoneyPipe, CantidadPipe, DatePipe, HasPermissionDirective,
-    RecepcionGrillaTab, SelectorQuincena, FiltroPorOpciones, MatSortModule,
+    RecepcionGrillaTab, SelectorQuincena, RangoDeFechas, FiltroPorOpciones, MatSortModule,
   ],
   templateUrl: './recepcion-list.page.html',
   styles: `
@@ -168,6 +169,15 @@ export class RecepcionListPage implements OnInit {
    * de la lista de abajo, y se dice.
    */
   readonly conFiltros = signal(false);
+  /**
+   * Las fechas no sirven para consultar: están al revés («Desde» después de «Hasta») o alguna
+   * casilla trae un texto que no se entiende. No se consulta nada: saldría vacío y diría "no
+   * hay recepciones", o —peor, con un extremo abierto en silencio— pintaría toda la historia
+   * bajo una casilla que dice otra cosa.
+   */
+  readonly problemaDeFechas = signal<ProblemaDelRango | null>(null);
+  readonly fechasAlReves = computed(() => this.problemaDeFechas() === 'al-reves');
+  readonly fechasIlegibles = computed(() => this.problemaDeFechas() === 'ilegible');
   readonly page = signal(1);
   readonly pageSize = signal(20);
   readonly resumen = signal<ResumenPeriodo | null>(null);
@@ -199,10 +209,10 @@ export class RecepcionListPage implements OnInit {
   readonly buscar = new FormControl('', { nonNullable: true });
 
   constructor() {
-    this.desde.valueChanges
-      .pipe(debounceTime(300), takeUntilDestroyed())
-      .subscribe(() => this.recargar());
-    this.hasta.valueChanges
+    // Las dos fechas esperan JUNTAS: el botón de quincena fija una y luego la otra, y escritas a
+    // mano llegan a pedazos; con una espera cada una eran dos consultas, la primera con una
+    // fecha vieja.
+    merge(this.desde.valueChanges, this.hasta.valueChanges)
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.proveedorId.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
@@ -224,17 +234,9 @@ export class RecepcionListPage implements OnInit {
       },
       this.destroyRef,
     );
-    // LAS FECHAS GUARDADAS DE ANTES SOLO SE CONSERVAN SI SON UNA QUINCENA (o ninguna fecha,
-    // que es "sin filtro de fechas" elegido a propósito). La pantalla anterior dejaba escribir
-    // cualquier rango ("Hoy", "Este mes", fechas sueltas) y la sesión lo recuerda: restaurado
-    // ahora, la lista saldría de esos 4 días con la barra sin marcar ninguna quincena, y se
-    // leería una cifra parcial como si fuera todo. Se vuelve a la quincena de hoy.
-    const hayFechas = this.desde.value !== null || this.hasta.value !== null;
-    if (hayFechas && !quincenaExacta(this.desde.value, this.hasta.value)) {
-      const hoy = quincenaActual();
-      this.desde.setValue(hoy.desde, { emitEvent: false });
-      this.hasta.setValue(hoy.hasta, { emitEvent: false });
-    }
+    // Las fechas guardadas de la sesión se conservan tal cual, sean o no una quincena (o ninguna,
+    // que es "sin filtro de fechas" elegido a propósito): las casillas Desde y Hasta las
+    // muestran, así que ya no hay un filtro escondido.
     this.cargar();
     this.cargarResumen();
     // Aquí el selector de proveedor es un FILTRO DE CONSULTA, no un campo para
@@ -283,8 +285,16 @@ export class RecepcionListPage implements OnInit {
 
   async cargar(): Promise<void> {
     const turno = ++this.turnoDeLaLista;
-    this.cargando.set(true);
     this.errorCarga.set(null);
+    this.problemaDeFechas.set(problemaDelRango(this.desde, this.hasta));
+    if (this.problemaDeFechas()) {
+      // Sin consultar: las filas y el total de antes no son de estas fechas, y se vacían.
+      this.filas.set([]);
+      this.total.set(0);
+      this.cargando.set(false);
+      return;
+    }
+    this.cargando.set(true);
     this.conFiltros.set(!!this.proveedorId.value || !!this.rutaId.value || !!this.buscar.value);
     try {
       const respuesta = await firstValueFrom(
@@ -326,7 +336,7 @@ export class RecepcionListPage implements OnInit {
     const turno = ++this.turnoDelResumen;
     const desde = dateToIso(this.desde.value);
     const hasta = dateToIso(this.hasta.value);
-    if (!desde || !hasta) {
+    if (!desde || !hasta || problemaDelRango(this.desde, this.hasta)) {
       this.resumen.set(null);
       return;
     }

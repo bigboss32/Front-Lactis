@@ -78,6 +78,17 @@ export function mesVecino({ anio, mes }: MesDelAnio, pasos: number): MesDelAnio 
 }
 
 /**
+ * ¿«Desde» cae DESPUÉS de «Hasta»? Dos fechas puestas al revés no son un rango: la consulta
+ * saldría vacía y la pantalla diría "no hay nada" cuando lo que pasa es que están al revés.
+ * Con una sola punta puesta (o ninguna) no hay nada que comparar: el rango está abierto.
+ */
+export function rangoInvertido(desde: Date | null | undefined, hasta: Date | null | undefined): boolean {
+  const inicio = dateToIso(desde);
+  const fin = dateToIso(hasta);
+  return inicio !== null && fin !== null && inicio > fin;
+}
+
+/**
  * ¿Estas dos fechas son, justo, UNA quincena entera (1–15 o 16–fin de mes del mismo mes)?
  * Devuelve cuál, o null si no (rango suelto, medio vacío o de otro tamaño).
  *

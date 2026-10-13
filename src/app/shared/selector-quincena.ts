@@ -15,6 +15,7 @@ import {
   quincenaExacta,
   rangoQuincena,
 } from './quincena';
+import { fechaIlegible } from './rango-de-fechas';
 
 /**
  * EL FILTRO POR QUINCENA, IGUAL AL DE "GENERAR LIQUIDACIONES": el mes con sus flechas y los
@@ -22,13 +23,14 @@ import {
  *
  * Uso: <app-selector-quincena [desde]="desde" [hasta]="hasta" />, con los dos
  * FormControl<Date | null> que mandan el período de la consulta. El botón fija las dos
- * fechas; no hay casillas para escribirlas.
+ * fechas; para un período que no es una quincena están las casillas Desde y Hasta
+ * (`rango-de-fechas.ts`), que son estos mismos controles.
  *
  * Qué hace:
  *   · Un botón queda marcado cuando las fechas son, justo, esa quincena —también si vienen
  *     restauradas de la sesión— y el mes sigue a las fechas. Un rango que NO es una quincena
- *     no marca nada: quien use este selector tiene que descartarlo al restaurarlo (la lista
- *     de liquidaciones lo hace), o filtraría sin que la barra lo diga.
+ *     no marca nada: las casillas Desde y Hasta, a su lado, son las que lo muestran (por eso
+ *     las pantallas ya no tienen que descartarlo al restaurarlo).
  *   · Tocar el botón ya marcado quita el filtro (deja las dos fechas vacías).
  *   · Las flechas mueven el mes; si hay una quincena marcada, la filtran en el mes de al
  *     lado (la 2.ª de septiembre pasa a la 2.ª de agosto) en vez de dejar el filtro en un
@@ -54,7 +56,7 @@ import {
       <span
         class="mes"
         [class.sin-marcar]="quincenaActiva() === null"
-        [attr.title]="quincenaActiva() === null ? 'Sin filtro de fechas: elija una quincena' : null"
+        [attr.title]="ayudaDelMes()"
         aria-live="polite"
         >{{ etiquetaMes() }}</span
       >
@@ -177,6 +179,9 @@ export class SelectorQuincena implements OnInit {
     hasta: null,
   });
 
+  /** Alguna de las dos casillas trae algo que no sirve como fecha (el control suele estar en null). */
+  private readonly hayFechaIlegible = signal(false);
+
   /**
    * El mes al que llegaron las flechas cuando NO hay una quincena marcada. Con una marcada
    * manda ella (el mes es el de las fechas), y sin fechas es lo que deja el botón al
@@ -203,6 +208,24 @@ export class SelectorQuincena implements OnInit {
     const desde = this.fechas().desde;
     const base = desde && !isNaN(desde.getTime()) ? desde : new Date();
     return { anio: base.getFullYear(), mes: base.getMonth() };
+  });
+
+  /**
+   * Lo que dice el mes al pasarle el mouse cuando NO hay una quincena marcada. Dependía de
+   * "sin fechas", pero desde que Desde y Hasta se pueden escribir también hay un rango propio,
+   * y decir "sin filtro de fechas" ahí era falso: SÍ se está filtrando, por esas fechas.
+   */
+  readonly ayudaDelMes = computed<string | null>(() => {
+    if (this.quincenaActiva() !== null) return null;
+    // Un texto que no se entiende deja el control en null, igual que una casilla vacía: sin esto
+    // decía "sin filtro de fechas" mientras la pantalla avisaba que una fecha no se entiende.
+    if (this.hayFechaIlegible()) {
+      return 'Una de las fechas de al lado no se entiende: corríjala o elija una quincena';
+    }
+    const { desde, hasta } = this.fechas();
+    return desde || hasta
+      ? 'Las fechas de al lado son un rango propio: elija una quincena para volver a las quincenas'
+      : 'Sin filtro de fechas: elija una quincena';
   });
 
   readonly etiquetaMes = computed(() => etiquetaDelMes(this.mesSel()));
@@ -261,5 +284,6 @@ export class SelectorQuincena implements OnInit {
 
   private leerLasFechas(): void {
     this.fechas.set({ desde: this.desde().value, hasta: this.hasta().value });
+    this.hayFechaIlegible.set(fechaIlegible(this.desde()) || fechaIlegible(this.hasta()));
   }
 }

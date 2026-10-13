@@ -118,7 +118,7 @@ describe('LiquidacionListPage: estado y tipo en botones', () => {
   const ultimaLista = (): Pedido => servicio.listas.at(-1)!;
   const ultimoResumen = (): Pedido => servicio.resumenes.at(-1)!;
 
-  it('la barra trae la quincena, el estado y el tipo; ninguna casilla ni desplegable', async () => {
+  it('la barra trae la quincena, Desde y Hasta, el estado y el tipo; ningún desplegable', async () => {
     await armar();
 
     expect(el().querySelector('.page-toolbar app-selector-quincena')).not.toBeNull();
@@ -131,9 +131,10 @@ describe('LiquidacionListPage: estado y tipo en botones', () => {
       'Anulada',
     ]);
     expect(botonesDe('Tipo').map((b) => texto(b))).toEqual(['Todos', 'Proveedor', 'Transportador']);
-    expect(el().querySelector('.page-toolbar mat-form-field')).toBeNull();
+    // Las únicas casillas de la barra son las dos fechas.
+    expect(el().querySelector('.page-toolbar app-rango-de-fechas')).not.toBeNull();
+    expect(el().querySelectorAll('.page-toolbar input').length).toBe(2);
     expect(el().querySelector('.page-toolbar mat-select')).toBeNull();
-    expect(el().querySelector('.page-toolbar input')).toBeNull();
     // Sin nada puesto, "Todos" está marcado en los dos grupos.
     expect(marcadoDe('Estado')).toEqual(['Todos']);
     expect(marcadoDe('Tipo')).toEqual(['Todos']);
@@ -205,12 +206,12 @@ describe('LiquidacionListPage: estado y tipo en botones', () => {
     pagina.desde.setValue(new Date(2026, 8, 5));
     pagina.hasta.setValue(new Date(2026, 8, 20));
     fixture.detectChanges();
-    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 350)); // las fechas esperan 300 ms antes de recargar
     fixture.detectChanges();
 
     el().querySelectorAll<HTMLButtonElement>('app-selector-quincena .q-btn')[1].click(); // 2.ª
     fixture.detectChanges();
-    await fixture.whenStable();
+    await new Promise((r) => setTimeout(r, 350));
     await tocar('Estado', 'Aprobada');
     await tocar('Tipo', 'Proveedor');
 

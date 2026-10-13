@@ -4,6 +4,7 @@ import {
   mesVecino,
   quincenaDeLaFecha,
   quincenaExacta,
+  rangoInvertido,
   rangoQuincena,
 } from './quincena';
 
@@ -106,5 +107,33 @@ describe('quincena: la quincena de una fecha', () => {
 
   it('sin fecha es la de hoy', () => {
     expect(quincenaDeLaFecha()).toEqual(quincenaDeLaFecha(new Date()));
+  });
+});
+
+describe('quincena: «Desde» después de «Hasta»', () => {
+  it('es al revés solo cuando las dos fechas están y la primera es posterior', () => {
+    expect(rangoInvertido(new Date(2026, 8, 20), new Date(2026, 8, 5))).toBeTrue();
+    expect(rangoInvertido(new Date(2026, 9, 1), new Date(2026, 8, 30))).toBeTrue(); // cruza de mes
+    expect(rangoInvertido(new Date(2027, 0, 1), new Date(2026, 11, 31))).toBeTrue(); // cruza de año
+  });
+
+  it('el mismo día, o en orden, no está al revés', () => {
+    expect(rangoInvertido(new Date(2026, 8, 5), new Date(2026, 8, 5))).toBeFalse();
+    expect(rangoInvertido(new Date(2026, 8, 5), new Date(2026, 8, 20))).toBeFalse();
+  });
+
+  it('no le importa la hora del día: el mismo día a las 23:59 y a las 00:00 sigue siendo el mismo día', () => {
+    expect(rangoInvertido(new Date(2026, 8, 5, 23, 59), new Date(2026, 8, 5, 0, 0))).toBeFalse();
+  });
+
+  it('con una sola punta, o ninguna, el rango está abierto y no hay nada al revés', () => {
+    expect(rangoInvertido(new Date(2026, 8, 20), null)).toBeFalse();
+    expect(rangoInvertido(null, new Date(2026, 8, 5))).toBeFalse();
+    expect(rangoInvertido(null, null)).toBeFalse();
+    expect(rangoInvertido(undefined, undefined)).toBeFalse();
+  });
+
+  it('una fecha ilegible no cuenta como fecha: no se declara al revés por una que no se entiende', () => {
+    expect(rangoInvertido(new Date('no es una fecha'), new Date(2026, 8, 5))).toBeFalse();
   });
 });

@@ -1,6 +1,6 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
-import { AbstractControl, FormControl } from '@angular/forms';
+import { FormControl } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -12,7 +12,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { firstValueFrom } from 'rxjs';
+import { debounceTime, firstValueFrom, merge } from 'rxjs';
 
 import { HasPermissionDirective } from '../../core/auth/has-permission.directive';
 import { Liquidacion, Monto } from '../../core/models';
@@ -20,7 +20,7 @@ import { EstadoChip } from '../../shared/estado-chip';
 import { EstadoFiltrosService } from '../../shared/estado-filtros.service';
 import { PageHeader } from '../../shared/page-header';
 import { FiltroPorOpciones, OpcionDeFiltro } from '../../shared/filtro-por-opciones';
-import { quincenaExacta } from '../../shared/quincena';
+import { ProblemaDelRango, RangoDeFechas, problemaDelRango } from '../../shared/rango-de-fechas';
 import { SelectorQuincena } from '../../shared/selector-quincena';
 import { detalleDeError } from '../../shared/errores-ui';
 import { ordenarFilas } from '../../shared/ordenar-tabla';
@@ -88,7 +88,7 @@ function cifraDelResumen(valor: Monto | null | undefined): number {
     DatePipe, MatCardModule, MatTableModule, MatPaginatorModule,
     MatButtonModule, MatIconModule, MatProgressBarModule, MatTooltipModule,
     PageHeader, EstadoChip, MoneyPipe, CantidadPipe, HasPermissionDirective,
-    SelectorQuincena, FiltroPorOpciones, MatSortModule,
+    SelectorQuincena, RangoDeFechas, FiltroPorOpciones, MatSortModule,
   ],
   templateUrl: './liquidacion-list.page.html',
   styles: `
@@ -376,11 +376,27 @@ export class LiquidacionListPage implements OnInit {
   private turnoDeLaLista = 0;
   private turnoDelResumen = 0;
 
+  /**
+   * Las fechas no sirven para consultar: están al revés («Desde» después de «Hasta») o alguna
+   * casilla trae un texto que no se entiende. No se consulta nada: saldría vacío y diría "no
+   * hay liquidaciones", o —peor, con un extremo abierto en silencio— pintaría las tarjetas de
+   * plata de todo el historial bajo una casilla que dice otra cosa.
+   */
+  readonly problemaDeFechas = signal<ProblemaDelRango | null>(null);
+  readonly fechasAlReves = computed(() => this.problemaDeFechas() === 'al-reves');
+  readonly fechasIlegibles = computed(() => this.problemaDeFechas() === 'ilegible');
+
   constructor() {
-    const filtros: AbstractControl[] = [this.tipo, this.estado, this.desde, this.hasta];
-    for (const control of filtros) {
+    // El tipo y el estado son botones: un clic, una consulta, al instante.
+    for (const control of [this.tipo, this.estado]) {
       control.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
     }
+    // Las fechas esperan un respiro, y las dos juntas. Escritas a mano llegan a pedazos ("1/10/2"
+    // ya es una fecha para el navegador, la del año 2002), y el botón de quincena fija una y
+    // después la otra: con la espera hay UNA consulta con el rango entero, no una por pedazo.
+    merge(this.desde.valueChanges, this.hasta.valueChanges)
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.recargar());
   }
 
   ngOnInit(): void {
@@ -389,15 +405,8 @@ export class LiquidacionListPage implements OnInit {
       { tipo: this.tipo, estado: this.estado, desde: this.desde, hasta: this.hasta },
       this.destroyRef,
     );
-    // LAS FECHAS GUARDADAS DE ANTES SOLO SE CONSERVAN SI SON UNA QUINCENA. La pantalla
-    // anterior dejaba escribir cualquier rango ("Este mes", "Hoy", fechas sueltas) y la
-    // sesión lo recuerda: restaurado ahora, la lista y las tarjetas saldrían de esos 4 días
-    // con la barra idéntica a la de "sin filtro" —ninguna quincena marcada, ninguna fecha
-    // a la vista—, y el dueño leería una cifra parcial como si fuera todo el historial.
-    if (!quincenaExacta(this.desde.value, this.hasta.value)) {
-      this.desde.setValue(null, { emitEvent: false });
-      this.hasta.setValue(null, { emitEvent: false });
-    }
+    // Las fechas guardadas de la sesión se conservan tal cual, sean o no una quincena: las
+    // casillas Desde y Hasta las muestran, así que ya no hay un filtro escondido.
     this.cargar();
     void this.cargarResumen();
   }
@@ -410,8 +419,16 @@ export class LiquidacionListPage implements OnInit {
 
   async cargar(): Promise<void> {
     const turno = ++this.turnoDeLaLista;
-    this.cargando.set(true);
     this.errorCarga.set(null);
+    this.problemaDeFechas.set(problemaDelRango(this.desde, this.hasta));
+    if (this.problemaDeFechas()) {
+      // Sin consultar: las filas y el total de antes no son de estas fechas, y se vacían.
+      this.filas.set([]);
+      this.total.set(0);
+      this.cargando.set(false);
+      return;
+    }
+    this.cargando.set(true);
     try {
       const respuesta = await firstValueFrom(
         this.servicio.list({
@@ -472,6 +489,11 @@ export class LiquidacionListPage implements OnInit {
    */
   async cargarResumen(): Promise<void> {
     const turno = ++this.turnoDelResumen;
+    if (problemaDelRango(this.desde, this.hasta)) {
+      this.resumen.set(null);
+      this.resumenFallo.set(null);
+      return;
+    }
     try {
       const r = await firstValueFrom(
         this.servicio.resumen({

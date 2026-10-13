@@ -195,12 +195,14 @@
     LOS FILTROS SON BOTONES, NO CASILLAS: la quincena (con su mes), el estado y el tipo, los
     tres con el mismo estilo y a la vista. Antes eran cuatro casillas —Tipo, Estado, Desde y
     Hasta— y un desplegable obliga a abrirlo para saber qué filtro está puesto. Las fechas
-    ya no se escriben: la quincena las fija (los controles `desde` y `hasta` siguen siendo
-    los que mandan la consulta), y las tarjetas de arriba filtran por estado igual que los
-    botones, sobre el mismo control.
+    se escriben aparte: la quincena las fija con un botón, y las casillas Desde y Hasta
+    —los mismos controles `desde` y `hasta` que mandan la consulta— sirven para cualquier
+    otro período. Las tarjetas de arriba filtran por estado igual que los botones, sobre el
+    mismo control.
   -->
   <div class="page-toolbar">
     <app-selector-quincena [desde]="desde" [hasta]="hasta" />
+    <app-rango-de-fechas [desde]="desde" [hasta]="hasta" />
     <app-filtro-por-opciones etiqueta="Estado" [opciones]="estados" [control]="estado" />
     <app-filtro-por-opciones etiqueta="Tipo" [opciones]="tipos" [control]="tipo" />
   </div>
@@ -210,9 +212,10 @@
       <mat-progress-bar mode="indeterminate" />
     }
 
-    <!-- La tabla se oculta si la consulta falló: una tabla con solo el
-         encabezado se lee igual que "no hay nada". -->
-    @if (!errorCarga()) {
+    <!-- La tabla se oculta si la consulta falló, o si no se consultó porque las fechas no sirven
+         (al revés, o un texto que no se entiende): una tabla con solo el encabezado se lee igual
+         que "no hay nada". -->
+    @if (!errorCarga() && !problemaDeFechas()) {
       <!-- .zona-tabla es lo único que se desplaza: el encabezado fijo necesita
            un antecesor con scroll al que pegarse, y el paginador queda fuera de
            este div para no irse de vista al bajar. -->
@@ -346,15 +349,31 @@
     }
 
     <!-- El estado vacío solo cuando de verdad se consultó y no había nada. -->
-    @if (!cargando() && !errorCarga() && filas().length === 0) {
+    @if (fechasAlReves()) {
+      <div class="empty-state" role="alert">
+        <mat-icon>event_busy</mat-icon>
+        <p>Las fechas están al revés: «Desde» es posterior a «Hasta»</p>
+        <p>Corríjalas para ver las liquidaciones.</p>
+      </div>
+    }
+
+    @if (fechasIlegibles()) {
+      <div class="empty-state" role="alert">
+        <mat-icon>event_busy</mat-icon>
+        <p>No se entiende una de las fechas</p>
+        <p>Corríjala o elíjala del calendario para ver las liquidaciones.</p>
+      </div>
+    }
+
+    @if (!cargando() && !errorCarga() && !problemaDeFechas() && filas().length === 0) {
       <div class="empty-state">
         <mat-icon>receipt_long</mat-icon>
         <p>No hay liquidaciones para los filtros seleccionados</p>
       </div>
     }
 
-    <!-- Sin consulta no hay conteo: el paginador diría "0 de 0". -->
-    @if (!errorCarga()) {
+    <!-- Sin consulta (falló, o las fechas no sirven) no hay conteo: el paginador diría "0 de 0". -->
+    @if (!errorCarga() && !problemaDeFechas()) {
       <mat-paginator
         [length]="total()"
         [pageIndex]="page() - 1"

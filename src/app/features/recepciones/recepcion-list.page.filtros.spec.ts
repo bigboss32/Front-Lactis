@@ -170,6 +170,8 @@ describe('RecepcionListPage: los filtros del listado, como en liquidaciones', ()
   const pantalla = () => fixture.componentInstance;
   const botonesDeQuincena = (): HTMLButtonElement[] =>
     Array.from(el().querySelectorAll('app-selector-quincena .q-btn'));
+  const casilla = (clase: 'fecha-desde' | 'fecha-hasta'): HTMLInputElement =>
+    el().querySelector<HTMLInputElement>(`app-rango-de-fechas input.${clase}`)!;
   const botonesDeRuta = (): HTMLButtonElement[] =>
     Array.from(el().querySelectorAll('app-filtro-por-opciones .opcion'));
   const botonDeRuta = (nombre: string): HTMLButtonElement =>
@@ -185,17 +187,21 @@ describe('RecepcionListPage: los filtros del listado, como en liquidaciones', ()
   };
 
   // ------------------------------------------------------------------ la barra
-  it('trae el selector de quincena y la ruta en botones; ya no hay Desde, Hasta ni "Rápido"', async () => {
+  it('trae el selector de quincena, Desde y Hasta, y la ruta en botones; ya no hay chips "Rápido" ni desplegable de Ruta', async () => {
     await armar();
 
     expect(el().querySelector('app-selector-quincena')).not.toBeNull();
+    expect(el().querySelector('app-rango-de-fechas')).not.toBeNull();
+    expect(el().querySelector('app-rango-de-fechas input.fecha-desde')).not.toBeNull();
+    expect(el().querySelector('app-rango-de-fechas input.fecha-hasta')).not.toBeNull();
     expect(botonesDeRuta().map(texto)).toEqual(['Todos', 'Ruta Norte', 'Ruta Sur']);
-    expect(el().querySelector('mat-datepicker-toggle')).toBeNull();
     expect(el().querySelector('app-rango-fechas-rapido')).toBeNull();
     expect(texto(el().querySelector('.page-toolbar'))).not.toContain('Rápido');
-    // "Buscar proveedor" y el desplegable de Proveedor siguen: lo que se quitó fue Desde, Hasta y el desplegable de Ruta.
+    // "Buscar proveedor" y el desplegable de Proveedor siguen; el desplegable de Ruta ya no.
     expect(texto(el().querySelector('.page-toolbar'))).toContain('Buscar proveedor');
     expect(texto(el().querySelector('.page-toolbar'))).toContain('Proveedor');
+    expect(texto(el().querySelector('.page-toolbar'))).toContain('Desde');
+    expect(texto(el().querySelector('.page-toolbar'))).toContain('Hasta');
   });
 
   it('arranca en la quincena de hoy, ENTERA, y la barra la marca', async () => {
@@ -279,12 +285,15 @@ describe('RecepcionListPage: los filtros del listado, como en liquidaciones', ()
     ...extra,
   });
 
-  it('un rango suelto guardado por la pantalla anterior (los primeros 4 días) NO filtra: vuelve la quincena de hoy', async () => {
+  it('un rango propio guardado (los primeros 4 días) se CONSERVA y se ve en Desde y Hasta: no hay filtro escondido', async () => {
     await armar({ guardado: guardadoCon('2026-10-01', '2026-10-04') });
 
-    expect(servicio.listas[0].pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: rangoDeHoy.fin, ruta_id: null, page: 1 });
-    expect(servicio.resumenes[0].pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: rangoDeHoy.fin });
-    expect(botonesDeQuincena().filter((b) => b.classList.contains('activa')).length).toBe(1);
+    expect(servicio.listas[0].pedido).toEqual({ desde: '2026-10-01', hasta: '2026-10-04', ruta_id: null, page: 1 });
+    expect(servicio.resumenes[0].pedido).toEqual({ desde: '2026-10-01', hasta: '2026-10-04' });
+    expect(botonesDeQuincena().some((b) => b.classList.contains('activa'))).toBeFalse();
+    expect(casilla('fecha-desde').value).toContain('2026');
+    expect(casilla('fecha-hasta').value).toContain('2026');
+    expect(el().querySelector('app-selector-quincena .mes')!.getAttribute('title')).toContain('rango propio');
   });
 
   it('una quincena guardada se conserva, y la barra la marca', async () => {
@@ -338,23 +347,364 @@ describe('RecepcionListPage: los filtros del listado, como en liquidaciones', ()
   });
 
   // ------------------------------------------------------------------ lo guardado, a medias
-  it('una sola fecha guardada (la otra vacía) tampoco filtra: vuelve la quincena de hoy', async () => {
+  it('una sola fecha guardada (la otra vacía) deja el rango abierto: la lista se pide así y el resumen no (necesita las dos)', async () => {
     await armar({ guardado: guardadoCon('2026-08-16', null) });
-    expect(servicio.listas[0].pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: rangoDeHoy.fin, ruta_id: null, page: 1 });
-    expect(servicio.resumenes[0].pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: rangoDeHoy.fin });
+
+    expect(servicio.listas[0].pedido).toEqual({ desde: '2026-08-16', hasta: null, ruta_id: null, page: 1 });
+    expect(servicio.resumenes.length).toBe(0);
+    expect(casilla('fecha-hasta').value).toBe('');
   });
 
   it('lo mismo con solo la fecha Hasta guardada', async () => {
     await armar({ guardado: guardadoCon(null, '2026-08-31') });
-    expect(servicio.listas[0].pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: rangoDeHoy.fin, ruta_id: null, page: 1 });
+
+    expect(servicio.listas[0].pedido).toEqual({ desde: null, hasta: '2026-08-31', ruta_id: null, page: 1 });
   });
 
-  it('descartar el rango suelto guardado NO dispara otra consulta: la lista y el resumen se piden UNA vez', async () => {
+  it('restaurar lo guardado pide la lista y el resumen UNA vez, sin una segunda consulta a los 300 ms', async () => {
     await armar({ guardado: guardadoCon('2026-10-01', '2026-10-04') });
     await esperarElRespiro();
 
     expect(servicio.listas.length).toBe(1);
     expect(servicio.resumenes.length).toBe(1);
+  });
+
+  // ------------------------------------------------------------------ Desde y Hasta, a mano
+  it('elegir Desde y Hasta filtra la lista y el resumen con ESE rango, una vez, y no marca ninguna quincena', async () => {
+    await armar();
+    const listasAntes = servicio.listas.length;
+    const resumenesAntes = servicio.resumenes.length;
+
+    pantalla().desde.setValue(new Date(2026, 8, 5));
+    pantalla().hasta.setValue(new Date(2026, 9, 12)); // cruza de mes: ninguna quincena
+    fixture.detectChanges();
+    await esperarElRespiro();
+
+    expect(servicio.listas.length - listasAntes).toBe(1);
+    expect(servicio.resumenes.length - resumenesAntes).toBe(1);
+    expect(servicio.listas.at(-1)!.pedido).toEqual({ desde: '2026-09-05', hasta: '2026-10-12', ruta_id: null, page: 1 });
+    expect(servicio.resumenes.at(-1)!.pedido).toEqual({ desde: '2026-09-05', hasta: '2026-10-12' });
+    expect(botonesDeQuincena().some((b) => b.classList.contains('activa'))).toBeFalse();
+  });
+
+  it('la X de «Hasta» lo quita: la lista queda abierta de ese lado y el resumen se esconde (no tiene las dos fechas)', async () => {
+    await armar();
+    expect(el().querySelector('.quitar-hasta')).not.toBeNull();
+
+    (el().querySelector('.quitar-hasta') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await esperarElRespiro();
+
+    expect(pantalla().hasta.value).toBeNull();
+    expect(servicio.listas.at(-1)!.pedido).toEqual({ desde: rangoDeHoy.inicio, hasta: null, ruta_id: null, page: 1 });
+    expect(pantalla().resumen()).toBeNull();
+  });
+
+  describe('«Desde» posterior a «Hasta»', () => {
+    const alReves = async (): Promise<void> => {
+      pantalla().desde.setValue(new Date(2026, 8, 20));
+      pantalla().hasta.setValue(new Date(2026, 8, 5));
+      fixture.detectChanges();
+      await esperarElRespiro();
+    };
+
+    it('NO se consulta, se dice en palabras y no dice "no hay recepciones"', async () => {
+      await armar();
+      const listasAntes = servicio.listas.length;
+      const resumenesAntes = servicio.resumenes.length;
+
+      await alReves();
+
+      expect(servicio.listas.length).toBe(listasAntes);
+      expect(servicio.resumenes.length).toBe(resumenesAntes);
+      expect(texto(el().querySelector('app-rango-de-fechas .aviso-al-reves'))).toContain('«Desde» es posterior a «Hasta»');
+      expect(texto(el().querySelector('.empty-state'))).toContain('Las fechas están al revés');
+      expect(texto(el().querySelector('.empty-state'))).not.toContain('No hay recepciones');
+    });
+
+    it('es UN solo mensaje en la tabla, el de las fechas al revés: no se le suma el de "no se entiende una de las fechas"', async () => {
+      await armar();
+
+      await alReves();
+
+      expect(pantalla().fechasAlReves()).toBeTrue();
+      // Las dos fechas están bien escritas, solo que en el orden contrario: nada que no se entienda.
+      expect(pantalla().fechasIlegibles()).toBeFalse();
+      expect(el().querySelectorAll('.empty-state').length).toBe(1);
+      const vacio = texto(el().querySelector('.empty-state'));
+      expect(vacio).toContain('Las fechas están al revés');
+      expect(vacio).not.toContain('No se entiende');
+      expect(el().querySelector('app-rango-de-fechas .aviso-ilegible')).toBeNull();
+    });
+
+    it('el aviso de la consulta fallida de antes se va: queda UN solo mensaje, el de las fechas, y la tabla no vuelve a decir que falló', async () => {
+      await armar();
+      servicio.errorLista = new HttpErrorResponse({ status: 500, error: { error: { detail: 'El servidor no respondió' } } });
+      botonDeRuta('Ruta Sur').click();
+      fixture.detectChanges();
+      await asentar();
+      expect(pantalla().errorCarga()).toBe('El servidor no respondió');
+      expect(el().querySelector('.error-state')).not.toBeNull();
+
+      await alReves();
+
+      // La lista de antes falló, pero esta vez ni siquiera se intentó: no hay ningún fallo que contar.
+      expect(pantalla().errorCarga()).toBeNull();
+      expect(el().querySelector('.error-state')).toBeNull();
+      expect(el().querySelectorAll('.empty-state').length).toBe(1);
+      expect(texto(el().querySelector('.empty-state'))).toContain('Las fechas están al revés');
+    });
+
+    it('las filas, el total y el resumen de antes se vacían', async () => {
+      await armar();
+      pantalla().filas.set([{ id: 'vieja' } as unknown as Recepcion]);
+      pantalla().total.set(1);
+
+      await alReves();
+
+      expect(pantalla().filas()).toEqual([]);
+      expect(pantalla().total()).toBe(0);
+      expect(pantalla().resumen()).toBeNull();
+      expect(pantalla().fechasAlReves()).toBeTrue();
+    });
+
+    it('al corregirlas vuelve a consultar y el aviso se va', async () => {
+      await armar();
+      await alReves();
+      const listasAntes = servicio.listas.length;
+
+      pantalla().hasta.setValue(new Date(2026, 8, 25));
+      fixture.detectChanges();
+      await esperarElRespiro();
+
+      expect(servicio.listas.length - listasAntes).toBe(1);
+      expect(servicio.listas.at(-1)!.pedido).toEqual({ desde: '2026-09-20', hasta: '2026-09-25', ruta_id: null, page: 1 });
+      expect(el().querySelector('app-rango-de-fechas .aviso-al-reves')).toBeNull();
+      expect(pantalla().fechasAlReves()).toBeFalse();
+    });
+  });
+
+  it('un rango propio guardado que NO empieza en 1 ni en 16 (5 al 12 de octubre) vuelve tal cual', async () => {
+    await armar({ guardado: guardadoCon('2026-10-05', '2026-10-12') });
+
+    expect(servicio.listas[0].pedido).toEqual({ desde: '2026-10-05', hasta: '2026-10-12', ruta_id: null, page: 1 });
+    expect(servicio.resumenes[0].pedido).toEqual({ desde: '2026-10-05', hasta: '2026-10-12' });
+    expect(casilla('fecha-desde').value).toBe('5/10/2026');
+    expect(casilla('fecha-hasta').value).toBe('12/10/2026');
+    expect(botonesDeQuincena().some((b) => b.classList.contains('activa'))).toBeFalse();
+  });
+
+  it('las fechas esperan el respiro de 300 ms: a los ~120 ms todavía NO se pidió nada, a los 350 se pide UNA vez', async () => {
+    await armar();
+    const listasAntes = servicio.listas.length;
+    const resumenesAntes = servicio.resumenes.length;
+
+    pantalla().desde.setValue(new Date(2026, 8, 5));
+    pantalla().hasta.setValue(new Date(2026, 8, 20));
+    await new Promise((r) => setTimeout(r, 120));
+    expect(servicio.listas.length).toBe(listasAntes);
+    expect(servicio.resumenes.length).toBe(resumenesAntes);
+
+    await new Promise((r) => setTimeout(r, 230));
+    expect(servicio.listas.length - listasAntes).toBe(1);
+    expect(servicio.resumenes.length - resumenesAntes).toBe(1);
+  });
+
+  it('el respiro no es menor de 300 ms: a los 250 ms todavía NO se pidió nada, a los 350 se pide UNA vez', async () => {
+    await armar();
+    const listasAntes = servicio.listas.length;
+    const resumenesAntes = servicio.resumenes.length;
+
+    pantalla().desde.setValue(new Date(2026, 8, 5));
+    pantalla().hasta.setValue(new Date(2026, 8, 20));
+    await new Promise((r) => setTimeout(r, 250));
+    expect(servicio.listas.length).toBe(listasAntes);
+    expect(servicio.resumenes.length).toBe(resumenesAntes);
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(servicio.listas.length - listasAntes).toBe(1);
+    expect(servicio.resumenes.length - resumenesAntes).toBe(1);
+  });
+
+  // ------------------------------------------------------------------ un texto que no se entiende
+  describe('una fecha escrita que no se entiende', () => {
+    /** Escribe a mano en la casilla, como quien teclea: el control se entera por el evento `input`. */
+    const escribir = async (clase: 'fecha-desde' | 'fecha-hasta', escrito: string): Promise<void> => {
+      casilla(clase).value = escrito;
+      casilla(clase).dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await esperarElRespiro();
+    };
+
+    it('NO se consulta con ese extremo abierto (traería TODA la historia): ni la lista ni el resumen', async () => {
+      await armar();
+      const listasAntes = servicio.listas.length;
+      const resumenesAntes = servicio.resumenes.length;
+      pantalla().filas.set([{ id: 'vieja' } as unknown as Recepcion]);
+      pantalla().total.set(1);
+
+      await escribir('fecha-desde', 'hola');
+
+      expect(servicio.listas.length).toBe(listasAntes);
+      expect(servicio.resumenes.length).toBe(resumenesAntes);
+      expect(pantalla().fechasIlegibles()).toBeTrue();
+      expect(pantalla().fechasAlReves()).toBeFalse();
+      expect(pantalla().filas()).toEqual([]);
+      expect(pantalla().total()).toBe(0);
+      expect(pantalla().resumen()).toBeNull();
+    });
+
+    it('dice cuál fecha, con UN solo mensaje en la tabla, y no dice "no hay recepciones" ni "al revés"', async () => {
+      await armar();
+
+      await escribir('fecha-hasta', '31/02/2026');
+
+      expect(texto(el().querySelector('app-rango-de-fechas .aviso-ilegible'))).toBe(
+        'No se entiende la fecha «Hasta»: corríjala o elíjala del calendario.',
+      );
+      expect(el().querySelectorAll('.empty-state').length).toBe(1);
+      const vacio = texto(el().querySelector('.empty-state'));
+      expect(vacio).toContain('No se entiende una de las fechas');
+      expect(vacio).not.toContain('No hay recepciones');
+      expect(vacio).not.toContain('al revés');
+    });
+
+    it('la X la borra: vuelve a consultar UNA vez con lo que quede y el mensaje se va', async () => {
+      await armar();
+      await escribir('fecha-desde', 'hola');
+      const listasAntes = servicio.listas.length;
+
+      (el().querySelector('.quitar-desde') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await esperarElRespiro();
+
+      expect(servicio.listas.length - listasAntes).toBe(1);
+      expect(servicio.listas.at(-1)!.pedido).toEqual({ desde: null, hasta: rangoDeHoy.fin, ruta_id: null, page: 1 });
+      expect(pantalla().fechasIlegibles()).toBeFalse();
+      expect(el().querySelector('app-rango-de-fechas .aviso-ilegible')).toBeNull();
+    });
+
+    it('una fecha elegida del calendario sobre el texto malo consulta con ella', async () => {
+      await armar();
+      await escribir('fecha-desde', 'hola');
+      const listasAntes = servicio.listas.length;
+
+      pantalla().desde.setValue(new Date(2026, 8, 5));
+      fixture.detectChanges();
+      await esperarElRespiro();
+
+      expect(servicio.listas.length - listasAntes).toBe(1);
+      expect(servicio.listas.at(-1)!.pedido.desde).toBe('2026-09-05');
+      expect(pantalla().fechasIlegibles()).toBeFalse();
+    });
+  });
+
+  describe('con fechas que no sirven no se pinta la tabla vacía ni el paginador "0 de 0"', () => {
+    const hayTablaYPaginador = (): boolean =>
+      el().querySelector('table[mat-table]') !== null && el().querySelector('mat-paginator') !== null;
+    const noHayNiTablaNiPaginador = (): boolean =>
+      el().querySelector('table[mat-table]') === null && el().querySelector('mat-paginator') === null;
+    const teclear = async (clase: 'fecha-desde' | 'fecha-hasta', escrito: string): Promise<void> => {
+      casilla(clase).value = escrito;
+      casilla(clase).dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await esperarElRespiro();
+    };
+
+    it('al revés: se esconden; al corregirlas vuelven', async () => {
+      await armar();
+      expect(hayTablaYPaginador()).toBeTrue();
+
+      pantalla().desde.setValue(new Date(2026, 8, 20));
+      pantalla().hasta.setValue(new Date(2026, 8, 5));
+      fixture.detectChanges();
+      await esperarElRespiro();
+      expect(noHayNiTablaNiPaginador()).toBeTrue();
+
+      pantalla().hasta.setValue(new Date(2026, 8, 25));
+      fixture.detectChanges();
+      await esperarElRespiro();
+      expect(hayTablaYPaginador()).toBeTrue();
+    });
+
+    it('con un texto que no se entiende: se esconden; al borrarlo vuelven', async () => {
+      await armar();
+
+      await teclear('fecha-desde', 'hola');
+      expect(noHayNiTablaNiPaginador()).toBeTrue();
+
+      (el().querySelector('.quitar-desde') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      await esperarElRespiro();
+      expect(hayTablaYPaginador()).toBeTrue();
+    });
+
+    it('un año a medio escribir ("5/10/202") no sale a consultar como "202-10-05"; al completarlo se consulta entero', async () => {
+      await armar();
+      const listasAntes = servicio.listas.length;
+      const resumenesAntes = servicio.resumenes.length;
+
+      await teclear('fecha-desde', '5/10/202');
+
+      expect(pantalla().desde.value!.getFullYear()).toBe(202);
+      expect(pantalla().fechasIlegibles()).toBeTrue();
+      expect(servicio.listas.length).toBe(listasAntes);
+      expect(servicio.resumenes.length).toBe(resumenesAntes);
+
+      await teclear('fecha-desde', '5/10/2026');
+
+      expect(pantalla().fechasIlegibles()).toBeFalse();
+      expect(servicio.listas.length - listasAntes).toBe(1);
+      expect(servicio.listas.at(-1)!.pedido.desde).toMatch(/^2026-\d\d-\d\d$/);
+    });
+  });
+
+  describe('fechas que no sirven mientras hay una consulta en camino', () => {
+    it('al ponerlas al revés se apaga el "cargando" (la consulta de antes ya no cuenta)', async () => {
+      await armar({ diferido: true }); // nada contesta: la consulta inicial queda en el aire
+      expect(pantalla().cargando()).toBeTrue();
+
+      pantalla().desde.setValue(new Date(2026, 8, 20));
+      pantalla().hasta.setValue(new Date(2026, 8, 5));
+      fixture.detectChanges();
+      await esperarElRespiro();
+
+      expect(pantalla().cargando()).toBeFalse();
+      expect(pantalla().fechasAlReves()).toBeTrue();
+      expect(pantalla().filas()).toEqual([]);
+    });
+
+    it('lo mismo con un texto que no se entiende', async () => {
+      await armar({ diferido: true });
+      expect(pantalla().cargando()).toBeTrue();
+
+      casilla('fecha-desde').value = 'hola';
+      casilla('fecha-desde').dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await esperarElRespiro();
+
+      expect(pantalla().cargando()).toBeFalse();
+      expect(pantalla().fechasIlegibles()).toBeTrue();
+    });
+  });
+
+  it('la X de «Hasta» con las fechas al revés quita el aviso y la lista vuelve a pedirse', async () => {
+    await armar();
+    pantalla().desde.setValue(new Date(2026, 8, 20));
+    pantalla().hasta.setValue(new Date(2026, 8, 5));
+    fixture.detectChanges();
+    await esperarElRespiro();
+    expect(pantalla().fechasAlReves()).toBeTrue();
+    const listasAntes = servicio.listas.length;
+
+    (el().querySelector('.quitar-hasta') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await esperarElRespiro();
+
+    expect(pantalla().fechasAlReves()).toBeFalse();
+    expect(el().querySelector('app-rango-de-fechas .aviso-al-reves')).toBeNull();
+    expect(servicio.listas.length - listasAntes).toBe(1);
+    expect(servicio.listas.at(-1)!.pedido).toEqual({ desde: '2026-09-20', hasta: null, ruta_id: null, page: 1 });
   });
 
   // ------------------------------------------------------------------ la ruta guardada que ya no existe
@@ -666,6 +1016,26 @@ describe('RecepcionListPage: los filtros del listado, como en liquidaciones', ()
       expect(pantalla().filas().map((f) => f.id)).toEqual(['n-1']);
       expect(pantalla().cargando()).toBeFalse();
     });
+  });
+
+  it('unas fechas al revés cuentan como la última consulta: la lista que iba en camino y llega tarde NO llena la tabla', async () => {
+    await armar({ diferido: true }); // la consulta de entrada queda en el aire
+    const enCamino = servicio.listas[0];
+    expect(pantalla().cargando()).toBeTrue();
+
+    pantalla().desde.setValue(new Date(2026, 8, 20));
+    pantalla().hasta.setValue(new Date(2026, 8, 5)); // «Desde» después de «Hasta»: no se consulta nada
+    fixture.detectChanges();
+    await esperarElRespiro();
+    expect(pantalla().fechasAlReves()).toBeTrue();
+    expect(servicio.listas.length).toBe(1);
+
+    enCamino.salida!.next(pagina(['de-la-quincena-vieja']));
+    await asentar();
+
+    expect(pantalla().filas()).toEqual([]);
+    expect(pantalla().total()).toBe(0);
+    expect(pantalla().cargando()).toBeFalse();
   });
 
   it('las fechas que usa la pantalla son las que ven los botones (no hay otra cuenta de "esta quincena")', async () => {

@@ -128,9 +128,16 @@ describe('LiquidacionListPage: la última consulta manda', () => {
   const idsEnPantalla = (): string[] => pantalla().filas().map((fila) => fila.id);
   const primerBoton = (): HTMLButtonElement =>
     fixture.nativeElement.querySelectorAll('app-selector-quincena .q-btn')[0];
-  const dobleClic = (): void => {
+  /**
+   * Las fechas esperan 300 ms antes de recargar, y dos clics seguidos caerían en la MISMA
+   * espera y pedirían una sola vez. Para tener dos consultas en vuelo a la vez —que es lo que
+   * esta prueba mide— el segundo clic llega cuando la primera ya salió (y sigue sin contestar).
+   */
+  const dobleClic = async (): Promise<void> => {
     primerBoton().click(); // marca la quincena
+    await new Promise((r) => setTimeout(r, 350));
     primerBoton().click(); // y la desmarca
+    await new Promise((r) => setTimeout(r, 350));
   };
   const asentar = async (): Promise<void> => {
     await fixture.whenStable();
@@ -138,7 +145,7 @@ describe('LiquidacionListPage: la última consulta manda', () => {
   };
 
   it('el doble clic: si la respuesta de la quincena llega DESPUÉS de la de "todo", la tabla es la de todo', async () => {
-    dobleClic();
+    await dobleClic();
     const marcar = servicio.listas[1];
     const desmarcar = servicio.listas[2];
     expect(marcar.filtros.desde).not.toBeNull();
@@ -156,7 +163,7 @@ describe('LiquidacionListPage: la última consulta manda', () => {
   });
 
   it('la respuesta vieja que llega ANTES no apaga el "cargando" ni cambia la tabla', async () => {
-    dobleClic();
+    await dobleClic();
     const marcar = servicio.listas[1];
     const desmarcar = servicio.listas[2];
 
@@ -174,7 +181,7 @@ describe('LiquidacionListPage: la última consulta manda', () => {
   });
 
   it('las tarjetas igual: las de la consulta vieja no pisan a las nuevas', async () => {
-    dobleClic();
+    await dobleClic();
     const marcar = servicio.resumenes[1];
     const desmarcar = servicio.resumenes[2];
 
@@ -187,7 +194,7 @@ describe('LiquidacionListPage: la última consulta manda', () => {
   });
 
   it('un error de la consulta vieja, después de que la nueva respondió bien, no tumba la pantalla', async () => {
-    dobleClic();
+    await dobleClic();
     const marcar = servicio.listas[1];
     const desmarcar = servicio.listas[2];
     const marcarResumen = servicio.resumenes[1];
@@ -206,8 +213,51 @@ describe('LiquidacionListPage: la última consulta manda', () => {
     expect(pantalla().resumenFallo()).toBeNull();
   });
 
+  /** Unas fechas que no sirven («Desde» después de «Hasta»): la pantalla no consulta nada. */
+  const ponerLasFechasAlReves = async (): Promise<void> => {
+    pantalla().desde.setValue(new Date(2026, 8, 20));
+    pantalla().hasta.setValue(new Date(2026, 8, 5));
+    await new Promise((r) => setTimeout(r, 350)); // las fechas esperan 300 ms antes de recargar
+    await asentar();
+  };
+
+  it('unas fechas al revés cuentan como la última consulta: la lista que iba en camino y llega tarde NO llena la tabla', async () => {
+    primerBoton().click(); // la quincena sale a consultar y queda sin contestar
+    await new Promise((r) => setTimeout(r, 350));
+    const enCamino = servicio.listas[1];
+    expect(pantalla().cargando()).toBeTrue();
+
+    await ponerLasFechasAlReves();
+    expect(pantalla().fechasAlReves()).toBeTrue();
+    expect(idsEnPantalla()).toEqual([]);
+    expect(servicio.listas.length).toBe(2); // las fechas al revés no pidieron nada
+
+    enCamino.salida.next(pagina(['de-la-quincena-vieja']));
+    await asentar();
+
+    expect(idsEnPantalla()).toEqual([]);
+    expect(pantalla().total()).toBe(0);
+    expect(pantalla().cargando()).toBeFalse();
+  });
+
+  it('las tarjetas igual: las que iban en camino y llegan tarde NO se pintan bajo unas fechas al revés', async () => {
+    primerBoton().click();
+    await new Promise((r) => setTimeout(r, 350));
+    const enCamino = servicio.resumenes[1];
+
+    await ponerLasFechasAlReves();
+    expect(pantalla().resumen()).toBeNull();
+    expect(servicio.resumenes.length).toBe(2); // las fechas al revés no pidieron nada
+
+    enCamino.salida.next(resumenCon(5));
+    await asentar();
+
+    expect(pantalla().resumen()).toBeNull();
+  });
+
   it('con una sola consulta en camino todo sigue igual: se contesta y se pinta', async () => {
     primerBoton().click();
+    await new Promise((r) => setTimeout(r, 350)); // las fechas esperan 300 ms antes de recargar
     servicio.listas[1].salida.next(pagina(['q-1']));
     servicio.resumenes[1].salida.next(resumenCon(9));
     await asentar();
