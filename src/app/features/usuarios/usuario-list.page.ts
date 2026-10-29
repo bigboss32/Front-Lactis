@@ -1,7 +1,9 @@
+import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, OnInit, computed, effect, inject, signal, untracked } from '@angular/core';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -33,9 +35,9 @@ import { UsuariosService } from './usuarios.service';
 @Component({
   selector: 'app-usuario-list',
   imports: [
-    ReactiveFormsModule, MatCardModule, MatTableModule, MatPaginatorModule,
+    ReactiveFormsModule, MatCardModule, MatCheckboxModule, MatTableModule, MatPaginatorModule,
     MatFormFieldModule, MatInputModule, MatSelectModule, MatButtonModule,
-    MatIconModule, MatProgressBarModule, MatTooltipModule,
+    MatIconModule, MatProgressBarModule, MatTooltipModule, DatePipe,
     PageHeader, EstadoChip, HasPermissionDirective,
   ],
   templateUrl: './usuario-list.page.html',
@@ -71,6 +73,13 @@ import { UsuariosService } from './usuarios.service';
       color: var(--mat-sys-on-surface-variant);
     }
     .centro { text-align: center; }
+    .detalle { font-size: 0.75rem; color: var(--mat-sys-on-surface-variant); }
+    .eliminado {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
     .icono-bloqueado { color: #c62828; }
     .icono-ok { color: var(--mat-sys-on-surface-variant); opacity: 0.5; }
     :host-context(html.dark) .icono-bloqueado { color: #e57373; }
@@ -86,12 +95,20 @@ export class UsuarioListPage implements OnInit {
 
   readonly auth = inject(AuthService);
 
+  /** Copia del interruptor "Ver eliminados" como signal: `columnas` es un
+   * computed y necesita reactividad (el FormControl no lo es). */
+  private readonly mostrarEliminados = signal(false);
+
   /** La columna Empresas solo aporta al superadmin: los demás ven una empresa. */
-  readonly columnas = computed(() =>
-    this.auth.esSuperadmin()
-      ? ['nombre', 'username', 'correo', 'roles', 'empresas', 'bloqueado', 'estado', 'acciones']
-      : ['nombre', 'username', 'correo', 'roles', 'bloqueado', 'estado', 'acciones'],
-  );
+  readonly columnas = computed(() => {
+    const base = this.auth.esSuperadmin()
+      ? ['nombre', 'username', 'correo', 'roles', 'empresas', 'bloqueado', 'estado']
+      : ['nombre', 'username', 'correo', 'roles', 'bloqueado', 'estado'];
+    // La columna "Eliminado" (quién y cuándo) solo tiene sentido con el filtro puesto.
+    return this.mostrarEliminados()
+      ? [...base, 'eliminado', 'acciones']
+      : [...base, 'acciones'];
+  });
   readonly filas = signal<Usuario[]>([]);
   readonly total = signal(0);
   readonly cargando = signal(false);
@@ -105,12 +122,18 @@ export class UsuarioListPage implements OnInit {
 
   readonly buscar = new FormControl('', { nonNullable: true });
   readonly estado = new FormControl<string | null>(null);
+  /** Interruptor "Ver eliminados": lista también las cuentas borradas en suave. */
+  readonly verEliminados = new FormControl(false, { nonNullable: true });
 
   constructor() {
     this.buscar.valueChanges
       .pipe(debounceTime(300), takeUntilDestroyed())
       .subscribe(() => this.recargar());
     this.estado.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.recargar());
+    this.verEliminados.valueChanges.pipe(takeUntilDestroyed()).subscribe((valor) => {
+      this.mostrarEliminados.set(valor);
+      this.recargar();
+    });
 
     // Reacciona al cambio de empresa activa del superadmin: refresca banner y lista.
     effect(() => {
@@ -171,6 +194,7 @@ export class UsuarioListPage implements OnInit {
           page_size: this.pageSize(),
           search: this.buscar.value || null,
           estado: this.estado.value,
+          incluir_eliminados: this.mostrarEliminados(),
         }),
       );
       this.filas.set(respuesta.items);
