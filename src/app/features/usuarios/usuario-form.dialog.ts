@@ -173,7 +173,7 @@ export class UsuarioFormDialog {
           }),
         );
       } else {
-        await firstValueFrom(
+        const creado = await firstValueFrom(
           this.servicio.create({
             nombre: valor.nombre,
             apellido: valor.apellido,
@@ -185,6 +185,11 @@ export class UsuarioFormDialog {
             rol_ids: valor.rol_ids,
           }),
         );
+        // Se devuelve el usuario creado: si el correo/username eran de una cuenta
+        // borrada, el backend la reactivó y la pantalla lo avisa con quién la
+        // había eliminado (ver Usuario.reactivado).
+        this.dialogRef.close(creado);
+        return;
       }
       this.dialogRef.close(true);
     } catch (err) {

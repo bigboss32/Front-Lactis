@@ -260,6 +260,11 @@ export interface Usuario extends AuditFields {
   roles: RolResumen[];
   /** Nombres de las empresas de las que es miembro. Opcional: backend viejo no lo manda. */
   empresas?: string[];
+  /** Solo en la respuesta de un POST que reactivó una cuenta borrada: quién la
+   * había eliminado y cuándo. En una lectura normal no vienen. */
+  reactivado?: boolean;
+  eliminado_por?: string | null;
+  eliminado_en?: string | null;
 }
 
 /** Fila de GET /usuarios/{id}/empresas: una membresía con sus roles. */

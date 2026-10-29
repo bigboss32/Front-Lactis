@@ -191,11 +191,24 @@ export class UsuarioListPage implements OnInit {
     this.dialog
       .open(UsuarioFormDialog, { data: { item, empresaNombre }, width: '640px' })
       .afterClosed()
-      .subscribe((guardado) => {
-        if (guardado) {
+      .subscribe((guardado: Usuario | true | undefined) => {
+        if (!guardado) return;
+        if (guardado !== true && guardado.reactivado) {
+          // El correo/username eran de una cuenta borrada: el backend la
+          // reutilizó. Se dice quién la había eliminado y cuándo.
+          const cuando = guardado.eliminado_en
+            ? new Date(guardado.eliminado_en).toLocaleDateString('es-CO')
+            : '';
+          const quien = guardado.eliminado_por ?? 'un usuario que ya no está registrado';
+          this.snackbar.open(
+            `Cuenta reactivada: la había eliminado ${quien}${cuando ? ` el ${cuando}` : ''}.`,
+            'OK',
+            { duration: 10000 },
+          );
+        } else {
           this.snackbar.open('Usuario guardado', 'OK', { duration: 3000 });
-          this.cargar();
         }
+        this.cargar();
       });
   }
 
